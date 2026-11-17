@@ -1,7 +1,7 @@
 import { Box, Stack, Typography } from "@/ui/primitives";
 import { FolderOutlined } from "@/ui/icons";
 import type { ArticleSummary } from "../content/api";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 
 export function ArticleCollectionPreview({ articles, title, emptyLabel = "还没有文章" }: {
   articles: ArticleSummary[];

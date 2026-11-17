@@ -3,7 +3,7 @@ import type { ImgHTMLAttributes } from "react";
 import { Box, Typography } from "@/ui/primitives";
 import type { SxObject } from "@/ui/primitives";
 import { MenuBookRounded } from "@/ui/icons";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export const BOOK_COVER_ASPECT_RATIO = "3 / 4";
 

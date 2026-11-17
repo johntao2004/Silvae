@@ -24,12 +24,24 @@ function openNotesDrawer() {
 describe("ReaderPage", () => {
   beforeEach(() => {
     localStorage.clear();
-    sessionStorage.setItem("silvae-demo-session", JSON.stringify({
+    sessionStorage.setItem("humite-demo-session", JSON.stringify({
       id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false,
     }));
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it("ignores a corrupt local note draft without breaking the reader", async () => {
+    localStorage.setItem("humite-note-draft:user-owner:book-1", JSON.stringify({
+      note: { text: "invalid note payload" },
+      selection: { quote: "河面先暗了一层", locator: "epubcfi(/6/14!/4/2)", x: 120, y: 200, placement: "ABOVE" },
+    }));
+
+    render(<TestProviders initialPath="/reader/book-1"><Routes><Route path="/reader/:bookId" element={<ReaderPage />} /></Routes></TestProviders>);
+
+    expect(await screen.findByRole("heading", { name: "灯下" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "高亮并写笔记" })).not.toBeInTheDocument();
+  });
 
   it("anchors the annotation toolbar beside the selected text", () => {
     const selection = readerSelectionFromRect({
@@ -113,6 +125,28 @@ describe("ReaderPage", () => {
     expect(removeAllRanges).toHaveBeenCalled();
   });
 
+  it("saves an online note and closes selection tools when local draft storage is blocked", async () => {
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "存储受限时仍可阅读",
+      rangeCount: 1,
+      getRangeAt: () => ({ getBoundingClientRect: () => ({ left: 120, width: 160, top: 220 }) }),
+      removeAllRanges: vi.fn(),
+    } as unknown as Selection);
+    render(<TestProviders initialPath="/reader/book-1"><Routes><Route path="/reader/:bookId" element={<ReaderPage />} /></Routes></TestProviders>);
+    await screen.findByRole("heading", { name: "灯下" });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
+    vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
+
+    fireEvent.mouseUp(screen.getByRole("article"));
+    fireEvent.click(screen.getByRole("button", { name: "高亮＋笔记" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "写下这段文字带来的想法" }), { target: { value: "在线保存成功" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存笔记" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "高亮并写笔记" })).not.toBeInTheDocument());
+    openNotesDrawer();
+    expect(await screen.findByText("在线保存成功")).toBeInTheDocument();
+  });
+
   it("saves an underline directly from the selection toolbar", async () => {
     vi.spyOn(window, "getSelection").mockReturnValue({
       toString: () => "木桨在水里划出细长的纹路",
@@ -158,8 +192,21 @@ describe("ReaderPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "阅读设置" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "夜间" }));
 
-    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-silvae-theme", "night"));
-    expect(localStorage.getItem("silvae-site-theme")).toBe("NIGHT");
+    await waitFor(() => expect(document.documentElement).toHaveAttribute("data-humite-theme", "night"));
+    expect(localStorage.getItem("humite-site-theme")).toBe("NIGHT");
+  });
+
+  it("keeps the reader usable when local preference writes are blocked", async () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new DOMException("Storage blocked", "SecurityError"); });
+
+    render(<TestProviders initialPath="/reader/book-1"><Routes><Route path="/reader/:bookId" element={<ReaderPage />} /></Routes></TestProviders>);
+    expect(await screen.findByRole("heading", { name: "灯下" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "阅读设置" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "夜间" }));
+
+    expect(document.documentElement).toHaveAttribute("data-humite-theme", "night");
+    expect(screen.getByRole("heading", { name: "灯下" })).toBeInTheDocument();
   });
 
   it("persists the page-turn effect switch in reader settings", async () => {
@@ -172,7 +219,7 @@ describe("ReaderPage", () => {
     fireEvent.click(toggle);
 
     expect(toggle).not.toBeChecked();
-    await waitFor(() => expect(JSON.parse(localStorage.getItem("silvae-reader-settings:user-owner") ?? "null")).toMatchObject({
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("humite-reader-settings:user-owner") ?? "null")).toMatchObject({
       pageTurnEnabled: false,
     }));
     expect(screen.getByText("关闭后直接切换页面")).toBeInTheDocument();

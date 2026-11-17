@@ -30,7 +30,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { BookMetadataDraft, BookUpload, LibraryRoot, MetadataCandidate } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { usePermissions } from "../auth/permissions";
 import { useBookUploadMetadataAutosave } from "./useBookUploadMetadataAutosave";
 

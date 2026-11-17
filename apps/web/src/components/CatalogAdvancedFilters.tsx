@@ -10,7 +10,7 @@ import { Box, FormControl, InputLabel, MenuItem, Stack } from "@/ui/primitives";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useCatalogFilterParams } from "../hooks/useCatalogFilterParams";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { CategoryManagementDialog } from "./CategoryManagementDialog";
 
 export function CatalogAdvancedFilterToggle() {

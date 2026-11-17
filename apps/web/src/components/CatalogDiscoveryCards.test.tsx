@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { BrowseBook } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { CoverMosaic } from "./CatalogDiscoveryCards";
 
 const makeBooks = (count: number): BrowseBook[] => Array.from({ length: count }, (_, index) => ({

@@ -1,6 +1,6 @@
 import ConfigProvider from "antd/es/config-provider";
 import type { ReactNode } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 const displayTheme = { token: { fontFamily: tokens.typography.fontFamily.display } };
 const displayPopup = { classNames: { popup: { root: "bk-display-typography" } } };

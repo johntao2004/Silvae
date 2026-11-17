@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 import { api, DEFAULT_SITE_SETTINGS } from '../api/client';
 import { Box, Typography } from '../ui/primitives';
-import { tokens } from '../theme/generated-tokens';
+import { tokens } from '../theme/tokens';
 
 export function useSiteSettingsQuery(live = false) {
   return useQuery({queryKey:['site-settings'],queryFn:({signal})=>api.siteSettings(signal),

@@ -1,5 +1,5 @@
 {
-  "name": "silvae",
+  "name": "humite",
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.33.0",
@@ -11,22 +11,17 @@
     "docker:build": "bash docker/deploy.sh --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
-    "dev": "pnpm build:ming-library && pnpm --filter @silvae/web dev",
-    "build": "pnpm generate:tokens && pnpm build:ming-library && pnpm --filter @silvae/web build",
-    "build:ming-library": "pnpm --filter @silvae/ming-library build",
-    "test": "pnpm --filter @silvae/web test",
-    "lint": "pnpm --filter @silvae/web lint",
-    "typecheck": "pnpm --filter @silvae/web typecheck",
-    "generate:tokens": "node scripts/generate-design-tokens.mjs",
+    "dev": "pnpm prepare:fonts && pnpm --filter @humite/web dev",
+    "build": "pnpm prepare:fonts && pnpm --filter @humite/web build",
+    "test": "pnpm --filter @humite/web test",
+    "lint": "pnpm --filter @humite/web lint",
+    "typecheck": "pnpm --filter @humite/web typecheck",
+    "prepare:fonts": "node scripts/prepare-web-fonts.mjs",
     "generate:client": "./apps/server/mvnw -f apps/server/pom.xml -Pgenerate-client generate-sources",
-    "check:tokens": "node scripts/generate-design-tokens.mjs --check",
     "start:local": "bash scripts/start-local.sh",
     "stop:local": "bash scripts/stop-local.sh",
     "start:preview": "node scripts/local-preview.mjs start",
     "status:preview": "node scripts/local-preview.mjs status",
     "stop:preview": "node scripts/local-preview.mjs stop"
-  },
-  "devDependencies": {
-    "meshoptimizer": "1.1.1"
   }
 }

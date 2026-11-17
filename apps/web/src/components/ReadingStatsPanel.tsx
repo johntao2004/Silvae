@@ -8,7 +8,7 @@ import { Skeleton } from "@/ui/antd";
 import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import type { WeeklyReadingStats } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { OverviewCardHeader } from "./OverviewCardHeader";
 
 export function ReadingStatsPanel({ stats, loading, error, today: serverToday }: {

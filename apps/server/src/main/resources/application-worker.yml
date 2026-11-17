@@ -1,6 +1,6 @@
 spring:
   main:
     web-application-type: none
-silvae:
+humite:
   worker:
     poll-delay: 1s

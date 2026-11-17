@@ -5,7 +5,7 @@ import { IconButton } from "@/ui/buttons";
 import { DescriptionOutlined, MenuBookRounded, MoreVert } from "@/ui/icons";
 import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export interface BookCardAction {
   label: string;

@@ -1,3 +1,4 @@
+// Stable legacy wire/storage identifiers: changing these would strand existing encrypted books and device keys.
 import { b64, unb64 } from "./crypto";
 
 interface DeviceRecord {

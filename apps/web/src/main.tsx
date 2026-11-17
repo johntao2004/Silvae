@@ -7,7 +7,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { AuthProvider } from "./auth/AuthContext";
-import { SilvaeThemeProvider } from "./theme/SilvaeThemeProvider";
+import { HumiteThemeProvider } from "./theme/HumiteThemeProvider";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -21,7 +21,7 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
-          <SilvaeThemeProvider><AppErrorBoundary><App /></AppErrorBoundary></SilvaeThemeProvider>
+          <HumiteThemeProvider><AppErrorBoundary><App /></AppErrorBoundary></HumiteThemeProvider>
         </AuthProvider>
       </BrowserRouter>
     </QueryClientProvider>

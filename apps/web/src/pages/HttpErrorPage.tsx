@@ -4,7 +4,7 @@ import { ApiRequestError } from "../api/errors";
 import { PageTitle, pageWidthSx } from "../components/PageHeader";
 import { Button } from "../ui/buttons";
 import { Stack, Typography } from "../ui/primitives";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import './http-error-page.css';
 
 export interface PageFailure { status?: number; code: string; reason: string; traceId?: string }

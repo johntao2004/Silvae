@@ -11,7 +11,7 @@ import { Alert } from "@/ui/feedback";
 import { Button } from "@/ui/buttons";
 import { Box, Stack, Typography } from "@/ui/primitives";
 import type { BookPage, DisplayBookPage } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import type { Book, DisplayBook } from "../domain/types";
 
 export function SearchPage() {

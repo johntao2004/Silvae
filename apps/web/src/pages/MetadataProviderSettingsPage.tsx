@@ -9,7 +9,7 @@ import { Button, SaveButton } from "../ui/buttons";
 import { CircularProgress } from "../ui/feedback";
 import { Switch } from "../ui/forms";
 import { FormControlLabel, Stack, Typography } from "../ui/primitives";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 function sourceLink(homepage: string) {
   try {

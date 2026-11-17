@@ -70,7 +70,7 @@ function mergedTableExtension(inertSchemaRef: { current: Schema | null }) {
 
 export function markdownTableInputExtension() {
   return Extension.create({
-    name: "silvaeMarkdownTableInput",
+    name: "humiteMarkdownTableInput",
     addProseMirrorPlugins() {
       return [new Plugin({
         props: {
@@ -174,7 +174,7 @@ export function markdownLengthLimitExtension(
   inertSchemaRef: { current: Schema | null },
 ) {
   return Extension.create({
-    name: "silvaeMarkdownLengthLimit",
+    name: "humiteMarkdownLengthLimit",
     addProseMirrorPlugins() {
       const schema = inertSchemaRef.current;
       return [new Plugin({

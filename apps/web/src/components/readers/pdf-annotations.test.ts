@@ -3,7 +3,7 @@
 import { applyPdfTextAnnotations } from "./pdf-annotations";
 import type { Annotation } from "../../domain/types";
 import { readerHighlightStyle } from "../../domain/annotation-colors";
-import { silvaeThemeOptions } from "../../theme/theme";
+import { humiteThemeOptions } from "../../theme/theme";
 
 describe("applyPdfTextAnnotations", () => {
   it("refreshes reading highlights and explicit text colors when the theme changes", () => {
@@ -13,7 +13,7 @@ describe("applyPdfTextAnnotations", () => {
       id: "themed-highlight", bookId: "book-pdf", type: "HIGHLIGHT", style: "HIGHLIGHT",
       color: "YELLOW", locator: "pdf:page=1", quote: "高亮仍然清晰", createdAt: "2026-10-21",
     };
-    for (const { reader: theme } of Object.values(silvaeThemeOptions)) {
+    for (const { reader: theme } of Object.values(humiteThemeOptions)) {
       applyPdfTextAnnotations(layer, 1, [annotation], { theme });
       const expected = document.createElement("span");
       Object.assign(expected.style, readerHighlightStyle(annotation.color, theme));

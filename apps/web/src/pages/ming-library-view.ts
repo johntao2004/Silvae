@@ -1,4 +1,4 @@
-const views = new Set(['gate', 'door', 'connection', 'hall', 'throne', 'objects', 'dragon', 'upper', 'shelf', 'stairs', 'ceiling', 'roof', 'plaque', 'beasts', 'terrace', 'overview', 'courtyard', 'dais', 'chiwen', 'carpet', 'windows', 'passages', 'terracepassage', 'entrycolumns']);
+const views = new Set(['gate', 'bridge', 'park', 'drawcard', 'pavilions', 'garden', 'watchtower', 'door', 'connection', 'hall', 'throne', 'objects', 'dragon', 'upper', 'shelf', 'stairs', 'ceiling', 'roof', 'plaque', 'beasts', 'terrace', 'overview', 'courtyard', 'dais', 'chiwen', 'carpet', 'windows', 'passages', 'terracepassage', 'entrycolumns']);
 export interface MingLibraryView {
   view: string; mode: 'orbit' | 'walk' | 'seated'; position: number[]; target: number[];
   yaw: number; pitch: number; cutaway: boolean; night: boolean; gateOpen: boolean;
@@ -6,7 +6,7 @@ export interface MingLibraryView {
 export function readMingLibraryView(value: unknown): MingLibraryView | null {
   if (!value || typeof value !== 'object') return null;
   const v = value as MingLibraryView;
-  const point = (p: unknown) => Array.isArray(p) && p.length === 3 && p.every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 650);
+  const point = (p: unknown) => Array.isArray(p) && p.length === 3 && p.every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 2500);
   if (!views.has(v.view) || !['orbit', 'walk', 'seated'].includes(v.mode) || !point(v.position) || !point(v.target)
     || !Number.isFinite(v.yaw) || !Number.isFinite(v.pitch)
     || ![v.cutaway, v.night, v.gateOpen].every(n => typeof n === 'boolean')) return null;

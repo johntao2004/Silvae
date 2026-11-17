@@ -2,7 +2,7 @@
 // Applies annotation styles to EPUB ranges, rebuilding after old markers are cleared to avoid repeated wrappers.
 import { annotationColorHex, readerHighlightStyle, type AnnotationTextTheme } from "../../domain/annotation-colors";
 import type { Annotation } from "../../domain/types";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 
 export const EPUB_INLINE_ANNOTATION_CLASS = "page-annotation-inline";
 

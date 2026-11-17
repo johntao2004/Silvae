@@ -49,7 +49,6 @@ import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { readReferenceReaderState } from './reference-library-view';
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { READER_SHELL_HEIGHT, readerShellHeight } from "../components/readers/reader-layout";
@@ -64,10 +63,12 @@ import { readerWidthSx } from "../components/PageHeader";
 import { demoChapter } from "../data/demo";
 import { annotationColorHex, highlightColorPresets, readerHighlightStyle, type AnnotationTextTheme } from "../domain/annotation-colors";
 import type { Annotation, AnnotationStyle, Book, DisplayBook, HighlightColor } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
-import { useSilvaeTheme } from "../theme/SilvaeThemeProvider";
-import { silvaeThemeOptions } from "../theme/theme";
+import { tokens } from "../theme/tokens";
+import { useHumiteTheme } from "../theme/HumiteThemeProvider";
+import { humiteThemeOptions } from "../theme/theme";
 import { DEFAULT_READER_SETTINGS, PRESET_READER_FONTS, readReaderSettings, readerFontFamily, type ReaderSettings, type ReaderTheme } from "../components/readers/reader-fonts";
+import { removeLocalPreference, saveLocalPreference } from "../utils/local-preferences";
+import { readReaderNoteDraft } from "../components/readers/reader-note-draft";
 
 const EpubDocumentReader = lazy(() => import("../components/readers/EpubDocumentReader"));
 const PdfDocumentReader = lazy(() => import("../components/readers/PdfDocumentReader"));
@@ -89,11 +90,11 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const { user } = useAuth();
   const { can } = usePermissions();
   const canAnnotate = can(source?.annotationPermission ?? "reader.annotate");
-  const { mode: readerTheme, setMode: setSilvaeTheme } = useSilvaeTheme();
+  const { mode: readerTheme, setMode: setHumiteTheme } = useHumiteTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const readerLocation = useLocation();
-  const libraryReturnState = user ? readMingLibraryReaderState(readerLocation.state) ?? readReferenceReaderState(readerLocation.state) : null;
+  const libraryReturnState = user ? readMingLibraryReaderState(readerLocation.state) : null;
   const returnToLibrary = () => source ? source.onBack() : libraryReturnState
     ? navigate('/virtual-library', {state: libraryReturnState})
     : navigate(user ? "/library/all" : "/library");
@@ -105,7 +106,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const bookQuery = useQuery<Book | DisplayBook>({ queryKey: ["reader-book", bookId, guest], queryFn: async () => guest ? api.getDisplayBook(bookId) : api.getBook(bookId), enabled: Boolean(bookId) && !source });
   const annotationQueryKey = ["annotations", bookId] as const;
   const annotationsQuery = useQuery({ queryKey: annotationQueryKey, queryFn: () => api.listAnnotations(bookId), enabled: Boolean(user) && !source });
-  const readerSettingsKey = `silvae-reader-settings:${user?.id ?? "anonymous"}`;
+  const readerSettingsKey = `humite-reader-settings:${user?.id ?? "anonymous"}`;
   const readerFontsQuery = useQuery({ queryKey: ["reader-fonts"], queryFn: api.listReaderFonts, staleTime: 5 * 60_000, enabled: Boolean(user) });
   const availableFonts = readerFontsQuery.data ?? PRESET_READER_FONTS;
   const [readerSettings, setReaderSettings] = useState<ReaderSettings>(() => readReaderSettings(readerSettingsKey));
@@ -142,7 +143,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const [readerProgress, setReaderProgress] = useState<number | null>(null);
   const visibleHeight = useReaderVisibleHeight();
   const currentFont = availableFonts.find((font) => font.id === readerSettings.fontId && font.status === "ENABLED") ?? PRESET_READER_FONTS[0];
-  const currentTheme = silvaeThemeOptions[readerTheme].reader;
+  const currentTheme = humiteThemeOptions[readerTheme].reader;
   const fontSize = readerSettings.fontSize;
   const fontFamily = readerFontFamily(currentFont);
   const bookAnnotations = useMemo(() => user ? (source?.annotations ?? annotationsQuery.data ?? []).filter((item) => item.bookId === bookId) : [], [source?.annotations, annotationsQuery.data, bookId, user]);
@@ -158,7 +159,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const demo = !source && api.isDemo;
   const notesTitle = source ? "阅文札记" : "本书笔记";
   const selectedAnnotationGroup = useMemo(() => selection ? annotationGroups.find(group => sameAnnotationSelection(group.annotation, { ...selection, bookId })) : undefined, [annotationGroups, bookId, selection]);
-  const noteDraftKey = user && bookId ? `silvae-${source ? "article-note-draft" : "note-draft"}:${user.id}:${bookId}` : undefined;
+  const noteDraftKey = user && bookId ? `humite-${source ? "article-note-draft" : "note-draft"}:${user.id}:${bookId}` : undefined;
 
   useEffect(() => {
     if (!readerFontsQuery.isSuccess) return;
@@ -167,16 +168,19 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   }, [availableFonts, readerFontsQuery.isSuccess, readerSettings.fontId]);
 
   useEffect(() => {
-    localStorage.setItem(readerSettingsKey, JSON.stringify({ ...readerSettings, theme: readerTheme }));
+    saveLocalPreference(readerSettingsKey, JSON.stringify({ ...readerSettings, theme: readerTheme }));
   }, [readerSettings, readerSettingsKey, readerTheme]);
 
   useEffect(() => {
-    if(!noteDraftKey) return;
-    const key=noteDraftKey;
-    try { const draft=JSON.parse(localStorage.getItem(key) ?? "null"); if(draft?.selection) {setNote(draft.note ?? "");setSelection(draft.selection);setNoteComposerOpen(Boolean(draft.note));} } catch { /* 忽略损坏的本地草稿。 */ /* Ignore damaged local drafts. */ }
-  },[noteDraftKey]);
+    if (!noteDraftKey) return;
+    const draft = readReaderNoteDraft(noteDraftKey);
+    if (!draft) return;
+    setNote(draft.note);
+    setSelection(draft.selection);
+    setNoteComposerOpen(Boolean(draft.note));
+  }, [noteDraftKey]);
   useEffect(() => {
-    if(noteDraftKey && selection) localStorage.setItem(noteDraftKey,JSON.stringify({note,selection}));
+    if(noteDraftKey && selection) saveLocalPreference(noteDraftKey,JSON.stringify({note,selection}));
   },[noteDraftKey,noteComposerOpen,note,selection]);
   const handleReaderSelection = useCallback((nextSelection: ReaderSelection) => {
     if (!user) return;
@@ -209,7 +213,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   };
 
   const closeSelection = useCallback(() => {
-    if(noteDraftKey) localStorage.removeItem(noteDraftKey);
+    if(noteDraftKey) removeLocalPreference(noteDraftKey);
     setSelection(null);
     setNoteComposerOpen(false);
     setNote("");
@@ -429,7 +433,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
         </Box>
         <Divider />
         <Typography variant="caption" color="text.secondary" sx={{ px: 2, pt: 1.5, display: "block" }}>阅读主题</Typography>
-        {(Object.keys(silvaeThemeOptions) as ReaderTheme[]).map((key) => <MenuItem key={key} selected={readerTheme === key} onClick={() => setSilvaeTheme(key)}><Box sx={{ width: 24, height: 24, borderRadius: "50%", bgcolor: silvaeThemeOptions[key].reader.background, border: 1, borderColor: "divider", mr: 1.5 }} />{silvaeThemeOptions[key].label}{readerTheme === key && <CheckRounded sx={{ ml: "auto" }} />}</MenuItem>)}
+        {(Object.keys(humiteThemeOptions) as ReaderTheme[]).map((key) => <MenuItem key={key} selected={readerTheme === key} onClick={() => setHumiteTheme(key)}><Box sx={{ width: 24, height: 24, borderRadius: "50%", bgcolor: humiteThemeOptions[key].reader.background, border: 1, borderColor: "divider", mr: 1.5 }} />{humiteThemeOptions[key].label}{readerTheme === key && <CheckRounded sx={{ ml: "auto" }} />}</MenuItem>)}
       </Menu>
 
       <Drawer anchor="right" title={notesTitle} closeLabel={`关闭${notesTitle}`} open={notesOpen} onClose={() => setNotesOpen(false)} afterOpenChange={(opened: boolean) => { if (opened) focusCurrentNote(); }} slotProps={{ paper: { sx: { width: { xs: `calc(100vw - ${tokens.spacing[6]}px)`, sm: 390 }, maxWidth: "100vw" } } }}>

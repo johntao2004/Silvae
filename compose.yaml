@@ -1,32 +1,38 @@
-name: silvae
+name: humite
 
-x-silvae-common: &silvae-common
-  image: ${SILVAE_IMAGE:-ghcr.io/johntao2004/silvae:latest}
-  pull_policy: ${SILVAE_PULL_POLICY:-missing}
+x-humite-common: &humite-common
+  image: ${HUMITE_IMAGE:-ghcr.io/johntao2004/humite:latest}
+  pull_policy: ${HUMITE_PULL_POLICY:-missing}
   build:
     context: .
-    dockerfile: docker/silvae.Dockerfile
+    dockerfile: docker/humite.Dockerfile
   restart: unless-stopped
-  user: "${SILVAE_UID:-1000}:${SILVAE_GID:-1000}"
-  environment: &silvae-environment
-    SILVAE_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-silvae}
-    SILVAE_DATABASE_USER: ${POSTGRES_USER:-silvae}
-    SILVAE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-silvae-docker-prod}
-    SILVAE_COOKIE_SECURE: ${SILVAE_SESSION_COOKIE_SECURE:-false}
-    SILVAE_PUBLIC_BASE_URL: ${SILVAE_PUBLIC_BASE_URL:-http://localhost:8080}
-    SILVAE_AI_SETTINGS_ENCRYPTION_KEY: ${SILVAE_AI_SETTINGS_ENCRYPTION_KEY:-}
-    SILVAE_TWO_FACTOR_ENCRYPTION_KEY: ${SILVAE_TWO_FACTOR_ENCRYPTION_KEY:-}
-    SILVAE_STORAGE_ROOTS_0_NAME: ${SILVAE_LIBRARY_NAME:-主书库}
-    SILVAE_STORAGE_ROOTS_0_PATH: /library/main
-    SILVAE_FONT_STORAGE_PATH: /var/lib/silvae/fonts
-    SILVAE_CONTENT_STORAGE_PATH: /var/lib/silvae/content
-    SILVAE_KEY_STORAGE_PATH: /var/lib/silvae/keys
+  user: "${HUMITE_UID:-1000}:${HUMITE_GID:-1000}"
+  environment: &humite-environment
+    HUMITE_DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-humite}
+    HUMITE_DATABASE_USER: ${POSTGRES_USER:-humite}
+    HUMITE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-humite-docker-prod}
+    HUMITE_COOKIE_SECURE: ${HUMITE_SESSION_COOKIE_SECURE:-false}
+    HUMITE_PUBLIC_BASE_URL: ${HUMITE_PUBLIC_BASE_URL:-http://localhost:8080}
+    HUMITE_UPLOAD_MAX_FILE_SIZE: ${HUMITE_UPLOAD_MAX_FILE_SIZE:-2147483648}
+    HUMITE_UPLOAD_MAX_BATCH_FILES: ${HUMITE_UPLOAD_MAX_BATCH_FILES:-20}
+    HUMITE_UPLOAD_RETENTION: ${HUMITE_UPLOAD_RETENTION:-24h}
+    HUMITE_UPLOAD_MAX_COVER_SIZE: ${HUMITE_UPLOAD_MAX_COVER_SIZE:-20971520}
+    HUMITE_METADATA_OPEN_LIBRARY_ENABLED: ${HUMITE_METADATA_OPEN_LIBRARY_ENABLED:-true}
+    HUMITE_METADATA_GOOGLE_API_KEY: ${HUMITE_METADATA_GOOGLE_API_KEY:-}
+    HUMITE_AI_SETTINGS_ENCRYPTION_KEY: ${HUMITE_AI_SETTINGS_ENCRYPTION_KEY:-}
+    HUMITE_TWO_FACTOR_ENCRYPTION_KEY: ${HUMITE_TWO_FACTOR_ENCRYPTION_KEY:-}
+    HUMITE_STORAGE_ROOTS_0_NAME: ${HUMITE_LIBRARY_NAME:-主书库}
+    HUMITE_STORAGE_ROOTS_0_PATH: /library/main
+    HUMITE_FONT_STORAGE_PATH: /var/lib/humite/fonts
+    HUMITE_CONTENT_STORAGE_PATH: /var/lib/humite/content
+    HUMITE_KEY_STORAGE_PATH: /var/lib/humite/keys
     TZ: ${TZ:-Asia/Shanghai}
   volumes:
-    - ${SILVAE_LIBRARY_MAIN:-./data/library}:/library/main
-    - silvae-data:/var/lib/silvae
+    - ${HUMITE_LIBRARY_MAIN:-./data/library}:/library/main
+    - humite-data:/var/lib/humite
   tmpfs:
-    - /tmp/silvae:size=512m,mode=1777
+    - /tmp/humite:size=512m,mode=1777
   security_opt:
     - no-new-privileges:true
   depends_on:
@@ -35,13 +41,13 @@ x-silvae-common: &silvae-common
 
 services:
   app:
-    <<: *silvae-common
+    <<: *humite-common
     environment:
-      <<: *silvae-environment
+      <<: *humite-environment
       SPRING_PROFILES_ACTIVE: api
-      SILVAE_API_PORT: 8080
+      HUMITE_API_PORT: 8080
     ports:
-      - "${SILVAE_HTTP_PORT:-8080}:8080"
+      - "${HUMITE_HTTP_PORT:-8080}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health/readiness"]
       interval: 15s
@@ -50,9 +56,9 @@ services:
       start_period: 45s
 
   worker:
-    <<: *silvae-common
+    <<: *humite-common
     environment:
-      <<: *silvae-environment
+      <<: *humite-environment
       SPRING_PROFILES_ACTIVE: worker
     healthcheck:
       disable: true
@@ -61,14 +67,14 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-silvae}
-      POSTGRES_USER: ${POSTGRES_USER:-silvae}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-silvae-docker-prod}
+      POSTGRES_DB: ${POSTGRES_DB:-humite}
+      POSTGRES_USER: ${POSTGRES_USER:-humite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-humite-docker-prod}
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
-      - silvae-postgres:/var/lib/postgresql
+      - humite-postgres:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-silvae} -d ${POSTGRES_DB:-silvae}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-humite} -d ${POSTGRES_DB:-humite}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -76,5 +82,5 @@ services:
       - no-new-privileges:true
 
 volumes:
-  silvae-data:
-  silvae-postgres:
+  humite-data:
+  humite-postgres:

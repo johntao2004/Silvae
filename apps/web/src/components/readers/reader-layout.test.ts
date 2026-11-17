@@ -1,7 +1,7 @@
 // 按实际阅读区域宽高验证布局，覆盖手机到高分屏而非只依赖窗口宽度。
 // Checks layout from the actual reading surface across phones and high-resolution screens, not window width alone.
 import { describe, expect, it } from "vitest";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { readerPageLayout, readerShellHeight } from "./reader-layout";
 
 describe("reader layout", () => {

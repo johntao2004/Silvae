@@ -6,7 +6,7 @@ import { UsersPage } from "./UsersPage";
 
 describe("UsersPage", () => {
   beforeEach(() => {
-    sessionStorage.setItem("silvae-demo-session", JSON.stringify({
+    sessionStorage.setItem("humite-demo-session", JSON.stringify({
       id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false,
     }));
   });

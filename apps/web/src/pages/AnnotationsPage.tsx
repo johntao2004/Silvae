@@ -21,7 +21,7 @@ import { api } from "../api/client";
 import { BookCatalogEmptyState } from "../components/BookCatalogEmptyState";
 import { annotationColorBackground, annotationColorHex } from "../domain/annotation-colors";
 import type { Annotation, AnnotationBookSummary, AnnotationStyle } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { EMPTY_READING_NOTES_TITLE } from "../ui/empty-state-copy";
 import { useAuth } from "../auth/AuthContext";
 import { AnnotationNoteMarkdown } from "../components/AnnotationNoteMarkdown";

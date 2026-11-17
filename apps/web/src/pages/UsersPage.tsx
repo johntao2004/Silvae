@@ -35,7 +35,7 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ActionToolbar, EmbeddedSettingsContext, PageContainer, PageHeader } from "../components/PageHeader";
 import type { ManagedUser, SessionUser, UserRole } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 const roleLabels: Record<UserRole, string> = { OWNER: "主人", ADMIN: "管理员", MEMBER: "成员" };
 const dialogViewportMaxHeight = `calc(100dvh - ${tokens.spacing[6]}px)`;

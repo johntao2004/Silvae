@@ -10,7 +10,7 @@ import { bookGridSx } from "../components/bookGrid";
 import { BookCatalogEmptyState } from "../components/BookCatalogEmptyState";
 import { CatalogSection } from "../components/CatalogSection";
 import { CatalogFilters } from "../components/CatalogFilters";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { PageContainer, PageHeader } from "../components/PageHeader";
 import { vaultApi } from "../features/vault/api";
 import { ApiRequestError } from "../api/client";
@@ -52,13 +52,13 @@ function VaultContent() {
     setSelected(null); setMaster(null);
     key.current?.fill(0); key.current = null;
     setItems([]); setQuery(""); setBusy(false);
-    window.dispatchEvent(new Event("silvae:vault-lock"));
+    window.dispatchEvent(new Event("humite:vault-lock"));
   }, []);
   useEffect(() => {
-    window.addEventListener("silvae:session-expired", lock);
+    window.addEventListener("humite:session-expired", lock);
     window.addEventListener("pagehide", lock);
     return () => {
-      window.removeEventListener("silvae:session-expired", lock);
+      window.removeEventListener("humite:session-expired", lock);
       window.removeEventListener("pagehide", lock);
     };
   }, [lock]);

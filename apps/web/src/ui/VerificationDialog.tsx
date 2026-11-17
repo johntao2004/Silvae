@@ -3,7 +3,7 @@ import AntInput from "antd/es/input";
 import AntModal from "antd/es/modal";
 import AntAlert from "antd/es/alert";
 import type { OTPRef } from "antd/es/input/OTP";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import "./verification.css";
 
 export function VerificationDialog({ title, description, error, onCancel, children }: {

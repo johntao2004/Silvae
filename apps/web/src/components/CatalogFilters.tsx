@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { FormControl, MenuItem, Stack } from "@/ui/primitives";
 import { Select } from "@/ui/forms";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 interface CatalogSelect {
   label: string;

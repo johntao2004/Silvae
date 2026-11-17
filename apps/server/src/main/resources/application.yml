@@ -1,14 +1,14 @@
 spring:
   application:
-    name: silvae
+    name: humite
   profiles:
     default: api
   datasource:
-    url: ${SILVAE_DATABASE_URL:jdbc:postgresql://localhost:5432/silvae}
-    username: ${SILVAE_DATABASE_USER:silvae}
-    password: ${SILVAE_DATABASE_PASSWORD:silvae-local-dev}
+    url: ${HUMITE_DATABASE_URL:jdbc:postgresql://localhost:5432/humite}
+    username: ${HUMITE_DATABASE_USER:humite}
+    password: ${HUMITE_DATABASE_PASSWORD:humite-local-dev}
     hikari:
-      maximum-pool-size: ${SILVAE_DB_POOL_SIZE:16}
+      maximum-pool-size: ${HUMITE_DB_POOL_SIZE:16}
       minimum-idle: 2
       connection-timeout: 5000
   flyway:
@@ -25,7 +25,7 @@ spring:
       enabled: false
 
 server:
-  port: ${SILVAE_API_PORT:8080}
+  port: ${HUMITE_API_PORT:8080}
   shutdown: graceful
   # Directly exposed deployments must use the socket peer for setup and rate limits.
   # Forwarded / X-Forwarded-* are client input unless a trusted proxy boundary is configured.
@@ -43,11 +43,11 @@ server:
   servlet:
     session:
       cookie:
-        name: SILVAE_SESSION
+        name: HUMITE_SESSION
         max-age: 30d
         http-only: true
         same-site: strict
-        secure: ${SILVAE_COOKIE_SECURE:false}
+        secure: ${HUMITE_COOKIE_SECURE:false}
 
 management:
   endpoints:
@@ -60,9 +60,9 @@ management:
         enabled: true
       show-details: when_authorized
 
-silvae:
-  two-factor-encryption-key: ${SILVAE_TWO_FACTOR_ENCRYPTION_KEY:}
-  public-base-url: ${SILVAE_PUBLIC_BASE_URL:http://localhost:8080}
+humite:
+  two-factor-encryption-key: ${HUMITE_TWO_FACTOR_ENCRYPTION_KEY:}
+  public-base-url: ${HUMITE_PUBLIC_BASE_URL:http://localhost:8080}
   file-operation-preview-ttl: 5m
   file-lease-timeout: 30s
   retention:
@@ -74,82 +74,82 @@ silvae:
   storage:
     roots: []
   upload:
-    max-file-size: ${SILVAE_UPLOAD_MAX_FILE_SIZE:2147483648}
-    max-batch-files: ${SILVAE_UPLOAD_MAX_BATCH_FILES:20}
-    retention: ${SILVAE_UPLOAD_RETENTION:24h}
-    max-cover-size: ${SILVAE_UPLOAD_MAX_COVER_SIZE:20971520}
+    max-file-size: ${HUMITE_UPLOAD_MAX_FILE_SIZE:2147483648}
+    max-batch-files: ${HUMITE_UPLOAD_MAX_BATCH_FILES:20}
+    retention: ${HUMITE_UPLOAD_RETENTION:24h}
+    max-cover-size: ${HUMITE_UPLOAD_MAX_COVER_SIZE:20971520}
   fonts:
-    storage-path: ${SILVAE_FONT_STORAGE_PATH:/var/lib/silvae/fonts}
-    max-file-size: ${SILVAE_FONT_MAX_FILE_SIZE:26214400}
+    storage-path: ${HUMITE_FONT_STORAGE_PATH:/var/lib/humite/fonts}
+    max-file-size: ${HUMITE_FONT_MAX_FILE_SIZE:26214400}
   metadata-providers:
-    open-library-enabled: ${SILVAE_METADATA_OPEN_LIBRARY_ENABLED:true}
-    google-api-key: ${SILVAE_METADATA_GOOGLE_API_KEY:}
+    open-library-enabled: ${HUMITE_METADATA_OPEN_LIBRARY_ENABLED:true}
+    google-api-key: ${HUMITE_METADATA_GOOGLE_API_KEY:}
   ai:
-    enabled: ${SILVAE_AI_ENABLED:false}
-    auto-match: ${SILVAE_AI_AUTO_MATCH:true}
-    max-candidates: ${SILVAE_AI_MAX_CANDIDATES:4}
-    timeout: ${SILVAE_AI_TIMEOUT:20s}
+    enabled: ${HUMITE_AI_ENABLED:false}
+    auto-match: ${HUMITE_AI_AUTO_MATCH:true}
+    max-candidates: ${HUMITE_AI_MAX_CANDIDATES:4}
+    timeout: ${HUMITE_AI_TIMEOUT:20s}
     # Deliberately has no fallback: when AI is enabled, production must provide
     # a stable, instance-specific key through the environment.
-    settings-encryption-key: ${SILVAE_AI_SETTINGS_ENCRYPTION_KEY:}
+    settings-encryption-key: ${HUMITE_AI_SETTINGS_ENCRYPTION_KEY:}
     # Keys stay on the server. Enable one or more entries to use fallback/ensemble matching.
     providers:
       - id: openai
         label: OpenAI
         type: OPENAI_COMPATIBLE
-        enabled: ${SILVAE_AI_OPENAI_ENABLED:false}
-        base-url: ${SILVAE_AI_OPENAI_BASE_URL:https://api.openai.com/v1}
-        api-key: ${SILVAE_AI_OPENAI_API_KEY:}
-        model: ${SILVAE_AI_OPENAI_MODEL:gpt-4o-mini}
+        enabled: ${HUMITE_AI_OPENAI_ENABLED:false}
+        base-url: ${HUMITE_AI_OPENAI_BASE_URL:https://api.openai.com/v1}
+        api-key: ${HUMITE_AI_OPENAI_API_KEY:}
+        model: ${HUMITE_AI_OPENAI_MODEL:gpt-4o-mini}
       - id: deepseek
         label: DeepSeek
         type: OPENAI_COMPATIBLE
-        enabled: ${SILVAE_AI_DEEPSEEK_ENABLED:false}
-        base-url: ${SILVAE_AI_DEEPSEEK_BASE_URL:https://api.deepseek.com}
-        api-key: ${SILVAE_AI_DEEPSEEK_API_KEY:}
-        model: ${SILVAE_AI_DEEPSEEK_MODEL:deepseek-v4-flash}
+        enabled: ${HUMITE_AI_DEEPSEEK_ENABLED:false}
+        base-url: ${HUMITE_AI_DEEPSEEK_BASE_URL:https://api.deepseek.com}
+        api-key: ${HUMITE_AI_DEEPSEEK_API_KEY:}
+        model: ${HUMITE_AI_DEEPSEEK_MODEL:deepseek-v4-flash}
       - id: zhipu
         label: 智谱
         type: OPENAI_COMPATIBLE
-        enabled: ${SILVAE_AI_ZHIPU_ENABLED:false}
-        base-url: ${SILVAE_AI_ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4/}
-        api-key: ${SILVAE_AI_ZHIPU_API_KEY:}
-        model: ${SILVAE_AI_ZHIPU_MODEL:glm-4.7-flash}
+        enabled: ${HUMITE_AI_ZHIPU_ENABLED:false}
+        base-url: ${HUMITE_AI_ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4/}
+        api-key: ${HUMITE_AI_ZHIPU_API_KEY:}
+        model: ${HUMITE_AI_ZHIPU_MODEL:glm-4.7-flash}
       - id: qwen
         label: 通义千问
         type: OPENAI_COMPATIBLE
-        enabled: ${SILVAE_AI_QWEN_ENABLED:false}
-        base-url: ${SILVAE_AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
-        api-key: ${SILVAE_AI_QWEN_API_KEY:}
-        model: ${SILVAE_AI_QWEN_MODEL:qwen-plus}
+        enabled: ${HUMITE_AI_QWEN_ENABLED:false}
+        base-url: ${HUMITE_AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+        api-key: ${HUMITE_AI_QWEN_API_KEY:}
+        model: ${HUMITE_AI_QWEN_MODEL:qwen-plus}
       - id: siliconflow
         label: SiliconFlow
         type: OPENAI_COMPATIBLE
-        enabled: ${SILVAE_AI_SILICONFLOW_ENABLED:false}
-        base-url: ${SILVAE_AI_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
-        api-key: ${SILVAE_AI_SILICONFLOW_API_KEY:}
-        model: ${SILVAE_AI_SILICONFLOW_MODEL:Qwen/Qwen3-32B}
+        enabled: ${HUMITE_AI_SILICONFLOW_ENABLED:false}
+        base-url: ${HUMITE_AI_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
+        api-key: ${HUMITE_AI_SILICONFLOW_API_KEY:}
+        model: ${HUMITE_AI_SILICONFLOW_MODEL:Qwen/Qwen3-32B}
       - id: anthropic
         label: Anthropic
         type: ANTHROPIC
-        enabled: ${SILVAE_AI_ANTHROPIC_ENABLED:false}
-        base-url: ${SILVAE_AI_ANTHROPIC_BASE_URL:https://api.anthropic.com}
-        api-key: ${SILVAE_AI_ANTHROPIC_API_KEY:}
-        model: ${SILVAE_AI_ANTHROPIC_MODEL:claude-sonnet-4-6}
+        enabled: ${HUMITE_AI_ANTHROPIC_ENABLED:false}
+        base-url: ${HUMITE_AI_ANTHROPIC_BASE_URL:https://api.anthropic.com}
+        api-key: ${HUMITE_AI_ANTHROPIC_API_KEY:}
+        model: ${HUMITE_AI_ANTHROPIC_MODEL:claude-sonnet-4-6}
       - id: gemini
         label: Google Gemini
         type: GEMINI
-        enabled: ${SILVAE_AI_GEMINI_ENABLED:false}
-        base-url: ${SILVAE_AI_GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
-        api-key: ${SILVAE_AI_GEMINI_API_KEY:}
-        model: ${SILVAE_AI_GEMINI_MODEL:gemini-3.5-flash}
+        enabled: ${HUMITE_AI_GEMINI_ENABLED:false}
+        base-url: ${HUMITE_AI_GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+        api-key: ${HUMITE_AI_GEMINI_API_KEY:}
+        model: ${HUMITE_AI_GEMINI_MODEL:gemini-3.5-flash}
       - id: ollama
         label: Ollama（本地）
         type: OPENAI_COMPATIBLE
-        enabled: ${SILVAE_AI_OLLAMA_ENABLED:false}
-        base-url: ${SILVAE_AI_OLLAMA_BASE_URL:http://127.0.0.1:11434/v1}
-        api-key: ${SILVAE_AI_OLLAMA_API_KEY:}
-        model: ${SILVAE_AI_OLLAMA_MODEL:qwen3}
+        enabled: ${HUMITE_AI_OLLAMA_ENABLED:false}
+        base-url: ${HUMITE_AI_OLLAMA_BASE_URL:http://127.0.0.1:11434/v1}
+        api-key: ${HUMITE_AI_OLLAMA_API_KEY:}
+        model: ${HUMITE_AI_OLLAMA_MODEL:qwen3}
 
 logging:
   pattern:

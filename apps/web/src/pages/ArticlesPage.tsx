@@ -21,7 +21,7 @@ import { Drawer } from "../ui/overlays";
 import { Button } from "../ui/buttons";
 import { TextField } from "../ui/forms";
 import { Box } from "../ui/primitives";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { articles, type ArticleSummary, type Draft } from "../features/content/api";
 import { RequestErrorPage } from "./HttpErrorPage";
 import { ArticleCoverField } from "../features/content/ArticleCoverField";

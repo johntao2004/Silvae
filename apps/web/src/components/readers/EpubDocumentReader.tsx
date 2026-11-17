@@ -8,14 +8,14 @@ import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import { highlightReaderCode } from "../../features/content/code-highlighting";
 import markdownProseCss from "../../features/content/markdown-prose.css?inline";
-import { useSilvaeTheme } from "../../theme/SilvaeThemeProvider";
-import { silvaeThemeOptions } from "../../theme/theme";
+import { useHumiteTheme } from "../../theme/HumiteThemeProvider";
+import { humiteThemeOptions } from "../../theme/theme";
 import ePub, { type Book, type Contents, type NavItem, type Rendition } from "epubjs";
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import { persistenceUserId, registerSessionSaver } from "../../auth/session-save";
 import type { Annotation } from "../../domain/types";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { readerWidthSx } from "../PageHeader";
 import { applyEpubInlineAnnotation, clearEpubInlineAnnotations, EPUB_INLINE_ANNOTATION_CLASS, findEpubArticleParagraphRange, findEpubTextRange, isEpubArticleParagraphLocator } from "./epub-annotations";
 import { bindAnnotationNoteActivation } from "./annotation-activation";
@@ -54,7 +54,7 @@ function renderedContents(rendition: Rendition) {
 
 export default function EpubDocumentReader({ bookId, annotations, onAnnotationActivate, onAnnotationDismiss, theme, fontSize, fontFamily, pageTurnEnabled = true, fontSourceUrl, contentUrl, contentLabel = "EPUB", flow = "paginated", readOnly = false, target, targetRevision, onNavigation, onSelect, onPosition }: Props) {
   const scrolled = flow === "scrolled-doc";
-  const { mode: siteTheme } = useSilvaeTheme();
+  const { mode: siteTheme } = useHumiteTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
   const renditionRef = useRef<Rendition | null>(null);
   const annotationBindingsRef = useRef({ annotations, onAnnotationActivate, onAnnotationDismiss });
@@ -121,7 +121,7 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
     style.dataset.pageReaderFont = "true";
     const familyName = fontFamily.match(/^"([^"]+)"/u)?.[1] ?? fontFamily.split(",")[0].trim();
     style.textContent = [
-      '@import url("/assets/fonts/silvae-serif.css");',
+      '@import url("/assets/fonts/humite-serif.css");',
       '@font-face { font-family: "Source Han Sans SC"; src: url("/fonts/source-han-sans-sc-regular.woff2") format("woff2"); font-display: swap; }',
       '@font-face { font-family: "Alibaba PuHuiTi"; src: url("/fonts/alibaba-puhuiti-regular.woff2") format("woff2"); font-display: swap; }',
       fontSourceUrl ? `@font-face { font-family: "${familyName}"; src: url("${fontSourceUrl}"); font-display: swap; }` : "",
@@ -133,7 +133,7 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
       document.body.classList.add("bk-content-prose", "bk-markdown-prose");
       const parentStyle = window.getComputedStyle(hostRef.current ?? window.document.documentElement);
       // Read the current palette directly: the provider's DOM-variable effect can run after this reader's effect.
-      const colors = Object.fromEntries(Object.entries(silvaeThemeOptions[siteTheme].colors).map(([name, value]) => [
+      const colors = Object.fromEntries(Object.entries(humiteThemeOptions[siteTheme].colors).map(([name, value]) => [
         `--color-${name.replace(/[A-Z]/gu, letter => `-${letter.toLowerCase()}`)}`, value,
       ]));
       const variables = [...new Set(Array.from(markdownProseCss.matchAll(/var\((--[a-z0-9-]+)/gu), match => match[1]))];

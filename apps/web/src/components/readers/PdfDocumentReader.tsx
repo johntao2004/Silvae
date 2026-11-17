@@ -17,7 +17,7 @@ import "pdfjs-dist/web/pdf_viewer.css";
 import { Fragment, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode, type RefObject, type TouchEvent } from "react";
 import { api } from "../../api/client";
 import type { Annotation } from "../../domain/types";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { readerWidthSx } from "../PageHeader";
 import { bindAnnotationNoteActivation } from "./annotation-activation";
 import { applyPdfTextAnnotations } from "./pdf-annotations";

@@ -6,7 +6,7 @@ import { RequireAuth } from "../auth/AuthContext";
 import { Tabs, Skeleton } from "../ui/antd";
 import { Box, useMediaQuery } from "../ui/primitives";
 import { EmbeddedSettingsContext, PageContainer, PageHeader } from "../components/PageHeader";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { normalizeSettingsHash, settingsGroups } from "./settings-navigation";
 
 const LibraryRoots = lazy(() => import("./LibraryRootsPage").then(m => ({ default: m.LibraryRootsPage })));

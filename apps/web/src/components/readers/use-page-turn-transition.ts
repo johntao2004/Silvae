@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { useMediaQuery } from "../../ui/primitives";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import type { PageCurlRenderer } from "./page-turn-curl";
 import type { PageTurnDirection } from "./page-turn-geometry";
 import { pageTurnPixelRatio } from "./page-turn-rendering";

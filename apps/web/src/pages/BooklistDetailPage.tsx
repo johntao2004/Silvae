@@ -29,7 +29,7 @@ import { bookGridSx } from "../components/bookGrid";
 import { PageBackAction, PageContainer, PageTitle } from "../components/PageHeader";
 import type { BooklistDetail, BrowseBook } from "../domain/types";
 import { useInfiniteScrollTrigger } from "../hooks/useInfiniteScrollTrigger";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function BooklistDetailPage() {
   const { booklistId = "" } = useParams();

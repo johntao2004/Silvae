@@ -7,7 +7,7 @@ import { Stack, Typography } from "../ui/primitives";
 import { DataTable, Skeleton, TreeSelect } from "../ui/antd";
 import { useConfirmation } from "../ui/confirmations";
 import { Checkbox } from "../ui/forms";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import type { UserRole } from "../domain/types";
 import { ActionToolbar } from "../components/PageHeader";
 import { permissionPageModel, rolePermissionGroups, rolePermissionPages } from "./role-permission-groups";

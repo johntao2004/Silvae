@@ -19,7 +19,7 @@ import { Typography } from "@/ui/primitives";
 import { useMediaQuery } from "@/ui/primitives";
 import { useState, type MouseEvent, type MouseEventHandler, type ReactNode } from "react";
 import type { BookFormat } from "../../domain/types";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { readerWidthSx, topNavigationSurfaceSx } from "../PageHeader";
 import { READER_PROGRESS_HEIGHT } from "./reader-layout";
 

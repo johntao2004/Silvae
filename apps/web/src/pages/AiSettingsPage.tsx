@@ -21,7 +21,7 @@ import { Typography } from "@/ui/primitives";
 import { SectionHeader, PageContainer } from "../components/PageHeader";
 import { api, request } from "../api/client";
 import type { AiProviderSetting, AiProviderSettingInput, AiSettings, AiSettingsInput } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import type { ReactNode } from "react";
 
 type ModelPreset = { value: string; label: string };

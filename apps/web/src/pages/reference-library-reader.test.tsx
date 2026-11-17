@@ -5,7 +5,12 @@ import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { TestProviders } from '../test/TestProviders';
 import { ReaderPage } from './ReaderPage';
 
-const returnState = {returnTo: '/virtual-library', libraryView: {x: 7, y: 8, z: 3, yaw: 0.4, pitch: 0.08}};
+const mingLibraryView = {
+  view: 'hall', mode: 'walk' as const, position: [0, 1.7, 0], target: [0, 1.7, -4],
+  yaw: 0.4, pitch: 0.08, cutaway: false, night: false, gateOpen: true,
+};
+const returnState = {returnTo: '/virtual-library', mingLibraryView};
+const restoredState = {returnTo: '/virtual-library', libraryView: null, mingLibraryView};
 function OpenFromLibrary() {
   const navigate = useNavigate();
   return <button onClick={() => navigate('/reader/book-1', {state: returnState})}>Open real catalog book</button>;
@@ -16,7 +21,7 @@ function ReturnedLibrary() {
 }
 
 it('returns a 3D-library reading session to its previous camera without changing the book identity', async () => {
-  sessionStorage.setItem('silvae-demo-session', JSON.stringify({
+  sessionStorage.setItem('humite-demo-session', JSON.stringify({
     id: 'user-owner', username: 'owner', displayName: '林', role: 'OWNER', mustChangePassword: false,
   }));
   render(<TestProviders><Routes>
@@ -27,5 +32,5 @@ it('returns a 3D-library reading session to its previous camera without changing
   fireEvent.click(screen.getByRole('button', {name: 'Open real catalog book'}));
   await screen.findByRole('heading', {name: '灯下'});
   fireEvent.click(screen.getByRole('button', {name: '返回书楼漫游'}));
-  expect(JSON.parse(screen.getByLabelText('Restored library camera').textContent ?? '{}')).toEqual(returnState);
+  expect(JSON.parse(screen.getByLabelText('Restored library camera').textContent ?? '{}')).toEqual(restoredState);
 });

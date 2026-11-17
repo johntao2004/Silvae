@@ -9,7 +9,7 @@ import { readingPosts } from "./posts-api";
 
 const source = { bookId: "b", bookTitle: "书籍来源", bookAuthor: "作者", coverUrl: "", annotationCount: 1, noteCount: 1, highlightCount: 0, underlineCount: 0, boldCount: 0, latestAt: "2026-10-22" };
 beforeEach(() => {
-  sessionStorage.setItem("silvae-demo-session", JSON.stringify({ id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false }));
+  sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false }));
   vi.spyOn(api, "listAnnotationBooks").mockResolvedValue({ items: [source] });
   vi.spyOn(api, "listAnnotations").mockResolvedValue([{ id: "n", bookId: "b", bookTitle: "书籍来源", type: "NOTE", quote: "书籍摘录", note: "书籍想法", style: "HIGHLIGHT", createdAt: "2026-10-22" }]);
   vi.spyOn(articleNotesApi, "list").mockResolvedValue([{ articleId: "a", title: "文章来源", author: "文章作者", annotations: [{ id: "n", type: "NOTE", quote: "文章摘录", note: "文章想法", locator: "p-4", createdAt: "2026-10-21" }] }]);

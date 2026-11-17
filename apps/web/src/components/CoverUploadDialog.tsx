@@ -14,7 +14,7 @@ import { Typography } from "@/ui/primitives";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Book } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { useCoverCrop } from "./CoverCropDialog";
 
 const maximumCoverBytes = 20 * 1024 * 1024;

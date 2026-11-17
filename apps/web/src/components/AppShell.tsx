@@ -33,9 +33,9 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DEFAULT_SITE_SETTINGS } from "../api/client";
 import type { ReaderTheme } from "./readers/reader-fonts";
-import { tokens } from "../theme/generated-tokens";
-import { useSilvaeTheme } from "../theme/SilvaeThemeProvider";
-import { silvaeThemeOptions } from "../theme/theme";
+import { tokens } from "../theme/tokens";
+import { useHumiteTheme } from "../theme/HumiteThemeProvider";
+import { humiteThemeOptions } from "../theme/theme";
 import { useOrdinaryPageScale } from "../theme/useOrdinaryPageScale";
 import { articlesNavigationSections, libraryNavigationSections, notesNavigationSections } from "./app-navigation-sections";
 import { useVaultNavigationStatus } from "../features/vault/use-vault-navigation-status";
@@ -73,7 +73,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const { canVisit } = usePermissions();
   const vaultEnabled = useVaultNavigationStatus(user?.id, Boolean(user && canVisit("/vault")));
   const [logoutError, setLogoutError] = useState("");
-  const { mode: silvaeTheme, setMode: setSilvaeTheme } = useSilvaeTheme();
+  const { mode: humiteTheme, setMode: setHumiteTheme } = useHumiteTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -278,15 +278,15 @@ export function AppShell({ children }: PropsWithChildren) {
                 placement="bottomRight"
                 menu={{
                   selectable: true,
-                  selectedKeys: [silvaeTheme],
-                  items: (Object.keys(silvaeThemeOptions) as ReaderTheme[]).map((mode) => ({
+                  selectedKeys: [humiteTheme],
+                  items: (Object.keys(humiteThemeOptions) as ReaderTheme[]).map((mode) => ({
                     key: mode,
-                    label: silvaeThemeOptions[mode].label,
-                    icon: <Box sx={{ width: tokens.spacing[5], height: tokens.spacing[5], borderRadius: `${tokens.radius.pill}px`, bgcolor: silvaeThemeOptions[mode].reader.background, border: 1, borderColor: "divider" }} />,
+                    label: humiteThemeOptions[mode].label,
+                    icon: <Box sx={{ width: tokens.spacing[5], height: tokens.spacing[5], borderRadius: `${tokens.radius.pill}px`, bgcolor: humiteThemeOptions[mode].reader.background, border: 1, borderColor: "divider" }} />,
                   })),
                   onClick: ({ key }) => {
                     themeMenuSelectionRef.current = true;
-                    setSilvaeTheme(key as ReaderTheme);
+                    setHumiteTheme(key as ReaderTheme);
                     setThemeMenuOpen(false);
                     globalThis.setTimeout(() => { themeMenuSelectionRef.current = false; }, 400);
                   },

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy, PDFPageProxy } from "pdfjs-dist";
 import { Alert, CircularProgress } from "@/ui/feedback";
 import { Box, Stack, Typography } from "@/ui/primitives";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 
 type PageSize = { width: number; height: number };
 

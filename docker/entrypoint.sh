@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-KEY_DIR="${SILVAE_KEY_STORAGE_PATH:-/var/lib/silvae/keys}"
-mkdir -p /tmp/silvae \
-  "${SILVAE_FONT_STORAGE_PATH:-/var/lib/silvae/fonts}" \
-  "${SILVAE_CONTENT_STORAGE_PATH:-/var/lib/silvae/content}/articles" \
-  "${SILVAE_CONTENT_STORAGE_PATH:-/var/lib/silvae/content}/vault" \
+KEY_DIR="${HUMITE_KEY_STORAGE_PATH:-/var/lib/humite/keys}"
+mkdir -p /tmp/humite \
+  "${HUMITE_FONT_STORAGE_PATH:-/var/lib/humite/fonts}" \
+  "${HUMITE_CONTENT_STORAGE_PATH:-/var/lib/humite/content}/articles" \
+  "${HUMITE_CONTENT_STORAGE_PATH:-/var/lib/humite/content}/vault" \
   "$KEY_DIR" 2>/dev/null || true
 
 generate_or_load_key() {
@@ -28,7 +28,7 @@ generate_or_load_key() {
   fi
 }
 
-generate_or_load_key "SILVAE_AI_SETTINGS_ENCRYPTION_KEY" "$KEY_DIR/ai-settings-encryption-key"
-generate_or_load_key "SILVAE_TWO_FACTOR_ENCRYPTION_KEY" "$KEY_DIR/two-factor-encryption-key"
+generate_or_load_key "HUMITE_AI_SETTINGS_ENCRYPTION_KEY" "$KEY_DIR/ai-settings-encryption-key"
+generate_or_load_key "HUMITE_TWO_FACTOR_ENCRYPTION_KEY" "$KEY_DIR/two-factor-encryption-key"
 
-exec java -jar /app/silvae.jar "$@"
+exec java -jar /app/humite.jar "$@"

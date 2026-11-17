@@ -12,7 +12,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { setupStatusQueryKey, setupStatusQueryOptions } from "../auth/setup-status";
 import { AuthFrame } from "../components/AuthFrame";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function SetupPage() {
  const passwordPolicy=usePasswordPolicy();

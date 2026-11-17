@@ -16,7 +16,7 @@ import { OverviewEmptyState } from "../components/OverviewEmptyState";
 import { RecentReadingPanel } from "../components/RecentReadingPanel";
 import { ReadingStatsPanel } from "../components/ReadingStatsPanel";
 import { RecentAnnotationsPanel } from "../components/RecentAnnotationsPanel";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 // Reading overview has its own authenticated route, independent of catalog filters.
 export function LibraryOverviewPage() {

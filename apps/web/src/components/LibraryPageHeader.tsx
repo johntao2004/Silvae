@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { FormControl, MenuItem } from "../ui/primitives";
 import { Select } from "../ui/forms";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { PageHeader } from "./PageHeader";
 
 // Public and signed-in catalogs share one entry and header without sharing private data.

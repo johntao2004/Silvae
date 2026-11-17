@@ -3,14 +3,14 @@
 import antdTheme from "antd/es/theme";
 import type { ReaderTheme } from "../components/readers/reader-fonts";
 import type { UiTheme } from "../ui/primitives";
-import { tokens } from "./generated-tokens";
+import { tokens } from "./tokens";
 
-type SilvaeThemeColors = { [Key in keyof typeof tokens.color.semantic]: string };
+type HumiteThemeColors = { [Key in keyof typeof tokens.color.semantic]: string };
 
-export interface SilvaeThemeOption {
+export interface HumiteThemeOption {
   label: string;
   reader: { background: string; foreground: string; muted: string };
-  colors: SilvaeThemeColors;
+  colors: HumiteThemeColors;
 }
 
 const semantic = tokens.color.semantic;
@@ -22,7 +22,7 @@ const breakpointValues: Record<string, number> = {
   xl: tokens.layout.breakpointWide,
 };
 
-export const silvaeThemeOptions: Record<ReaderTheme, SilvaeThemeOption> = {
+export const humiteThemeOptions: Record<ReaderTheme, HumiteThemeOption> = {
   PAPER: {
     label: "纸张",
     reader: { background: semantic.canvas, foreground: semantic.textPrimary, muted: semantic.textMuted },
@@ -69,8 +69,8 @@ export const silvaeThemeOptions: Record<ReaderTheme, SilvaeThemeOption> = {
   },
 };
 
-export function createSilvaeTheme(mode: ReaderTheme): UiTheme {
-  const colors = silvaeThemeOptions[mode].colors;
+export function createHumiteTheme(mode: ReaderTheme): UiTheme {
+  const colors = humiteThemeOptions[mode].colors;
   return {
     palette: {
       mode: mode === "NIGHT" ? "dark" : "light",
@@ -97,7 +97,7 @@ export function createSilvaeTheme(mode: ReaderTheme): UiTheme {
 }
 
 export function createAntdTheme(mode: ReaderTheme) {
-  const colors = silvaeThemeOptions[mode].colors;
+  const colors = humiteThemeOptions[mode].colors;
   return {
     algorithm: mode === "NIGHT" ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     components: {
@@ -306,4 +306,4 @@ export function createAntdTheme(mode: ReaderTheme) {
   };
 }
 
-export const theme = createSilvaeTheme("PAPER");
+export const theme = createHumiteTheme("PAPER");

@@ -12,7 +12,7 @@ import { annotationColorBackground, annotationColorHex } from "../../domain/anno
 import { groupAnnotations } from "../../domain/annotation-groups";
 import type { Entry } from "../content/api";
 import { articleNotesApi, type ArticleNoteGroup } from "./api";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { Dropdown } from "../../ui/antd";
 import { collectNotes, downloadNotes } from "./note-records";
 

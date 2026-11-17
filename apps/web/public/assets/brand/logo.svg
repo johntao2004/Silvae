@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="100%" height="100%" role="img" aria-label="Humite 书籍网站标志：斜方琥珀晶面与微倾层叠书卷">
+  <!-- Warm Parchment Light Canvas -->
+  <rect width="1024" height="1024" rx="180" fill="#FAF6EE" />
+
+  <!-- Watertight Multi-Faceted Orthorhombic Humite Crystal (Warm Honey-Gold to Deep Burnt Amber) -->
+  <g stroke="#FAF6EE" stroke-width="11" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="512,88 156,296 378,302" fill="#FCD34D" />
+    <polygon points="512,88 378,302 512,236" fill="#FBBF24" />
+    <polygon points="156,296 378,302 276,472" fill="#F59E0B" />
+    <polygon points="378,302 512,236 512,424 276,472" fill="#FBBF24" />
+    <polygon points="156,296 276,472 276,564 156,728" fill="#D97706" />
+    <polygon points="276,472 512,424 512,656 368,698 276,564" fill="#E07C08" />
+
+    <polygon points="512,88 512,236 646,302" fill="#F59E0B" />
+    <polygon points="512,88 646,302 868,296" fill="#EA8C06" />
+    <polygon points="512,236 646,302 744,458 512,424" fill="#F59E0B" />
+    <polygon points="646,302 868,296 744,458" fill="#D97706" />
+    <polygon points="512,424 744,458 756,642 512,656" fill="#D97706" />
+    <polygon points="868,296 868,728 756,642 744,458" fill="#C26408" />
+
+    <polygon points="156,728 276,564 368,698" fill="#B45309" />
+    <polygon points="156,728 368,698 512,776 512,936" fill="#9A4809" />
+    <polygon points="368,698 512,656 512,776" fill="#92400E" />
+    <polygon points="512,656 756,642 664,676 512,776" fill="#9A4809" />
+    <polygon points="512,776 664,676 512,936" fill="#853A08" />
+    <polygon points="664,676 756,642 868,728" fill="#B45309" />
+    <polygon points="512,936 664,676 868,728" fill="#78350F" />
+  </g>
+
+  <!-- Off-Center Diagonally Sweeping Open Hardcover Book -->
+  <g transform="translate(506, 514) rotate(-14)">
+    <g fill="#FAF6EE" stroke="#FAF6EE" stroke-width="26" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M -394,152 L -308,-168 C -192,-152 -88,-118 0,-56 C 92,-128 202,-180 338,-208 L 394,104 C 258,128 130,160 46,192 C 26,218 -26,218 -46,192 C -140,168 -264,156 -394,152 Z" />
+      <path d="M -98,176 L -132,276 L -102,254 L -76,282 L -52,184 Z" />
+    </g>
+
+    <path d="M -394,152 L -308,-162 L -268,-154 L -348,132 C -228,132 -126,150 -44,178 C -18,204 18,204 44,178 C 126,150 238,118 358,92 L 306,-196 L 338,-204 L 394,104 C 258,128 132,160 46,192 C 22,222 -22,222 -46,192 C -140,168 -264,156 -394,152 Z"
+          fill="#853A08" stroke="#652B06" stroke-width="9" stroke-linejoin="round" />
+
+    <path d="M -98,170 L -130,272 L -101,250 L -77,278 L -52,180 C -68,176 -83,173 -98,170 Z"
+          fill="#F59E0B" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+
+    <ellipse cx="0" cy="182" rx="34" ry="15" fill="#D97706" stroke="#652B06" stroke-width="7" />
+    <path d="M -28,185 C -14,196 14,196 28,185" fill="#853A08" stroke="#652B06" stroke-width="6" />
+
+    <path d="M -366,128 L -292,-162 C -182,-150 -86,-116 0,-54 L 0,166 C -98,122 -224,114 -366,128 Z"
+          fill="#FDE68A" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+    <path d="M -344,104 L -276,-178 C -172,-168 -82,-132 0,-64 L 0,164 C -94,112 -212,96 -344,104 Z"
+          fill="#FEF08A" stroke="#652B06" stroke-width="8" stroke-linejoin="round" />
+    <g fill="none" stroke="#652B06" stroke-width="6" stroke-linecap="round">
+      <path d="M -352,116 C -228,106 -104,118 -8,162" />
+      <path d="M -334,92 C -214,84 -98,104 -6,156" />
+      <path d="M -318,70 C -204,64 -92,90 -4,150" />
+    </g>
+
+    <path d="M 0,-54 C 92,-124 196,-172 316,-198 L 368,88 C 240,108 118,136 0,166 Z"
+          fill="#FCD34D" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+    <path d="M 0,-62 C 90,-136 190,-188 302,-216 L 348,68 C 226,88 112,120 0,162 Z"
+          fill="#FDE68A" stroke="#652B06" stroke-width="8" stroke-linejoin="round" />
+    <path d="M 0,-68 C 86,-146 182,-202 286,-234 L 326,48 C 210,70 104,106 0,158 Z"
+          fill="#FEF08A" stroke="#652B06" stroke-width="8" stroke-linejoin="round" />
+    <g fill="none" stroke="#652B06" stroke-width="6" stroke-linecap="round">
+      <path d="M 10,158 C 114,116 226,86 340,68" />
+      <path d="M 8,152 C 108,102 214,68 320,48" />
+      <path d="M 294,-204 L 340,62" />
+      <path d="M 308,-188 L 356,78" />
+    </g>
+
+    <path d="M -302,52 L -246,-202 C -150,-196 -68,-160 0,-82 L 0,152 C -82,92 -186,58 -302,52 Z"
+          fill="#FFFDF7" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+    <path d="M -88,-166 C -52,-146 -24,-118 0,-82 L 0,152 C -26,130 -56,110 -92,94 Z"
+          fill="#FDE68A" opacity="0.72" />
+    <path d="M -302,52 L -246,-202 C -150,-196 -68,-160 0,-82 L 0,152 C -82,92 -186,58 -302,52 Z"
+          fill="none" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+
+    <path d="M 0,-82 C 74,-166 164,-226 266,-262 L 302,24 C 194,46 92,88 0,152 Z"
+          fill="#FFFDF7" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+    <path d="M 0,-82 C 22,-108 46,-132 74,-154 L 82,102 C 52,116 24,132 0,152 Z"
+          fill="#FEF3C7" opacity="0.75" />
+    <path d="M 0,-82 C 74,-166 164,-226 266,-262 L 302,24 C 194,46 92,88 0,152 Z"
+          fill="none" stroke="#652B06" stroke-width="8.5" stroke-linejoin="round" />
+
+    <g fill="none" stroke="#C26408" stroke-width="5.5" stroke-linecap="round">
+      <path d="M -216,-164 C -142,-158 -76,-132 -24,-92" />
+      <path d="M -222,-140 C -148,-134 -80,-108 -24,-68" />
+      <path d="M -228,-116 C -152,-110 -82,-84 -24,-44" />
+      <path d="M -234,-92 C -158,-86 -86,-60 -24,-20" />
+      <path d="M -240,-68 C -162,-62 -88,-36 -24,4" />
+      <path d="M -246,-44 C -168,-38 -92,-12 -24,28" />
+      <path d="M -252,-20 C -172,-14 -94,12 -24,52" />
+      <path d="M -258,4 C -178,10 -98,36 -24,76" />
+      <path d="M -264,28 C -186,34 -112,56 -56,88" />
+    </g>
+
+    <g fill="none" stroke="#C26408" stroke-width="5.5" stroke-linecap="round">
+      <path d="M 24,-78 C 86,-138 158,-186 234,-216" />
+      <path d="M 24,-52 C 88,-112 162,-158 240,-188" />
+      <path d="M 24,-26 C 90,-86 166,-130 246,-160" />
+      <path d="M 24,0 C 92,-60 170,-102 252,-132" />
+      <path d="M 24,26 C 94,-34 174,-74 258,-104" />
+      <path d="M 24,52 C 96,-8 178,-46 264,-76" />
+      <path d="M 24,78 C 98,18 182,-18 270,-48" />
+      <path d="M 24,104 C 92,54 162,22 232,2" />
+    </g>
+  </g>
+</svg>

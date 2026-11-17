@@ -1,4 +1,4 @@
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import {
   AppstoreAddOutlined,
   AppstoreOutlined,
@@ -69,16 +69,16 @@ import {
 } from "@ant-design/icons";
 import { createElement, forwardRef, type CSSProperties, type ForwardRefExoticComponent, type RefAttributes } from "react";
 
-// Silvae 本地图标约定保留语义名称和旧展示属性，使页面使用 Ant Design 时无需混入第二套图标系统。
+// Humite 本地图标约定保留语义名称和旧展示属性，使页面使用 Ant Design 时无需混入第二套图标系统。
 /**
- * Local icon contract for Silvae.
+ * Local icon contract for Humite.
  *
  * Screens keep semantic icon names and occasionally pass legacy presentation
  * props (`sx`, `fontSize`, `color`). Keeping that semantic
  * contract here lets the application use Ant Design without leaking a
  * second icon system into every screen.
  */
-export type SilvaeIconProps = {
+export type HumiteIconProps = {
   sx?: Record<string, unknown>;
   fontSize?: "small" | "medium" | "large" | "inherit" | string;
   color?: string;
@@ -87,7 +87,7 @@ export type SilvaeIconProps = {
   [key: string]: unknown;
 };
 
-type SilvaeIcon = ForwardRefExoticComponent<SilvaeIconProps & RefAttributes<HTMLSpanElement>>;
+type HumiteIcon = ForwardRefExoticComponent<HumiteIconProps & RefAttributes<HTMLSpanElement>>;
 
 const sxAliases: Record<string, string> = {
   bgcolor: "backgroundColor",
@@ -171,8 +171,8 @@ function resolveColor(color: string | undefined) {
   return colors[color] ?? color;
 }
 
-function createIcon(Component: unknown): SilvaeIcon {
-  return forwardRef<HTMLSpanElement, SilvaeIconProps>(function SilvaeIcon({ sx, fontSize, color, className, style, ...rest }, ref) {
+function createIcon(Component: unknown): HumiteIcon {
+  return forwardRef<HTMLSpanElement, HumiteIconProps>(function HumiteIcon({ sx, fontSize, color, className, style, ...rest }, ref) {
     const size = fontSize === "small" ? 16 : fontSize === "large" ? 24 : fontSize === "medium" ? 20 : typeof fontSize === "string" && fontSize !== "inherit" ? fontSize : undefined;
     const iconProps = { ref, "aria-hidden": rest["aria-label"] ? undefined : true, ...(rest as Record<string, unknown>) };
     return createElement("span", { className: `bk-icon ${className ?? ""}`.trim(), style: { display: "inline-flex", fontSize: size as CSSProperties["fontSize"], color: resolveColor(color as string | undefined), ...(style as CSSProperties), ...sxToStyle(sx as Record<string, unknown> | undefined) } }, createElement(Component as any, iconProps));

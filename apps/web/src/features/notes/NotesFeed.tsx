@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth/AuthContext";
 import { AnnotationNoteMarkdown, annotationNotePlainText } from "../../components/AnnotationNoteMarkdown";
 import { BookCatalogEmptyState } from "../../components/BookCatalogEmptyState";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { DataTable, Skeleton } from "../../ui/antd";
 import { Button } from "../../ui/buttons";
 import { Alert } from "../../ui/feedback";

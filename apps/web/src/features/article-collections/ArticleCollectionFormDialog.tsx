@@ -12,7 +12,7 @@ import {
   type ArticleCollectionDraft,
   type ArticleCollectionVisibility,
 } from "./api";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 
 export function ArticleCollectionFormDialog({ open, initial, hasPrivateArticles = false, onClose, onSaved, onDeleted, onConflictLatest }: {
   open: boolean;

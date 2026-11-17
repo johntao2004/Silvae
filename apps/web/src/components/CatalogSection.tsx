@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Box, Typography } from "@/ui/primitives";
 import { ActionToolbar } from "./PageHeader";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 /** Shared collection heading, responsive tools and result flow. */
 export function CatalogSection({ title, tools, summary, children }: {

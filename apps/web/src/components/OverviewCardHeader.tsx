@@ -2,7 +2,7 @@ import { Box } from "@/ui/primitives";
 import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import type { ReactElement, ReactNode } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function OverviewCardHeader({
   id,

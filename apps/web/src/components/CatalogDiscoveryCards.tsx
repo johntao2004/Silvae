@@ -14,7 +14,7 @@ import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import { Link } from "react-router-dom";
 import type { BooklistSummary, BooklistVisibility, BrowseBook, CategorySummary } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function CoverMosaic({ books, label, compact = false }: { books: BrowseBook[]; label: string; compact?: boolean }) {
   const visible = books.slice(0, 4);

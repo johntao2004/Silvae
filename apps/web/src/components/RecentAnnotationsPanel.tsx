@@ -10,7 +10,7 @@ import { useMemo } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { Annotation } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { EMPTY_ANNOTATIONS_TITLE } from "../ui/empty-state-copy";
 import { OverviewCardHeader } from "./OverviewCardHeader";
 import { OverviewEmptyState } from "./OverviewEmptyState";

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterAll } from "vitest";
 import { webcrypto } from "node:crypto";
 vi.stubGlobal("crypto", webcrypto);
 afterAll(() => vi.unstubAllGlobals());
-import { seal, open, sealJson, openJson, fileKey, chunkAad, createDeviceEnvelope, unlock } from "./crypto";
+import { b64, unb64, seal, open, sealJson, openJson, fileKey, chunkAad, createDeviceEnvelope, unlock } from "./crypto";
 describe("vault authenticated encryption", () => {
   it("creates a password-free device vault with a portable recovery key", async () => {
     const created = await createDeviceEnvelope();
@@ -42,3 +42,14 @@ describe("vault authenticated encryption", () => {
   });
 });
 function b64Key() { return Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64"); }
+
+it("decrypts released recovery and file fixtures after the Humite rename", async () => {
+  const master = Uint8Array.from({ length: 32 }, (_, i) => i);
+  const restored = await unlock({ version: 2, kind: "device", recoveryBox: "BwcHBwcHBwcHBwcHWbqPnGx0+R5/412Gms996S0pFFmUGeRShpcLi+9rnQZ/wCAFrJK/aeElZGsLbaYH" }, "CQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQk=", true);
+  expect(restored).toEqual(master);
+  const derived = await fileKey(restored, "legacy-book");
+  expect(b64(derived)).toBe(Buffer.from("f1b8f85e6ce0954bed12cb3f118585bef148bf1c7d0079189f7d926035274fdc", "hex").toString("base64"));
+  const chunk = unb64("BwcHBwcHBwcHBwcHrKXSfw/S0em+Pu9I5EpyBQw2vByzFA==");
+  expect(new TextDecoder().decode(await open(derived, chunk, chunkAad("legacy-book", 0, 1, 6)))).toBe("secret");
+  await expect(open(derived, chunk, chunkAad("legacy-book", 1, 1, 6))).rejects.toThrow();
+});

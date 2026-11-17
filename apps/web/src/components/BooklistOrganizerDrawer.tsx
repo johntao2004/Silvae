@@ -22,7 +22,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { BooklistDetail, BrowseBook } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 async function loadAllBooklistBooks(id: string): Promise<BrowseBook[]> {
   const items: BrowseBook[] = [];

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { Box } from "../../ui/primitives";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import "./notes.css";
 
 /** CSS columns preserve natural card heights and DOM reading order. Reveal each card only once. */

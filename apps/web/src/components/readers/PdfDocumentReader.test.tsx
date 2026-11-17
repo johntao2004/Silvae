@@ -6,7 +6,7 @@ import { getDocument } from "pdfjs-dist";
 import { vi } from "vitest";
 import type { Annotation } from "../../domain/types";
 import { api } from "../../api/client";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import PdfDocumentReader, { PdfPagedText, PdfReadingClipFrame, groupPdfSourceBlocks, pdfSourcePositionAt, pdfSourceVirtualPageIndex, pdfTurnPositionAt, remapPdfSourceTarget } from "./PdfDocumentReader";
 
 vi.mock("pdfjs-dist", () => ({

@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { MenuBookRounded } from "@/ui/icons";
 import { Box, Stack, Typography } from "@/ui/primitives";
 import type { ReadingOverview } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { OverviewCardHeader } from "./OverviewCardHeader";
 import { OverviewEmptyState } from "./OverviewEmptyState";
 

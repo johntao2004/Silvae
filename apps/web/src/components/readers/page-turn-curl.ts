@@ -16,7 +16,7 @@ import {
   SRGBColorSpace,
   WebGLRenderer,
 } from "three";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import {
   PAGE_CURL_HORIZONTAL_SEGMENTS,
   PAGE_CURL_VERTICAL_SEGMENTS,

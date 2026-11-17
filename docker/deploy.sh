@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Silvae（书林）一键 Docker 部署脚本
+# Humite（书林）一键 Docker 部署脚本
 # 自动初始化 .env 随机密钥、创建宿主机书库挂载目录并启动全栈容器
 set -euo pipefail
 
@@ -31,25 +31,25 @@ import pathlib, re, sys
 p = pathlib.Path(sys.argv[1])
 text = p.read_text(encoding="utf-8")
 text = re.sub(r"^POSTGRES_PASSWORD=.*$", f"POSTGRES_PASSWORD={sys.argv[2]}", text, flags=re.M)
-text = re.sub(r"^SILVAE_AI_SETTINGS_ENCRYPTION_KEY=.*$", f"SILVAE_AI_SETTINGS_ENCRYPTION_KEY={sys.argv[3]}", text, flags=re.M)
-text = re.sub(r"^SILVAE_TWO_FACTOR_ENCRYPTION_KEY=.*$", f"SILVAE_TWO_FACTOR_ENCRYPTION_KEY={sys.argv[4]}", text, flags=re.M)
+text = re.sub(r"^HUMITE_AI_SETTINGS_ENCRYPTION_KEY=.*$", f"HUMITE_AI_SETTINGS_ENCRYPTION_KEY={sys.argv[3]}", text, flags=re.M)
+text = re.sub(r"^HUMITE_TWO_FACTOR_ENCRYPTION_KEY=.*$", f"HUMITE_TWO_FACTOR_ENCRYPTION_KEY={sys.argv[4]}", text, flags=re.M)
 p.write_text(text, encoding="utf-8")
 PY
   echo "已生成 .env 配置文件并自动初始化随机数据库密码与加密密钥。"
 fi
 
-LIB_DIR="$(awk -F= '$1=="SILVAE_LIBRARY_MAIN"{print $2}' .env 2>/dev/null | tail -n1)"
+LIB_DIR="$(awk -F= '$1=="HUMITE_LIBRARY_MAIN"{print $2}' .env 2>/dev/null | tail -n1)"
 LIB_DIR="${LIB_DIR:-./data/library}"
 mkdir -p "$LIB_DIR"
 
-HTTP_PORT="$(awk -F= '$1=="SILVAE_HTTP_PORT"{print $2}' .env 2>/dev/null | tail -n1)"
+HTTP_PORT="$(awk -F= '$1=="HUMITE_HTTP_PORT"{print $2}' .env 2>/dev/null | tail -n1)"
 HTTP_PORT="${HTTP_PORT:-8080}"
 
 if [[ "${1:-}" == "--build" ]]; then
-  echo "正在从本地构建全栈镜像并启动 Silvae 容器栈..."
+  echo "正在从本地构建全栈镜像并启动 Humite 容器栈..."
   docker compose up -d --build
 else
-  echo "正在启动 Silvae 容器栈（如本地无预构建镜像将自动构建）..."
+  echo "正在启动 Humite 容器栈（如本地无预构建镜像将自动构建）..."
   if ! docker compose pull app 2>/dev/null; then
     echo "远程镜像尚未拉取，正在自动切换为本地多阶段构建..."
     docker compose up -d --build
@@ -58,10 +58,10 @@ else
   fi
 fi
 
-echo "正在等待 Silvae 服务就绪 (http://localhost:${HTTP_PORT})..."
+echo "正在等待 Humite 服务就绪 (http://localhost:${HTTP_PORT})..."
 for ((i=0; i<60; i++)); do
   if curl -fsS "http://127.0.0.1:${HTTP_PORT}/actuator/health/readiness" 2>/dev/null | grep -q '"UP"'; then
-    echo "Silvae 已就绪！请访问：http://localhost:${HTTP_PORT}"
+    echo "Humite 已就绪！请访问：http://localhost:${HTTP_PORT}"
     exit 0
   fi
   sleep 2

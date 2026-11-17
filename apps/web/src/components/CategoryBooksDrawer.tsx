@@ -18,7 +18,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { BrowseBook } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function CategoryBooksDrawer({ open, categoryId, categoryName, onClose }: {
   open: boolean;

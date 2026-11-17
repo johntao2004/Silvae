@@ -13,7 +13,7 @@ import { useId, type ReactNode } from "react";
 import { Box, FormControl, InputLabel, Stack, Typography } from "@/ui/primitives";
 import { InputActionGroup, TextField, Switch } from "@/ui/forms";
 import { Divider } from "@/ui/feedback";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { PublicationMonthField } from "../ui/PublicationMonthField";
 import { DisplayTypographyScope } from "../ui/DisplayTypographyScope";
 

@@ -6,7 +6,7 @@ import { ArrowBackRounded } from "@/ui/icons";
 import { Link } from "react-router-dom";
 import { Box, Stack, Typography } from "@/ui/primitives";
 import type { ReactNode } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { pageWidthSx, PageTitle } from "./PageHeader";
 
 export function AuthFrame({ children, title, setupLocked = false }: { children: ReactNode; title: string; setupLocked?: boolean }) {

@@ -16,7 +16,7 @@ import { Typography } from "@/ui/primitives";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { BooklistDetail, BooklistVisibility } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function BooklistFormDialog({ open, initial, onClose, onSaved, onDeleted }: {
   open: boolean;

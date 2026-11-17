@@ -1,5 +1,5 @@
 import { useLayoutEffect } from "react";
-import { tokens } from "./generated-tokens";
+import { tokens } from "./tokens";
 
 // 放大普通页面完整 UI，也包括挂载到 body 的覆盖层。
 /** Enlarge the complete ordinary UI, including overlays portalled to body. */

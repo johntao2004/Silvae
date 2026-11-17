@@ -5,7 +5,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["dist", "src/theme/generated-tokens.ts", "src/generated/**"],
+    ignores: ["dist", "src/generated/**"],
   },
   {
     files: ["src/**/*.{ts,tsx}"],

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Box, headingTypographySx, Stack } from "@/ui/primitives";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { BookCover } from "./BookCover";
 
 // Upload review, editing and saved details share the same bibliographic geometry.

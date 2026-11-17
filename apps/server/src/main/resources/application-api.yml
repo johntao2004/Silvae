@@ -1,5 +1,5 @@
 server:
-  port: ${SILVAE_API_PORT:8080}
+  port: ${HUMITE_API_PORT:8080}
 spring:
   main:
     web-application-type: servlet

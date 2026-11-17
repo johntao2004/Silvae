@@ -1,7 +1,7 @@
 import { ActionButton as AntButton, type ActionIntent } from "./action-button";
 import type { ElementType, ForwardedRef, ReactNode } from "react";
 import { createElement, forwardRef } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { flattenSx, mergeClassNames, sxClassName, useTheme, type SxProps } from "./primitives";
 
 type ButtonProps = Record<string, any> & {

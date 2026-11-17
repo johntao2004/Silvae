@@ -25,7 +25,7 @@ import { LibraryPageHeader, LibraryScopeFilter } from "../components/LibraryPage
 import { useAuth } from "../auth/AuthContext";
 import { usePermissions } from "../auth/permissions";
 import type { DisplayBook } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function PublicLibraryPage() {
   const { user } = useAuth();

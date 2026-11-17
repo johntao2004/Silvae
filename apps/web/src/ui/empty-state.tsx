@@ -2,7 +2,7 @@ import Empty from "antd/es/empty";
 import { statusTitle } from "./status-title";
 import type { ReactNode } from "react";
 import { Stack, Typography } from "./primitives";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 // 空集合共用学脉图采用的 Ant Design 空态插图。
 /** Reuse the knowledge graph's Ant Design illustration across empty collections. */

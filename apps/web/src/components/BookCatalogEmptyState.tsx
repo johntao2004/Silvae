@@ -3,7 +3,7 @@
 import { EmptyState } from "../ui/empty-state";
 import { Stack } from "@/ui/primitives";
 import type { ReactNode } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { EMPTY_CATALOG_TITLE } from "../ui/empty-state-copy";
 
 export function BookCatalogEmptyState({ action, title = EMPTY_CATALOG_TITLE }: { action?: ReactNode; title?: string }) {

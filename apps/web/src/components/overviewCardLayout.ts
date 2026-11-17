@@ -1,5 +1,5 @@
 import type { SxObject } from "@/ui/primitives";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 // One inset and content rhythm across populated, empty and loading overview cards.
 export const overviewCardSx: SxObject = {

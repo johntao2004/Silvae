@@ -27,7 +27,7 @@ import { useIndependentReading } from "../content/useIndependentReading";
 import { IndependentNotes } from "../content/IndependentNotes";
 import { type ReadingState } from "../content/api";
 import { type Annotation } from "../../domain/types";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { type ReaderSelection } from "../../components/readers/types";
 const Epub = lazy(() => import("../../components/readers/EpubDocumentReader"));
 const Pdf = lazy(() => import("../../components/readers/PdfDocumentReader"));

@@ -28,7 +28,7 @@ import { CategoryBooksDrawer } from "../components/CategoryBooksDrawer";
 import { PageBackAction, PageContainer, PageHeader } from "../components/PageHeader";
 import type { BrowseBook } from "../domain/types";
 import { useInfiniteScrollTrigger } from "../hooks/useInfiniteScrollTrigger";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 type SortKey = "recent" | "title" | "author";
 

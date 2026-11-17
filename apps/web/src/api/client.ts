@@ -1,6 +1,7 @@
 import { matchesThema } from "../domain/thema-filter";
 import { pendingPosition, persistPosition, replayPositions, trackSessionSave } from "../auth/session-save";
 import { randomId } from "../utils/random-id";
+import { uploadBinary } from "./binary-upload";
 import { demoBooks, demoRecycleBin, demoUsers } from "../data/demo";
 import type {
   Book,
@@ -53,22 +54,14 @@ const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
 
 const pause = (duration = 180) => new Promise((resolve) => window.setTimeout(resolve, duration));
 
-import { ApiRequestError } from "./errors";
+import { createApiRequestError, ApiRequestError } from "./errors";
 export { ApiRequestError } from "./errors";
 
 const AUTH_TIMEOUT_MS = 15_000;
 const CONNECTION_ERROR = "无法连接书库服务，请检查网络或确认服务已启动后重试。";
 async function responseError(response: Response): Promise<ApiRequestError> {
   const payload = await response.json().catch(() => ({}));
-  const problem = payload && typeof payload === "object" ? payload : {};
-  const code = typeof problem.code === "string" && /^[A-Z0-9_]{1,100}$/.test(problem.code) ? problem.code : `HTTP_${response.status}`;
-  const trace = problem.traceId ?? response.headers.get("X-Request-ID");
-  const traceId = typeof trace === "string" && /^[a-z0-9_-]{8,128}$/i.test(trace) ? trace : undefined;
-  const knownProblem = typeof problem.type === "string" && problem.type.startsWith("urn:silvae:error:");
-  const detail = response.status < 500 || knownProblem ? problem.detail ?? problem.title : undefined;
-  return new ApiRequestError(typeof detail === "string" ? detail
-    : response.status >= 500 ? "书库服务暂时不可用，请稍后重试。"
-      : response.status === 401 ? "登录已过期，请重新登录。" : "请求失败，请稍后重试。", response.status, code, traceId);
+  return createApiRequestError(response.status, payload, { requestId: response.headers.get("X-Request-ID") });
 }
 
 let csrfToken: string | undefined;
@@ -138,7 +131,7 @@ export async function request<T>(path: string, init: RequestInit = {}, options: 
     }
     if (!response.ok) {
       if (response.status === 401 && !["/auth/login", "/auth/session"].includes(path) && await confirmSessionExpired()) {
-        window.dispatchEvent(new Event("silvae:session-expired"));
+        window.dispatchEvent(new Event("humite:session-expired"));
       }
       throw await responseError(response);
     }
@@ -232,7 +225,7 @@ function displayBook(book: Book, sortOrder: number): DisplayBook {
 
 function demoSessionUser(): SessionUser | null {
   try {
-    const value = sessionStorage.getItem("silvae-demo-session");
+    const value = sessionStorage.getItem("humite-demo-session");
     return value ? JSON.parse(value) as SessionUser : null;
   } catch {
     return null;
@@ -387,7 +380,7 @@ const libraryRoots: LibraryRoot[] = [
 ];
 
 export interface SiteSettings { name: string; tagline: string; description: string; keywords: string; publicUrl: string; allowIndexing: boolean; virtualLibraryEnabled: boolean; icpNumber: string; policeNumber: string; copyright: string; contactEmail: string; }
-export const DEFAULT_SITE_SETTINGS: SiteSettings = {name:"Silvae",tagline:"电子图书馆",description:"你的 NAS 私人电子图书馆",keywords:"",publicUrl:"",allowIndexing:false,virtualLibraryEnabled:true,icpNumber:"",policeNumber:"",copyright:"",contactEmail:""};
+export const DEFAULT_SITE_SETTINGS: SiteSettings = {name:"Humite",tagline:"电子图书馆",description:"你的 NAS 私人电子图书馆",keywords:"",publicUrl:"",allowIndexing:false,virtualLibraryEnabled:true,icpNumber:"",policeNumber:"",copyright:"",contactEmail:""};
 let demoSiteSettings = {...DEFAULT_SITE_SETTINGS};
 
 export interface PasswordPolicy { minLength: number; requireUppercase: boolean; requireLowercase: boolean; requireDigit: boolean; requireSpecial: boolean; }
@@ -856,7 +849,7 @@ export const api = {
     const book = books.find(candidate => candidate.id === bookId);
     if (!book) throw new Error("未找到这本书");
     const metadata: PublicBookMetadata = { id: book.id, title: book.title, authors: [book.author], translators: [],
-      description: book.description, language: "zh-CN", publisher: "Silvae典藏", publishedDate: "2026",
+      description: book.description, language: "zh-CN", publisher: "Humite典藏", publishedDate: "2026",
       isbn: "", series: "灯火集", tags: book.tags, subjectCodes: book.subjectCodes ?? [], sources: {} };
     return {
       id: metadata.id, title: metadata.title, subtitle: metadata.subtitle, authors: metadata.authors,
@@ -985,7 +978,7 @@ export const api = {
       translators: [],
       description: book.description,
       language: "zh-CN",
-      publisher: "Silvae典藏",
+      publisher: "Humite典藏",
       publishedDate: "2026",
       isbn: "",
       series: "灯火集",
@@ -1047,7 +1040,7 @@ export const api = {
       createdAt: new Date().toISOString(),
     };
     users = [user, ...users];
-    return { user, temporaryPassword: "Silvae-Temp-7M2K!" };
+    return { user, temporaryPassword: "Humite-Temp-7M2K!" };
   },
 
   async toggleUser(userId: string): Promise<ManagedUser> {
@@ -1066,7 +1059,7 @@ export const api = {
     const user = users.find((candidate) => candidate.id === userId);
     if (!user || user.role === "OWNER") throw new Error("不能重置主人账户");
     users = users.map((candidate) => candidate.id === userId ? { ...candidate, mustChangePassword: true } : candidate);
-    return { username: user.username, temporaryPassword: "Silvae-Reset-8Q4N!" };
+    return { username: user.username, temporaryPassword: "Humite-Reset-8Q4N!" };
   },
 
   async revokeUserSessions(userId: string): Promise<void> {
@@ -1092,7 +1085,7 @@ export const api = {
       requiredBytes: 0,
       expectedFingerprint: book.fingerprint,
       expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
-      conflicts: normalizedTarget?.includes("已存在") ? [{ code: "TARGET_EXISTS", message: "目标路径已有文件，Silvae不会覆盖它。", path: normalizedTarget }] : [],
+      conflicts: normalizedTarget?.includes("已存在") ? [{ code: "TARGET_EXISTS", message: "目标路径已有文件，Humite不会覆盖它。", path: normalizedTarget }] : [],
       warnings: type === "TRASH"
         ? ["文件将保留 30 天；阅读记录和笔记不会删除。"]
         : type === "WRITE_METADATA"
@@ -1118,7 +1111,7 @@ export const api = {
       conflicts: [],
       warnings: type === "RESTORE"
         ? ["恢复会把文件移回原路径；如果路径已有新文件，操作将被阻止。"]
-        : ["永久清理会从 NAS 删除回收文件，且无法通过Silvae恢复。"],
+        : ["永久清理会从 NAS 删除回收文件，且无法通过Humite恢复。"],
     };
   },
 
@@ -1146,7 +1139,7 @@ export const api = {
         format: book.format,
         coverUrl: book.coverUrl,
         originalPath: preview.sourcePath,
-        trashPath: `.silvae-trash/${randomId()}/${book.relativePath.split("/").at(-1)}`,
+        trashPath: `.humite-trash/${randomId()}/${book.relativePath.split("/").at(-1)}`,
         sizeBytes: 8_842_122,
         deletedBy: "林",
         deletedAt: new Date().toISOString(),
@@ -1250,28 +1243,14 @@ export const api = {
 
   async uploadBookContent(uploadId: string, file: File, onProgress: (progress: number) => void): Promise<BookUpload> {
     const token = await ensureCsrfToken();
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("PUT", `/api/v1/book-uploads/${uploadId}/content`);
-      xhr.withCredentials = true;
-      xhr.setRequestHeader("Content-Type", "application/octet-stream");
-      xhr.setRequestHeader("X-XSRF-TOKEN", token);
-      xhr.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
-      });
-      xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try { resolve(JSON.parse(xhr.responseText) as BookUpload); }
-          catch { reject(new Error("服务器返回了无效响应，请刷新上传列表确认状态后重试")); }
-        }
-        else {
-          try { const problem = JSON.parse(xhr.responseText) as { detail?: string; title?: string }; reject(new Error(problem.detail ?? problem.title ?? "上传失败")); }
-          catch { reject(new Error("上传失败")); }
-        }
-      });
-      xhr.addEventListener("error", () => reject(new Error("网络中断，上传未完成")));
-      xhr.addEventListener("abort", () => reject(new Error("上传已中止")));
-      xhr.send(file);
+    return uploadBinary<BookUpload>(`/api/v1/book-uploads/${uploadId}/content`, {
+      file, csrfToken: token, onProgress,
+      expectedResponse: { id: uploadId, statuses: ["RECEIVING", "INSPECTING", "ENRICHING", "READY_FOR_REVIEW", "COMMITTING", "SUCCEEDED", "DUPLICATE", "FAILED", "CANCELLED", "EXPIRED"] },
+      messages: {
+        failed: "上传失败",
+        interrupted: "网络中断，上传未完成",
+        invalidResponse: "服务器返回了无效响应，请刷新上传列表确认状态后重试",
+      },
     });
   },
 
@@ -1437,25 +1416,14 @@ export const api = {
   async uploadReaderFontContent(fontId: string, file: File, onProgress: (progress: number) => void): Promise<ReaderFont> {
     if (!demoMode) {
       const token = await ensureCsrfToken();
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", `/api/v1/reader-fonts/${fontId}/content`);
-        xhr.withCredentials = true;
-        xhr.setRequestHeader("Content-Type", "application/octet-stream");
-        xhr.setRequestHeader("X-XSRF-TOKEN", token);
-        xhr.upload.addEventListener("progress", (event) => {
-          if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
-        });
-        xhr.addEventListener("load", () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText) as ReaderFont);
-          else {
-            try { const problem = JSON.parse(xhr.responseText) as { detail?: string; title?: string }; reject(new Error(problem.detail ?? problem.title ?? "字体上传失败")); }
-            catch { reject(new Error("字体上传失败")); }
-          }
-        });
-        xhr.addEventListener("error", () => reject(new Error("网络中断，字体上传未完成")));
-        xhr.addEventListener("abort", () => reject(new Error("上传已中止")));
-      xhr.send(file);
+      return uploadBinary<ReaderFont>(`/api/v1/reader-fonts/${fontId}/content`, {
+        file, csrfToken: token, onProgress,
+        expectedResponse: { id: fontId, statuses: ["ENABLED", "DISABLED"] },
+        messages: {
+          failed: "字体上传失败",
+          interrupted: "网络中断，字体上传未完成",
+          invalidResponse: "服务器返回了无效响应，请刷新字体列表确认状态后重试",
+        },
       });
     }
     onProgress(100);

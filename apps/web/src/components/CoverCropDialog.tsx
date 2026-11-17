@@ -3,7 +3,7 @@ import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/ui/overlays
 import { Box, Stack } from "@/ui/primitives";
 import { Button } from "@/ui/buttons";
 import { Alert } from "@/ui/feedback";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function coverCropRect(width: number, height: number, zoom: number, x: number, y: number) {
   const cropWidth = Math.min(width, height * 2 / 3) / zoom;

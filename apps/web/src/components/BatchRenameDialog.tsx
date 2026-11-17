@@ -18,7 +18,7 @@ import { Typography } from "@/ui/primitives";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { Book, FileOperationPreview } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 interface PlannedRename {
   book: Book;

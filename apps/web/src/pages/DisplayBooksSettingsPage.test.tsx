@@ -30,7 +30,7 @@ const displayBook = (index: number, sortOrder: number): DisplayBook => ({
 describe("DisplayBooksSettingsPage", () => {
   beforeEach(() => {
     sessionStorage.clear();
-    sessionStorage.setItem("silvae-demo-session", JSON.stringify(owner));
+    sessionStorage.setItem("humite-demo-session", JSON.stringify(owner));
   });
 
   afterEach(() => vi.restoreAllMocks());

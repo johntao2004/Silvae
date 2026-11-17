@@ -19,6 +19,7 @@
         </button>
       </div>
       <div class="top-actions">
+        <button class="top-button" id="throne-seat" type="button" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14M7 17V5h10v12M5 15h14M5 11v9M19 11v9M9 8h6M9 12h6"/></svg><span>御座入座</span></button>
         <button class="top-button" id="gate-toggle" type="button" aria-label="关闭宫门" aria-pressed="true" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V5h18v16M7 21V8h10v13M12 8v13M9 13v2M15 13v2M2 4h20M5 1h14"/></svg><span>关闭宫门</span></button>
         <button class="top-button" id="catalog-toggle" aria-label="打开藏书目录" aria-controls="catalog-panel" title="搜索书名与作者">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h5v16H4zM12 4h4v16h-4zM18 5l3-1 3 15-3 1M6 8h1M13 8h2M6 16h1M13 16h2"/></svg><span>藏书目录</span>
@@ -34,8 +35,6 @@
         </button>
       </div>
     </header>
-
-    <button class="top-button throne-action" id="throne-seat" type="button" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20h14M7 17V5h10v12M5 15h14M5 11v9M19 11v9M9 8h6M9 12h6"/></svg><span>御座入座</span></button>
 
     <aside id="catalog-panel" class="drawer" aria-label="藏书目录" hidden>
       <div class="panel-top">
@@ -122,6 +121,80 @@
       </div>
     </section>
 
+    <aside id="inscription-panel" class="selection inscription-drawer" aria-label="碑刻拓片与营造考释" hidden>
+      <div class="panel-top">
+        <p class="panel-kicker" id="inscription-kicker">IMPERIAL EPIGRAPHY</p>
+        <div class="panel-heading"><h3 id="inscription-title">御碑拓片</h3><button id="inscription-close" class="close" type="button" aria-label="关闭碑刻导览">×</button></div>
+      </div>
+      <div class="selection-scroll">
+        <div class="book-detail-meta"><span id="inscription-subtitle"></span><span id="inscription-location"></span></div>
+        <div class="rubbing-tablet" aria-label="乌金碑拓全文">
+          <div class="rubbing-inner">
+            <div id="inscription-rubbing" class="rubbing-lines"></div>
+            <span id="inscription-seal" class="rubbing-seal">觀文之寶</span>
+          </div>
+        </div>
+        <p id="inscription-commentary" class="inscription-commentary"></p>
+        <div class="selection-actions">
+          <button id="inscription-focus" class="button button-primary" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M3 12h3M18 12h3M12 3v3M12 18v3"/></svg><span>移步近观</span></button>
+          <button id="inscription-atmosphere" class="button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg><span id="inscription-atmosphere-label">切换应景天色</span></button>
+        </div>
+      </div>
+    </aside>
+
+    <div id="reading-card-modal" class="reading-card-backdrop" role="dialog" aria-modal="true" aria-labelledby="reading-card-book-title" hidden>
+      <div class="reading-card-shell">
+        <button id="reading-card-close" class="close reading-card-close" type="button" aria-label="关闭今日读书卡">×</button>
+        <div class="reading-card-stage" id="reading-card-stage">
+          <article class="reading-card-sheet" id="reading-card-sheet">
+            <div class="reading-card-foil" aria-hidden="true"></div>
+            <header class="reading-card-header">
+              <span class="reading-card-kicker" id="reading-card-date">今日读书签</span>
+              <span class="reading-card-lot" id="reading-card-lot">上上签 · 晨窗展卷</span>
+            </header>
+            <div class="reading-card-hero">
+              <div class="reading-card-emblem" id="reading-card-emblem">
+                <img id="reading-card-cover" alt="" hidden />
+                <span class="reading-card-emblem-cat" id="reading-card-category">文学</span>
+                <strong class="reading-card-emblem-spine" id="reading-card-spine">观文典藏</strong>
+              </div>
+              <div class="reading-card-heading">
+                <p class="reading-card-badge" id="reading-card-badge">今日首签 · 观文拾签亭</p>
+                <h3 id="reading-card-book-title">《天工开物》</h3>
+                <p class="reading-card-author" id="reading-card-author">〔明〕宋应星 著</p>
+                <p class="reading-card-advice" id="reading-card-advice">宜：晨起精读 · 批注摘句</p>
+              </div>
+            </div>
+            <blockquote class="reading-card-quote" id="reading-card-quote"></blockquote>
+            <footer class="reading-card-footer">
+              <div class="reading-card-meta">
+                <span id="reading-card-shelf">1F · F1-05 架</span>
+                <span id="reading-card-pages">320 页</span>
+              </div>
+              <span class="reading-card-seal" id="reading-card-seal">開卷大吉</span>
+            </footer>
+          </article>
+        </div>
+        <div class="reading-card-actions">
+          <button id="reading-card-locate" class="button button-primary" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            <span id="reading-card-locate-label">循签寻书 · 前往书架</span>
+          </button>
+          <a id="reading-card-read" class="button" href="#" rel="noopener noreferrer" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4 10 14M10 4H4v16h16v-6"/></svg>
+            <span>立即阅读</span>
+          </a>
+          <button id="reading-card-redraw" class="button" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+            <span>再抽一签</span>
+          </button>
+          <button id="reading-card-shrine" class="button button-subtle" type="button">
+            <span>近观拾签案</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="walk-hint" hidden><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动　拖动画面转向　点击书籍查看详情　<kbd>Esc</kbd> 退出漫游</div>
     <div id="touch-move" class="touch-move" aria-label="漫游方向控制">
       <button type="button" data-move="KeyW" aria-label="向前行走">↑</button>
@@ -135,10 +208,13 @@
       <div class="view-buttons" id="shelf-category-buttons" aria-label="书架分类"></div>
       <div class="utilities">
         <button class="utility" id="walk" type="button" title="沿两层书架与楼梯步行漫游"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="14" cy="4" r="2"/><path d="m10 9 4-2 2 5 4 1M14 8l-3 7-1 6M11 15l5 6M10 9l-4 4"/></svg><span>步行漫游</span></button>
-        <button class="utility active lighting-toggle" id="daylight" type="button" aria-label="当前光照为日光，点击切换为暮色" title="当前光照为日光，点击切换为暮色">
+        <button class="utility active lighting-toggle" id="daylight" type="button" aria-label="当前天色为晴昼 · 日光，点击切换为晨曦 · 薄雾" title="当前天色为晴昼 · 日光，点击切换为晨曦 · 薄雾">
           <svg data-lighting-icon="day" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1 1M18 18l1 1M5 19l1-1M18 6l1-1"/></svg>
+          <svg data-lighting-icon="dawn" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M17 16a5 5 0 0 0-10 0M12 4v3M5.6 8.6l1.8 1.8M18.4 8.6l-1.8 1.8M3 16h18M5 20h14"/></svg>
+          <svg data-lighting-icon="autumn" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M19 5c-6 0-11 4-12 10 6-1 10-6 12-10ZM7 15c-1.5 1.5-2.5 3-3 5M11 13l-4 4"/></svg>
+          <svg data-lighting-icon="snow" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M12 2v20M2 12h20M4.9 4.9l14.2 14.2M19.1 4.9 4.9 19.1"/></svg>
           <svg data-lighting-icon="evening" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5Z"/></svg>
-          <span>日光</span>
+          <span>晴昼</span>
         </button>
         <button class="utility" id="cutaway" type="button" aria-pressed="false" title="切换建筑剖视"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 7 9-5 9 5-9 5zM4 12v5l8 5 8-5v-5M12 12v10M4 17l8-5 8 5"/></svg><span>建筑剖视</span></button>
         <button class="utility" id="quality" type="button" title="切换自动、精细与流畅画质"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V9M9 18V5M14 18v-7M19 18V3M2 21h20"/></svg><span>自动画质</span></button>
@@ -153,11 +229,14 @@
         <p>推开朱门，沿开敞中厅入阁。两翼现代书册横向成排，宽梯与休息平台连接二层回廊；点选一本，就能近看封面、书脊与书页。</p>
         <div class="help-row"><span>环顾藏阁</span><span>拖动旋转 · 滚轮缩放 · 右键平移<br>镜头遇到建筑与书架时自动停止</span></div>
         <div class="help-row"><span>沿阶入殿</span><span>在「宫门入阁」用滚轮或双指沿台阶进退<br>最远到初始视角；宫门关闭时先开门</span></div>
-        <div class="help-row"><span>步行漫游</span><span>WASD 移动 · 拖动转向 · Esc 退出<br>点击书籍查看详情</span></div>
+        <div class="help-row"><span>步行漫游</span><span>WASD 移动 · 按住 Shift 加速<br>拖动转向 · 点击书籍查看详情 · Esc 退出</span></div>
         <div class="help-row"><span>开合宫门</span><span>使用右上方「藏书目录」旁的宫门开关</span></div>
         <div class="help-row"><span>走上二层</span><span>沿两侧宽梯经休息平台上行，或选择「二层回廊」</span></div>
         <div class="help-row"><span>观察屋面</span><span>选择「屋顶外观」；视角切换采用短暂淡入淡出</span></div>
         <div class="help-row"><span>寻一本书</span><span>点选书架上的书，或在「藏书目录」搜索</span></div>
+        <div class="help-row"><span>今日抽卡</span><span>点选内廷南侧「观文拾签亭」书案或底部「今日抽卡」<br>抽取今日读书签卡，支持一键循签飞往书架寻书</span></div>
+        <div class="help-row"><span>碑刻导览</span><span>点选北御碑亭、西苑曝书亭或丹陛日晷嘉量<br>展阅乌金碑拓、朱印考释与应景镜头</span></div>
+        <div class="help-row"><span>四时晨昏</span><span>点按底部天色按钮切换「晴昼 · 晨曦 · 秋霁 · 瑞雪 · 暮色」<br>联动金水微澜、晨雾、秋叶、瑞雪与宫灯流萤</span></div>
         
         <div class="help-row"><span>画质与流畅度</span><span>默认自动调整清晰度；也可切换「精细」或「流畅」<br>静止时暂停绘制，开始操作后自动恢复</span></div>
         <details class="performance-details"><summary>查看运行信息</summary><pre id="performance-readout"></pre><button id="performance-refresh" type="button">刷新运行信息</button></details>
@@ -172,6 +251,6 @@
     <div class="loading-line" aria-hidden="true"></div>
     <p id="loading-note">正在构建两层木作、现代书册与光影</p>
   </div>
-  <script defer src="./app-2b44bf7498ab.js"></script>
+  <script defer src="./app-ae8f5dc386fd.js"></script>
 </body>
 </html>

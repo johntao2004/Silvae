@@ -16,7 +16,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArticleCollectionFormDialog } from "../features/article-collections/ArticleCollectionFormDialog";
 import { articleCollections, type ArticleCollectionSummary } from "../features/article-collections/api";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function ArticleCollectionsPage() {
   const { user, ready } = useAuth();

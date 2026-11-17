@@ -24,7 +24,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import type { CategorySummary } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function CategoryManagementDialog({ open, mode, categories, onClose }: {
   open: boolean;

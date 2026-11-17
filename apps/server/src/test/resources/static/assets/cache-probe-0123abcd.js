@@ -1,1 +1,1 @@
-window.silvaeCacheProbe = true;
+window.humiteCacheProbe = true;

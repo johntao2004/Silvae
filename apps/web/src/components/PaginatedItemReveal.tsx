@@ -3,7 +3,7 @@
 import { Box } from "@/ui/primitives";
 import { keyframes } from "@/ui/primitives";
 import type { PropsWithChildren } from "react";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 const REVEAL_DURATION_MS = 360;
 const REVEAL_STAGGER_MS = 45;

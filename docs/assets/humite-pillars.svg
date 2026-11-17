@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 226" width="100%" height="100%" role="img" aria-label="Humite 三大核心支柱：典藏入林、观文藏阁、各得其所">
+  <!-- Card 1: 典藏入林 -->
+  <g transform="translate(4, 4)">
+    <rect width="384" height="218" rx="18" fill="#FAF6EE" stroke="#E8DFD1" stroke-width="1.5" />
+    <rect x="24" y="24" width="38" height="24" rx="12" fill="#D97706" />
+    <text x="43" y="40" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="600" fill="#FFFDF8">01</text>
+    <text x="74" y="41" font-family="'Noto Serif SC', 'Songti SC', Georgia, serif" font-size="13" font-weight="600" letter-spacing="1.5" fill="#B45309">CURATED ARCHIVE · 典藏入林</text>
+
+    <text x="24" y="80" font-family="'Noto Serif SC', 'Songti SC', 'PingFang SC', serif" font-size="20" font-weight="600" fill="#1C1917">受控 NAS 馆藏与书目编排</text>
+    <line x1="24" y1="96" x2="360" y2="96" stroke="#E8DFD1" stroke-width="1" />
+
+    <text x="24" y="126" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 原生支持 EPUB 与 PDF，含 Thema 1.6 学科分类体系</text>
+    <text x="24" y="154" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 流式暂存入库、SHA-256 去重与 2:3 封面裁切校对</text>
+    <text x="24" y="182" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 写操作强制预览指纹与版本回滚，绝不静默改写原件</text>
+  </g>
+
+  <!-- Card 2: 观文藏阁 -->
+  <g transform="translate(408, 4)">
+    <rect width="384" height="218" rx="18" fill="#FAF6EE" stroke="#E8DFD1" stroke-width="1.5" />
+    <rect x="24" y="24" width="38" height="24" rx="12" fill="#78350F" />
+    <text x="43" y="40" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="600" fill="#FFFDF8">02</text>
+    <text x="74" y="41" font-family="'Noto Serif SC', 'Songti SC', Georgia, serif" font-size="13" font-weight="600" letter-spacing="1.5" fill="#78350F">MING PAVILION · 观文藏阁</text>
+
+    <text x="24" y="80" font-family="'Noto Serif SC', 'Songti SC', 'PingFang SC', serif" font-size="20" font-weight="600" fill="#1C1917">三维明式书楼与沉浸阅读</text>
+    <line x1="24" y1="96" x2="360" y2="96" stroke="#E8DFD1" stroke-width="1" />
+
+    <text x="24" y="126" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 内置 Three.js 明代双层藏书阁，真实馆藏 1:1 映射上架</text>
+    <text x="24" y="154" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 出版级 Web 阅读器，支持自定义字体、书签与多色划线</text>
+    <text x="24" y="182" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 网页文章抓取剪藏、合集归档与全馆知识图谱网络</text>
+  </g>
+
+  <!-- Card 3: 各得其所 -->
+  <g transform="translate(812, 4)">
+    <rect width="384" height="218" rx="18" fill="#FAF6EE" stroke="#E8DFD1" stroke-width="1.5" />
+    <rect x="24" y="24" width="38" height="24" rx="12" fill="#D97706" />
+    <text x="43" y="40" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="600" fill="#FFFDF8">03</text>
+    <text x="74" y="41" font-family="'Noto Serif SC', 'Songti SC', Georgia, serif" font-size="13" font-weight="600" letter-spacing="1.5" fill="#B45309">PRIVATE SANCTUARY · 各得其所</text>
+
+    <text x="24" y="80" font-family="'Noto Serif SC', 'Songti SC', 'PingFang SC', serif" font-size="20" font-weight="600" fill="#1C1917">家庭共享与私密阅读主权</text>
+    <line x1="24" y1="96" x2="360" y2="96" stroke="#E8DFD1" stroke-width="1" />
+
+    <text x="24" y="126" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 主人 / 管理员 / 成员三级权限，全家共享同一套藏书库</text>
+    <text x="24" y="154" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 阅读进度、划线与私人笔记严格按账号隔离，默认不可互窥</text>
+    <text x="24" y="182" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 独立加密禁书区（秘阁），配备 TOTP 二次验证与审计</text>
+  </g>
+</svg>

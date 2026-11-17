@@ -21,7 +21,7 @@ import { BooklistFormDialog } from "../components/BooklistFormDialog";
 import { CatalogSection } from "../components/CatalogSection";
 import { PageContainer, PageHeader } from "../components/PageHeader";
 import type { BooklistSummary } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function BooklistsPage() {
   const { user, ready } = useAuth();

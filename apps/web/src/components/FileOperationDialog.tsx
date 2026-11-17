@@ -18,7 +18,7 @@ import { Typography } from "@/ui/primitives";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiRequestError } from "../api/client";
 import type { Book, FileOperation, FileOperationPreview, FileOperationType } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 const labels: Record<Exclude<FileOperationType, "MOVE">, string> = {
   RENAME: "重命名书籍",

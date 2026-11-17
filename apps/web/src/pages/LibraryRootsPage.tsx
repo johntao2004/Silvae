@@ -16,7 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { ActionToolbar, PageContainer } from "../components/PageHeader";
 import type { LibraryRoot } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function LibraryRootsPage() {
   const { can } = usePermissions();

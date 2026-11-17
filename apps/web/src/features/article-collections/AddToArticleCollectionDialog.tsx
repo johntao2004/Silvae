@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { usePermissions } from "../../auth/permissions";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { ArticleCollectionFormDialog } from "./ArticleCollectionFormDialog";
 import {
   articleCollectionError,

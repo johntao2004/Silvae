@@ -35,7 +35,7 @@ import { PublicLibraryPage } from "./PublicLibraryPage";
 import type { Book, BookUpload, FileOperationType } from "../domain/types";
 import { matchesThema } from "../domain/thema";
 import { useInfiniteScrollTrigger } from "../hooks/useInfiniteScrollTrigger";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { EMPTY_CATALOG_TITLE } from "../ui/empty-state-copy";
 
 export function LibraryPage() {

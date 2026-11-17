@@ -6,7 +6,7 @@ import { TestProviders } from "../test/TestProviders";
 import { SearchPage } from "./SearchPage";
 
 beforeEach(() => {
-  sessionStorage.setItem("silvae-demo-session", JSON.stringify({ id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false }));
+  sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false }));
 });
 afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
 

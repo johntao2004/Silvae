@@ -21,7 +21,7 @@ import { api } from "../api/client";
 import { BookCatalogEmptyState } from "../components/BookCatalogEmptyState";
 import { PageContainer, PageHeader } from "../components/PageHeader";
 import type { FileOperationPreview, RecycleBinEntry } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { DataTable } from "../ui/antd";
 
 const DAY_IN_MILLISECONDS = 86_400_000;

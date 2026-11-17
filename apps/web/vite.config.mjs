@@ -2,8 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { resolve } from "node:path";
 
-const apiPort = process.env.SILVAE_API_PORT ?? "8080";
-const apiProxyTarget = process.env.SILVAE_API_PROXY_TARGET ?? `http://127.0.0.1:${apiPort}`;
+const apiPort = process.env.HUMITE_API_PORT ?? "8080";
+const apiProxyTarget = process.env.HUMITE_API_PROXY_TARGET ?? `http://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
   resolve: {
@@ -33,7 +33,7 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    port: Number(process.env.SILVAE_WEB_PORT || 4173),
+    port: Number(process.env.HUMITE_WEB_PORT || 4173),
     strictPort: true,
     allowedHosts: ["terminal.local", "localhost", "127.0.0.1", "johns-MacBook-Air.local"],
     proxy: {

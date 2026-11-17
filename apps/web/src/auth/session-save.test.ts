@@ -1,14 +1,30 @@
 // 覆盖用户分区、失败保留、退出等待和串行写入，防止跨用户重放或旧响应覆盖新进度。
 // Covers user partitioning, failure retention, exit flushing and serialized writes against cross-user replay or stale progress.
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { persistPosition, replayPositions, setPersistenceUser, trackSessionSave, registerSessionSaver, prepareSessionExit } from "./session-save";
+import { persistPosition, replayPositions, pendingPosition, setPersistenceUser, trackSessionSave, registerSessionSaver, prepareSessionExit } from "./session-save";
 beforeEach(()=>{localStorage.clear();setPersistenceUser("reader-a");});
 afterEach(()=>vi.restoreAllMocks());
+it.each(["null", "[]", "17", "{", '{"book":null}', '{"book":{"bookId":"book","progress":"0.5"}}'])("ignores corrupt progress checkpoints: %s", async body => {
+  localStorage.setItem("humite-pending-progress:reader-a", body);
+  expect(pendingPosition("book")).toBeUndefined();
+  const send = vi.fn().mockResolvedValue({});
+  await replayPositions(send);
+  expect(send).not.toHaveBeenCalled();
+});
+
+it("replays a valid checkpoint beside a corrupt entry without losing its user scope", async () => {
+  const valid = { bookId: "valid-book", locator: "page-2", progress: 0.2, revision: "saved-revision" };
+  localStorage.setItem("humite-pending-progress:reader-a", JSON.stringify({ broken: null, "valid-book": valid }));
+  const send = vi.fn().mockResolvedValue({});
+  await replayPositions(send);
+  expect(send).toHaveBeenCalledOnce();
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ bookId: valid.bookId, locator: valid.locator, progress: valid.progress }));
+});
 it("retains failed progress for the same user and never replays it for another user", async()=>{
  await expect(persistPosition("book","page-2",0.2,()=>Promise.reject(new Error("offline")))).rejects.toThrow();
  const send=vi.fn().mockResolvedValue({});setPersistenceUser("reader-b");await replayPositions(send);expect(send).not.toHaveBeenCalled();
  setPersistenceUser("reader-a");await replayPositions(send);expect(send).toHaveBeenCalledWith(expect.objectContaining({bookId:"book",locator:"page-2",progress:0.2}));
- expect(localStorage.getItem("silvae-pending-progress:reader-a")).toBe("{}");
+ expect(localStorage.getItem("humite-pending-progress:reader-a")).toBe("{}");
 });
 it("waits for reader save hooks and outstanding writes before exit",async()=>{
  let finish!:()=>void;let done=false;
@@ -19,7 +35,7 @@ it("serializes position writes so an older response cannot overwrite newer progr
  const order:string[]=[];
  const first=persistPosition("book","old",0.1,async()=>{order.push("old");});
  const second=persistPosition("book","new",0.2,async()=>{order.push("new");});
- await Promise.all([first,second]);expect(order).toEqual(["old","new"]);expect(localStorage.getItem("silvae-pending-progress:reader-a")).toBe("{}");
+ await Promise.all([first,second]);expect(order).toEqual(["old","new"]);expect(localStorage.getItem("humite-pending-progress:reader-a")).toBe("{}");
 });
 it("still sends an online position when the local checkpoint exceeds storage quota",async()=>{
  vi.spyOn(localStorage,"setItem").mockImplementation(()=>{throw new DOMException("quota exceeded","QuotaExceededError");});

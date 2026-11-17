@@ -46,7 +46,7 @@ function independentSource(): IndependentReaderSource {
 describe("ReaderWorkspace independent source", () => {
   beforeEach(() => {
     localStorage.clear();
-    sessionStorage.setItem("silvae-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false }));
+    sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false }));
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -354,7 +354,7 @@ describe("ReaderWorkspace independent source", () => {
   });
 
   it("keeps article information and private note actions out of the guest notes drawer", async () => {
-    sessionStorage.removeItem("silvae-demo-session");
+    sessionStorage.removeItem("humite-demo-session");
     const source = independentSource();
     render(<TestProviders><ReaderWorkspace source={source} /></TestProviders>);
     fireEvent.click(await screen.findByRole("button", { name: "选择文章文字" }));

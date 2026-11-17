@@ -1,5 +1,4 @@
 import type { Book } from "../domain/types";
-import { LONG_ROOM_LIVE_SHELF_SECTION_COUNT } from "./virtual-library-model/longRoomLayout";
 
 export interface LibrarySubcategory {
   id: string;
@@ -117,8 +116,6 @@ export const UNCLASSIFIED_CATEGORY: LibraryCategory = {
   subcategories: [{ id: "pending", code: "", label: "待分类", subtitle: "SUBJECT PENDING", keywords: [] }],
 };
 
-export const SHELF_CATEGORIES: readonly LibraryCategory[] = [...LIBRARY_CATEGORIES, UNCLASSIFIED_CATEGORY];
-
 function searchableBookText(book: Pick<Book, "title" | "author" | "series" | "description" | "tags" | "wordCount">) {
   return [book.title, book.author, book.series, book.description, book.wordCount, ...book.tags]
     .filter(Boolean)
@@ -167,50 +164,4 @@ export function classifyCatalogBook(book: Book): CatalogClassification {
     category,
     subcategory: rankedSubcategories[0]?.subcategory ?? category.subcategories[0],
   };
-}
-
-export function sortCatalogBooksByClassification(books: readonly Book[]) {
-  const categoryOrder = new Map(SHELF_CATEGORIES.map((category, index) => [category.id, index]));
-  return books
-    .map((book, originalIndex) => {
-      const classification = classifyCatalogBook(book);
-      return {
-        book,
-        originalIndex,
-        classification,
-        subcategoryScore: keywordScore(searchableBookText(book), classification.subcategory.keywords),
-      };
-    })
-    .sort((left, right) => {
-      const categoryDifference = (categoryOrder.get(left.classification.category.id) ?? 0)
-        - (categoryOrder.get(right.classification.category.id) ?? 0);
-      if (categoryDifference !== 0) return categoryDifference;
-      const leftSubcategory = left.classification.category.subcategories.findIndex(
-        (subcategory) => subcategory.id === left.classification.subcategory.id,
-      );
-      const rightSubcategory = right.classification.category.subcategories.findIndex(
-        (subcategory) => subcategory.id === right.classification.subcategory.id,
-      );
-      return leftSubcategory - rightSubcategory || right.subcategoryScore - left.subcategoryScore || left.originalIndex - right.originalIndex;
-    });
-}
-
-export function defaultCategoryForShelf(sectionId: number) {
-  return LIBRARY_CATEGORIES[Math.abs(sectionId) % LIBRARY_CATEGORIES.length];
-}
-
-// 每个类别保留独立书架，场景使用相同排序顺序。
-/** Reserve separate bookcases per category; the scene consumes the same sorted order. */
-export function longRoomCatalogSectionCounts(books: readonly Book[], maxSections = LONG_ROOM_LIVE_SHELF_SECTION_COUNT) {
-  const counts: number[] = [];
-  let previousCategory = '';
-  for (const {classification} of sortCatalogBooksByClassification(books)) {
-    if (classification.category.id !== previousCategory || counts[counts.length - 1] === 120) counts.push(0);
-    counts[counts.length - 1]++;
-    previousCategory = classification.category.id;
-  }
-  if (counts.length > maxSections) throw new Error(maxSections === LONG_ROOM_LIVE_SHELF_SECTION_COUNT
-    ? 'Long Room catalog category capacity exceeded'
-    : '虚拟书架分区已满，仍可通过搜索直接阅读全部藏书');
-  return counts;
 }

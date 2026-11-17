@@ -9,7 +9,7 @@ import { Button } from "../ui/buttons";
 import { ArrowBackRounded } from "../ui/icons";
 
 export const EmbeddedSettingsContext = createContext(false);
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export const pageWidthSx = {
   width: "100%",

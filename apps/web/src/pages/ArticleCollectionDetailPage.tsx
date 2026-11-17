@@ -18,7 +18,7 @@ import { ArticleCollectionFormDialog } from "../features/article-collections/Art
 import { ArticleCollectionOrganizerDrawer } from "../features/article-collections/ArticleCollectionOrganizerDrawer";
 import { ArticleCollectionPreview } from "../features/article-collections/ArticleCollectionPreview";
 import { articleCollections, type ArticleCollectionDetail } from "../features/article-collections/api";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function ArticleCollectionDetailPage() {
   const { collectionId = "" } = useParams();

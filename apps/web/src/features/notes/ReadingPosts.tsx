@@ -9,7 +9,7 @@ import { BookCatalogEmptyState } from "../../components/BookCatalogEmptyState";
 import { BookCardPresentation } from "../../components/BookCardPresentation";
 import { articleGridSx } from "../../components/bookGrid";
 import { PageBackAction, PageContainer, PageHeader } from "../../components/PageHeader";
-import { tokens } from "../../theme/generated-tokens";
+import { tokens } from "../../theme/tokens";
 import { Skeleton } from "../../ui/antd";
 import { Button } from "../../ui/buttons";
 import { Alert, Chip } from "../../ui/feedback";

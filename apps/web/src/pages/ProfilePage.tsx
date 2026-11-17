@@ -9,7 +9,7 @@ import { FormActions, PageContainer, PageHeader } from "../components/PageHeader
 import { Stack, Typography } from "../ui/primitives";
 import { Button } from "../ui/buttons";
 import { RecoveryEmailPage } from "./RecoveryEmailPage";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 export function ProfilePage() {
   const { user, updateProfile } = useAuth();

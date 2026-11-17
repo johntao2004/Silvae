@@ -1,3 +1,4 @@
+// Stable legacy wire/storage identifiers: changing these would strand existing encrypted books and device keys.
 // 浏览器端信封与分块加密，AAD 绑定用途及对象；依赖安全上下文中的 Web Crypto。
 // Browser envelope/chunk encryption binds purpose and objects through AAD and requires secure-context Web Crypto.
 export const CHUNK_SIZE = 1024 * 1024;

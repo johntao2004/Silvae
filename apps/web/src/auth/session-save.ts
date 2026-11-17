@@ -19,8 +19,25 @@ export async function prepareSessionExit() {
 let persistenceUser: string | null = null;
 let chain: Promise<unknown> = Promise.resolve();
 type Checkpoint = { bookId: string; locator: string; progress: number; revision: string };
-function key(user: string) { return `silvae-pending-progress:${user}`; }
-function read(user: string): Record<string, Checkpoint> { try { return JSON.parse(localStorage.getItem(key(user)) ?? "{}"); } catch { return {}; } }
+function key(user: string) { return `humite-pending-progress:${user}`; }
+function read(user: string): Record<string, Checkpoint> {
+  try {
+    const records: unknown = JSON.parse(localStorage.getItem(key(user)) ?? "{}");
+    if (!records || typeof records !== "object" || Array.isArray(records)) return {};
+    return Object.fromEntries(Object.entries(records).filter(([bookId, value]) => isCheckpoint(value, bookId)));
+  } catch {
+    return {};
+  }
+}
+
+function isCheckpoint(value: unknown, bookId: string): value is Checkpoint {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<Checkpoint>;
+  return entry.bookId === bookId && bookId.length > 0
+    && typeof entry.locator === "string" && entry.locator.length > 0
+    && typeof entry.revision === "string" && entry.revision.length > 0
+    && typeof entry.progress === "number" && Number.isFinite(entry.progress) && entry.progress >= 0 && entry.progress <= 1;
+}
 function write(user: string, records: Record<string, Checkpoint>) {
   try {
     localStorage.setItem(key(user), JSON.stringify(records));

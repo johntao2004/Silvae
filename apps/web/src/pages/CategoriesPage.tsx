@@ -23,7 +23,7 @@ import { CategoryManagementDialog } from "../components/CategoryManagementDialog
 import { PageContainer, PageHeader } from "../components/PageHeader";
 import { bookGridSx } from "../components/bookGrid";
 import { useInfiniteScrollTrigger } from "../hooks/useInfiniteScrollTrigger";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 
 type SortKey = "recent" | "title" | "author";
 

@@ -13,7 +13,7 @@ import { AddToBooklistDialog } from "../components/AddToBooklistDialog";
 import { FileOperationDialog } from "../components/FileOperationDialog";
 import { PageBackAction, PageContainer, PageHeader } from "../components/PageHeader";
 import type { BookMetadata } from "../domain/types";
-import { tokens } from "../theme/generated-tokens";
+import { tokens } from "../theme/tokens";
 import { Skeleton } from "../ui/antd";
 import { Button } from "../ui/buttons";
 import { Alert, Chip, Divider } from "../ui/feedback";
