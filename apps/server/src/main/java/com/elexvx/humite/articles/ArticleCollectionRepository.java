@@ -136,9 +136,15 @@ public class ArticleCollectionRepository {
                 id, ownerId, revision) == 1;
     }
 
-    public void insertRelation(UUID collectionId, UUID articleId, int position) {
-        db.execute("insert into article_collection_articles(collection_id,article_id,position) values (?,?,?)",
-                collectionId, articleId, position);
+    public void insertRelations(UUID collectionId, List<UUID> articleIds, int startPosition) {
+        if (articleIds.isEmpty()) return;
+        Integer[] positions = new Integer[articleIds.size()];
+        for (int index = 0; index < articleIds.size(); index++) positions[index] = startPosition + index;
+        db.execute("""
+                insert into article_collection_articles(collection_id, article_id, position)
+                select ?, item.article_id, item.position
+                  from unnest(?::uuid[], ?::int[]) as item(article_id, position)
+                """, collectionId, articleIds.toArray(UUID[]::new), positions);
     }
 
     public boolean deleteRelation(UUID collectionId, UUID articleId) {
@@ -147,11 +153,59 @@ public class ArticleCollectionRepository {
 
     public void rewriteOrder(UUID collectionId, List<UUID> orderedIds) {
         if (orderedIds.isEmpty()) return;
-        db.execute("update article_collection_articles set position=position+1001 where collection_id=?", collectionId);
-        for (int index = 0; index < orderedIds.size(); index++) {
-            db.execute("update article_collection_articles set position=? where collection_id=? and article_id=?",
-                    index, collectionId, orderedIds.get(index));
+        db.execute("delete from article_collection_articles where collection_id=?", collectionId);
+        insertRelations(collectionId, orderedIds, 0);
+    }
+
+    public java.util.Map<UUID, Integer> countVisibleArticlesByCollection(List<UUID> collectionIds, HumiteUser viewer) {
+        if (collectionIds.isEmpty()) return java.util.Map.of();
+        var rows = db.fetch("""
+                select ca.collection_id, count(*)::int as article_count
+                  from article_collection_articles ca
+                  join article_collections c on c.id = ca.collection_id
+                  join articles a on a.id = ca.article_id
+                 where ca.collection_id = any(?::uuid[])
+                   and (a.visibility = 'PUBLIC'
+                     or (not (c.visibility = 'MEMBERS' and c.owner_id <> ?)
+                         and (a.owner_id = ? or ?)))
+                 group by ca.collection_id
+                """, (Object) collectionIds.toArray(UUID[]::new), viewer.id(), viewer.id(), viewer.canManageFiles());
+        var counts = new java.util.HashMap<UUID, Integer>();
+        for (var row : rows) {
+            counts.put(row.get("collection_id", UUID.class), row.get("article_count", Integer.class));
         }
+        return counts;
+    }
+
+    public java.util.Map<UUID, List<ArticleRow>> previewVisibleArticlesByCollection(List<UUID> collectionIds, HumiteUser viewer, int perCollection) {
+        if (collectionIds.isEmpty() || perCollection <= 0) return java.util.Map.of();
+        var rows = db.fetch("""
+                select ranked.collection_id, ranked.id, ranked.title, ranked.author, ranked.source_url,
+                       ranked.published_at, ranked.visibility, ranked.tags, ranked.cover_url,
+                       ranked.created_at, ranked.updated_at
+                  from (
+                    select ca.collection_id, a.id, a.title, a.author, a.source_url, a.published_at, a.visibility, a.tags,
+                           case when a.cover_asset_id is null then null else '/api/v1/articles/assets/' || a.cover_asset_id::text end as cover_url,
+                           a.created_at, a.updated_at,
+                           row_number() over (partition by ca.collection_id order by ca.position, ca.article_id) as rn
+                      from article_collection_articles ca
+                      join article_collections c on c.id = ca.collection_id
+                      join articles a on a.id = ca.article_id
+                     where ca.collection_id = any(?::uuid[])
+                       and (a.visibility = 'PUBLIC'
+                         or (not (c.visibility = 'MEMBERS' and c.owner_id <> ?)
+                             and (a.owner_id = ? or ?)))
+                  ) ranked
+                 where ranked.rn <= ?
+                 order by ranked.collection_id, ranked.rn
+                """, (Object) collectionIds.toArray(UUID[]::new), viewer.id(), viewer.id(), viewer.canManageFiles(), perCollection);
+        var result = new java.util.HashMap<UUID, ArrayList<ArticleRow>>();
+        for (var row : rows) {
+            UUID collectionId = row.get("collection_id", UUID.class);
+            result.computeIfAbsent(collectionId, ignored -> new ArrayList<>(perCollection)).add(articleRow(row));
+        }
+        return result.entrySet().stream().collect(
+                java.util.stream.Collectors.toUnmodifiableMap(java.util.Map.Entry::getKey, e -> List.copyOf(e.getValue())));
     }
 
     public boolean deleteCollection(UUID id, UUID ownerId, long revision) {

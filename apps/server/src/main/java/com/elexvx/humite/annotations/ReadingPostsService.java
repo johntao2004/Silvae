@@ -42,10 +42,13 @@ public class ReadingPostsService {
         if (kind != Kind.BOOK) articles.mine(user.id(),before.time(),before.id(),31).forEach(row -> items.add(article(row)));
         var sorted=items.stream().sorted(Comparator.comparing((Post post) -> post.createdAt().toInstant()).reversed()
                 .thenComparing(post -> post.id().toString(),Comparator.reverseOrder())).toList();
-        var titles=new HashMap<String,String>();
-        var selected=sorted.stream().limit(30).map(post -> {
-            var key=post.kind()+":"+post.sourceId();
-            var title=titles.computeIfAbsent(key, ignored -> ownedSourceTitle(post.kind(),post.sourceId(),principal));
+        var top=sorted.stream().limit(30).toList();
+        var bookIds=top.stream().filter(p -> p.kind()==Kind.BOOK).map(Post::sourceId).distinct().toList();
+        var articleIds=top.stream().filter(p -> p.kind()==Kind.ARTICLE).map(Post::sourceId).distinct().toList();
+        var bookTitles=catalog.references(bookIds);
+        var articleTitles=articleAccess.references(articleIds,principal);
+        var selected=top.stream().map(post -> {
+            String title=(post.kind()==Kind.BOOK ? bookTitles : articleTitles).getOrDefault(post.sourceId(),"原文不可用");
             return decorate(post,title,false);
         }).toList();
         String next=sorted.size()>30 ? encode(selected.getLast()) : null;

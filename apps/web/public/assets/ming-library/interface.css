@@ -1,4 +1,4 @@
-@import url("/assets/fonts/humite-serif.css");
+@import url("/fonts/humite-serif.css");
     @font-face{font-family:BookCJK;src:url('./assets/BookCJK.woff2') format('woff2');font-weight:100 900;font-display:swap}
     :root{
       --paper:var(--ming-library-paper);--paper-solid:var(--ming-library-paper-solid);--ink:var(--ming-library-ink);--muted:var(--ming-library-muted);--red:var(--ming-library-red);--gold:var(--ming-library-gold);

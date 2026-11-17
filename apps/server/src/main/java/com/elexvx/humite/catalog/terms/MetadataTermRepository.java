@@ -79,9 +79,13 @@ public class MetadataTermRepository {
     public void replaceBookKnowledgeTerms(UUID bookId, List<MetadataTerm> terms) {
         dsl.fetchOne("select id from books where id = ? for update", bookId);
         dsl.execute("delete from book_knowledge_terms where book_id = ?", bookId);
-        for (MetadataTerm term : terms) {
-            dsl.execute("insert into book_knowledge_terms(book_id, term_id) values (?, ?) on conflict do nothing",
-                    bookId, UUID.fromString(term.id()));
+        if (!terms.isEmpty()) {
+            UUID[] termIds = terms.stream().map(term -> UUID.fromString(term.id())).distinct().toArray(UUID[]::new);
+            dsl.execute("""
+                    insert into book_knowledge_terms(book_id, term_id)
+                    select ?, t_id from unnest(?::uuid[]) as t_id
+                    on conflict do nothing
+                    """, bookId, termIds);
         }
     }
 
@@ -94,22 +98,27 @@ public class MetadataTermRepository {
     }
 
     private Optional<MetadataTerm> findEquivalent(MetadataTermKind kind, String key) {
-        return all(kind).stream().filter(term -> termKey(kind, term).equals(key)).findFirst();
-    }
-
-    private List<MetadataTerm> all(MetadataTermKind kind) {
         return switch (kind) {
-            case LANGUAGE -> dsl.fetch("select id, value, label from language_terms order by id")
-                    .map(row -> languageTerm(row.get("id", UUID.class), row.get("value", String.class), row.get("label", String.class)));
-            case KNOWLEDGE -> dsl.fetch("select id, value, label from knowledge_terms order by id")
-                    .map(row -> new MetadataTerm(row.get("id", UUID.class).toString(), kind,
-                            row.get("value", String.class), row.get("label", String.class)));
-            case SERIES -> dsl.fetch("select id, name as value from series order by id")
-                    .map(row -> new MetadataTerm(row.get("id", UUID.class).toString(), kind,
-                            row.get("value", String.class), row.get("value", String.class)));
-            case TAG -> dsl.fetch("select id, name as value from tags order by id")
-                    .map(row -> new MetadataTerm(row.get("id", UUID.class).toString(), kind,
-                            row.get("value", String.class), row.get("value", String.class)));
+            case LANGUAGE -> dsl.fetchOptional("""
+                    select id, value, label from language_terms where normalized_value = ? limit 1
+                    """, key).map(row -> languageTerm(row.get("id", UUID.class),
+                    row.get("value", String.class), row.get("label", String.class)));
+            case KNOWLEDGE -> dsl.fetchOptional("""
+                    select id, value, label from knowledge_terms where normalized_value = ? limit 1
+                    """, key).map(row -> new MetadataTerm(row.get("id", UUID.class).toString(), kind,
+                    row.get("value", String.class), row.get("label", String.class)));
+            case SERIES -> dsl.fetchOptional("""
+                    select id, name as value from series
+                     where lower(btrim(regexp_replace(normalize(name, NFKC), '[[:space:]]+', ' ', 'g'))) = ?
+                     order by id limit 1
+                    """, key).map(row -> new MetadataTerm(row.get("id", UUID.class).toString(), kind,
+                    row.get("value", String.class), row.get("value", String.class)));
+            case TAG -> dsl.fetchOptional("""
+                    select id, name as value from tags
+                     where lower(btrim(regexp_replace(normalize(name, NFKC), '[[:space:]]+', ' ', 'g'))) = ?
+                     order by id limit 1
+                    """, key).map(row -> new MetadataTerm(row.get("id", UUID.class).toString(), kind,
+                    row.get("value", String.class), row.get("value", String.class)));
         };
     }
 

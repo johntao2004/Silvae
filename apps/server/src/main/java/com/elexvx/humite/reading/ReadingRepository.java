@@ -26,9 +26,23 @@ public class ReadingRepository {
 
     public Optional<ReadingPosition> find(UUID userId, UUID bookId) {
         return dsl.fetchOptional("select * from reading_positions where user_id = ? and book_id = ?", userId, bookId)
-                .map(record -> new ReadingPosition(bookId, record.get("locator", String.class),
-                        record.get("progress", BigDecimal.class), record.get("device_id", String.class),
-                        record.get("updated_at", OffsetDateTime.class)));
+                .map(record -> mapPosition(bookId, record));
+    }
+
+    public Map<UUID, ReadingPosition> findAll(UUID userId, List<UUID> bookIds) {
+        if (bookIds.isEmpty()) return Map.of();
+        List<UUID> distinct = bookIds.stream().distinct().toList();
+        return dsl.fetch("select * from reading_positions where user_id = ? and book_id = any(?::uuid[])",
+                        userId, distinct.toArray(UUID[]::new)).stream()
+                .collect(Collectors.toMap(
+                        record -> record.get("book_id", UUID.class),
+                        record -> mapPosition(record.get("book_id", UUID.class), record)));
+    }
+
+    private ReadingPosition mapPosition(UUID bookId, org.jooq.Record record) {
+        return new ReadingPosition(bookId, record.get("locator", String.class),
+                record.get("progress", BigDecimal.class), record.get("device_id", String.class),
+                record.get("updated_at", OffsetDateTime.class));
     }
 
     // 同一用户同一本书采用最后写入位置；deviceId 是来源信息，不是版本冲突锁。

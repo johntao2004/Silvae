@@ -31,7 +31,7 @@ class ContentStorageIsolationTest {
         assertThat(scanner.scanAll().failed()).isEqualTo(1);
         verifyNoInteractions(catalog, fingerprints, inspector, metadata);
         verify(roots, never()).recordScan(any());
-        new LibraryRootCapabilityService(roots, properties, content).check(root);
+        new LibraryRootCapabilityService(roots, content).check(root);
         verify(roots).updateCapabilities(root.id(), null, LibraryRoot.RootStatus.OFFLINE, false, false, false, false, null);
         assertThat(Files.exists(vault.resolve(".humite-staging"))).isFalse();
     }

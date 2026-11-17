@@ -467,7 +467,6 @@ public class MetadataEnrichmentService {
     }
 
     private String text(JsonNode node, String field) { return node.hasNonNull(field) && !node.get(field).asText().isBlank() ? node.get(field).asText() : null; }
-    private String integerText(JsonNode node, String field) { return node.has(field) && node.get(field).isNumber() ? node.get(field).asText() : null; }
     private List<String> strings(JsonNode node) {
         if (node == null || !node.isArray()) return List.of();
         List<String> values = new ArrayList<>();

@@ -1,5 +1,5 @@
 import { FeedbackBubble } from "./notifications";
-import type { CSSProperties, ElementType, HTMLAttributes, ReactElement, ReactNode } from "react";
+import type { CSSProperties, ElementType, ReactElement, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   Children,
@@ -499,14 +499,22 @@ function Overlay({ open, onClose, anchorEl, anchorPosition, children, sx, role =
       top = Math.max(oy + gap, Math.min(top, oy + height - box.height - gap));
       setPosition(old => old.top === top && old.left === left ? old : { top, left });
     };
+    let animationFrame = 0;
+    const scheduleUpdate = () => {
+      if (animationFrame) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = 0;
+        update();
+      });
+    };
     update();
-    const observer = new ResizeObserver(update);
+    const observer = new ResizeObserver(scheduleUpdate);
     observer.observe(overlay);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
-    window.visualViewport?.addEventListener("resize", update);
-    window.visualViewport?.addEventListener("scroll", update);
-    return () => { observer.disconnect(); window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); window.visualViewport?.removeEventListener("resize", update); window.visualViewport?.removeEventListener("scroll", update); };
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
+    window.visualViewport?.addEventListener("resize", scheduleUpdate);
+    window.visualViewport?.addEventListener("scroll", scheduleUpdate);
+    return () => { window.cancelAnimationFrame(animationFrame); observer.disconnect(); window.removeEventListener("resize", scheduleUpdate); window.removeEventListener("scroll", scheduleUpdate, true); window.visualViewport?.removeEventListener("resize", scheduleUpdate); window.visualViewport?.removeEventListener("scroll", scheduleUpdate); };
   }, [open, anchorEl, anchorPosition?.top, anchorPosition?.left, anchorOrigin?.horizontal, anchorOrigin?.vertical, transformOrigin?.horizontal, transformOrigin?.vertical]);
   if (!open || typeof document === "undefined") return null;
   const viewportWidth = "var(--app-viewport-width, 100vw)";
@@ -541,20 +549,6 @@ export function Breadcrumbs({ children, separator = "/", sx, className, ...props
 
 export function Link({ component: Component = "a", sx, className, children, ...props }: BoxProps & { underline?: string; color?: string }) {
   return createElement(Component, { ...props, className: mergeClassNames("bk-link", sxClassName(sx, useTheme()), className) }, children);
-}
-
-export function TableContainer({ sx, className, children, ...props }: BoxProps) {
-  return <div {...props} className={mergeClassNames("bk-table-container", sxClassName(sx, useTheme()), className)}>{children}</div>;
-}
-export function Table({ sx, className, children, ...props }: HTMLAttributes<HTMLTableElement> & { sx?: SxProps }) { return <table {...props} className={mergeClassNames("bk-table", sxClassName(sx, useTheme()), className)}>{children}</table>; }
-const TableSectionContext = createContext<"head" | "body">("body");
-export function TableHead({ children, ...props }: HTMLAttributes<HTMLTableSectionElement>) { return <TableSectionContext.Provider value="head"><thead {...props}>{children}</thead></TableSectionContext.Provider>; }
-export function TableBody({ children, ...props }: HTMLAttributes<HTMLTableSectionElement>) { return <TableSectionContext.Provider value="body"><tbody {...props}>{children}</tbody></TableSectionContext.Provider>; }
-export function TableRow({ sx, className, children, hover: _hover, ...props }: HTMLAttributes<HTMLTableRowElement> & { sx?: SxProps; hover?: boolean }) { return <tr {...props} className={mergeClassNames(sxClassName(sx, useTheme()), className)}>{children}</tr>; }
-export function TableCell({ sx, className, children, align, component, ...props }: BoxProps & { sx?: SxProps; align?: "left" | "center" | "right"; component?: ElementType }) {
-  const section = useContext(TableSectionContext);
-  const Cell = component ?? (section === "head" ? "th" : "td");
-  return createElement(Cell, { ...props, align, className: mergeClassNames(sxClassName(sx, useTheme()), className) }, children);
 }
 
 

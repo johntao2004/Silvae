@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Link } from 'react-router-dom';
 import { TestProviders } from '../test/TestProviders';
-import { Button, IconButton } from './index';
+import { Button, IconButton } from './buttons';
 import { AddRounded, ArrowForwardRounded, SearchRounded } from './icons';
 import { _AntButton, TableAction } from './antd';
 

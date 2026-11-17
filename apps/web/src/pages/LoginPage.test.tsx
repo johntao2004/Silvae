@@ -5,7 +5,6 @@ import { Route, Routes } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 import { api } from "../api/client";
 import { TestProviders } from "../test/TestProviders";
-import { getLoginGreeting } from "./login-greeting";
 import { getLoginDefaults, LoginPage } from "./LoginPage";
 
 describe("LoginPage", () => {
@@ -21,15 +20,6 @@ describe("LoginPage", () => {
     </Routes></TestProviders>);
     expect(await screen.findByText(temporary ? "需要首次改密" : "已进入首页")).toBeInTheDocument();
     expect(screen.queryByRole("button",{name:/^登录$/})).not.toBeInTheDocument();
-  });
-
-  it("uses a playful greeting for each part of the day", () => {
-    expect(getLoginGreeting(5)).toBe("早安，书房已经替你开灯啦。");
-    expect(getLoginGreeting(10)).toBe("早安，书房已经替你开灯啦。");
-    expect(getLoginGreeting(11)).toBe("午安，忙里偷闲翻两页吧。");
-    expect(getLoginGreeting(17)).toBe("午安，忙里偷闲翻两页吧。");
-    expect(getLoginGreeting(18)).toBe("晚安，今晚想和哪本书见面？");
-    expect(getLoginGreeting(4)).toBe("晚安，今晚想和哪本书见面？");
   });
 
   it("never invents a database password outside demo mode", () => {

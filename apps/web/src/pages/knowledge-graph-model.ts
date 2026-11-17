@@ -15,6 +15,7 @@ export const knowledgeKey = (name: string) => name.normalize('NFKC').trim().repl
 /** Every node has source-text evidence. Edges mean co-occurrence in a book, not inferred causality. */
 export function buildKnowledgeGraph(knowledge: BookKnowledge[], bookIds: Set<string>): KnowledgeGraphData {
   const nodes = new Map<string, KnowledgeNode>();
+  const bookSets = new Map<string, Set<string>>();
   const edges = new Map<string, { source: string; target: string; data: { count: number } }>();
   for (const item of knowledge) {
     if (!bookIds.has(item.bookId)) continue;
@@ -22,18 +23,30 @@ export function buildKnowledgeGraph(knowledge: BookKnowledge[], bookIds: Set<str
     for (const point of item.points) {
       const id = knowledgeKey(point.name);
       if (!id || !point.quote || !point.locator) continue;
-      const node = nodes.get(id) ?? { id, data: { label: point.name, bookIds: [], count: 0 } };
-      if (!node.data.bookIds.includes(item.bookId)) node.data.bookIds.push(item.bookId);
-      node.data.count = node.data.bookIds.length;
-      nodes.set(id, node);
+      let node = nodes.get(id);
+      let nodeBooks = bookSets.get(id);
+      if (!node || !nodeBooks) {
+        nodeBooks = new Set<string>();
+        node = { id, data: { label: point.name, bookIds: [], count: 0 } };
+        nodes.set(id, node);
+        bookSets.set(id, nodeBooks);
+      }
+      if (!nodeBooks.has(item.bookId)) {
+        nodeBooks.add(item.bookId);
+        node.data.bookIds.push(item.bookId);
+        node.data.count = nodeBooks.size;
+      }
       ids.add(id);
     }
     const sorted = [...ids].sort();
     for (let i = 0; i < sorted.length; i++) for (let j = i + 1; j < sorted.length; j++) {
-      const key = JSON.stringify([sorted[i], sorted[j]]);
-      const edge = edges.get(key) ?? { source: sorted[i], target: sorted[j], data: { count: 0 } };
+      const key = `${sorted[i]}\0${sorted[j]}`;
+      let edge = edges.get(key);
+      if (!edge) {
+        edge = { source: sorted[i], target: sorted[j], data: { count: 0 } };
+        edges.set(key, edge);
+      }
       edge.data.count++;
-      edges.set(key, edge);
     }
   }
   return { nodes: [...nodes.values()].sort((a, b) => b.data.count - a.data.count || a.id.localeCompare(b.id)), edges: [...edges.values()] };

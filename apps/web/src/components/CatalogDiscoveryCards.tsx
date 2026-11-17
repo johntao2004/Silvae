@@ -13,7 +13,7 @@ import { Chip } from "@/ui/feedback";
 import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import { Link } from "react-router-dom";
-import type { BooklistSummary, BooklistVisibility, BrowseBook, CategorySummary } from "../domain/types";
+import type { BooklistSummary, BooklistVisibility, BrowseBook } from "../domain/types";
 import { tokens } from "../theme/tokens";
 
 export function CoverMosaic({ books, label, compact = false }: { books: BrowseBook[]; label: string; compact?: boolean }) {
@@ -67,29 +67,6 @@ export function CoverMosaic({ books, label, compact = false }: { books: BrowseBo
         </Stack>
       )}
     </Box>
-  );
-}
-
-export function CategoryCard({ category }: { category: CategorySummary }) {
-  return (
-    <Card sx={{ bgcolor: "transparent", overflow: "visible" }}>
-      <CardActionArea
-        component={Link}
-        to={`/categories/${category.id}`}
-        sx={{ display: "block", borderRadius: `${tokens.radius.xl}px`, textAlign: "left", "&:hover": { opacity: 1 } }}
-      >
-        <CoverMosaic books={category.previewBooks} label={`${category.name}分类封面`} compact />
-        <Stack sx={{ pt: `${tokens.spacing[4]}px`, gap: `${tokens.spacing[1]}px` }}>
-          <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "baseline", gap: `${tokens.spacing[3]}px` }}>
-            <Typography variant="h4" component="h2">{category.name}</Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>{category.bookCount} 本</Typography>
-          </Stack>
-          <Typography color="text.secondary" sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", height: `${tokens.typography.lineHeight.body * 2}em`, lineHeight: tokens.typography.lineHeight.body }}>
-            {category.description || "等待馆藏慢慢填满这个分类。"}
-          </Typography>
-        </Stack>
-      </CardActionArea>
-    </Card>
   );
 }
 

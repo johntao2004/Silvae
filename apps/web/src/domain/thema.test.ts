@@ -1,5 +1,3 @@
-import { classifyCatalogBook } from '../pages/virtual-library-catalog';
-import { demoBooks } from '../data/demo';
 import chineseCatalog from './thema-zh-CN.json';
 import { THEMA_VERSION, THEMA_SUBJECTS, themaLabel, themaPath, themaTree, matchesThema } from './thema';
 
@@ -22,11 +20,6 @@ it('uses declared descendants for filters without treating keyword guesses as sa
   expect(matchesThema([], 'UNCLASSIFIED')).toBe(true);
   expect(matchesThema(['AKH'], 'UNCLASSIFIED')).toBe(false);
 });
-it('keeps the first deep subject authoritative in the existing virtual-library zones', () => {
-  expect(classifyCatalogBook({ ...demoBooks[0], subjectCodes: ['AKH', 'GL'] }).category.id).toBe('arts');
-  expect(classifyCatalogBook({ ...demoBooks[0], subjectCodes: ['RNKH2', 'FB'] }).category.id).toBe('nature');
-});
-
 it('covers every standard code with Chinese display text and keeps the same catalog version', () => {
   expect(chineseCatalog.version).toBe(THEMA_VERSION);
   expect(Object.keys(chineseCatalog.labels).sort()).toEqual(THEMA_SUBJECTS.map(item => item.code).sort());

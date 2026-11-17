@@ -32,13 +32,6 @@ public class FileVersionRepository {
         return dsl.fetchOptional("select * from file_versions where id = ?", id).map(this::map);
     }
 
-    public List<FileVersion> listForBook(UUID bookId) {
-        return dsl.fetch("""
-                select v.* from file_versions v join book_files bf on bf.id = v.book_file_id
-                 where bf.book_id = ? order by v.created_at desc
-                """, bookId).map(this::map);
-    }
-
     public List<FileVersion> listForFile(UUID bookFileId) {
         return dsl.fetch("""
                 select * from file_versions

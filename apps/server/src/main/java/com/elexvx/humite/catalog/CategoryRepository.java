@@ -40,7 +40,8 @@ public class CategoryRepository {
                          group by c.id, c.name, c.description, c.sort_order
                          order by c.sort_order, c.id
                         """, normalized, normalized, normalized);
-        return new CategoryList(records.stream().map(record -> summary(record, publicOnly, editable)).toList(), editable);
+        var previews = previewMap(records.stream().map(record -> record.get("id", UUID.class)).toList(), publicOnly);
+        return new CategoryList(records.stream().map(record -> summary(record, editable, previews)).toList(), editable);
     }
 
     public CategoryDetail find(UUID categoryId, boolean publicOnly, boolean editable) {
@@ -133,8 +134,15 @@ public class CategoryRepository {
                 || !new HashSet<>(current).equals(new HashSet<>(categoryIds))) {
             throw ApiException.conflict("CATEGORY_SET_CHANGED", "分类列表已经变化，请刷新后重试。");
         }
-        for (int index = 0; index < categoryIds.size(); index++) {
-            dsl.execute("update categories set sort_order = ?, updated_at = now() where id = ?", index + 1L, categoryIds.get(index));
+        if (!categoryIds.isEmpty()) {
+            Long[] orders = new Long[categoryIds.size()];
+            for (int index = 0; index < categoryIds.size(); index++) orders[index] = index + 1L;
+            dsl.execute("""
+                    update categories c
+                       set sort_order = ord.sort_order, updated_at = now()
+                      from unnest(?::uuid[], ?::bigint[]) as ord(id, sort_order)
+                     where c.id = ord.id
+                    """, categoryIds.toArray(UUID[]::new), orders);
         }
         return list(null, false, true);
     }
@@ -145,7 +153,8 @@ public class CategoryRepository {
                   from categories c join book_categories bc on bc.category_id = c.id
                  where bc.book_id = ? order by c.sort_order, c.id
                 """, bookId);
-        return new CategoryList(records.stream().map(record -> summary(record, false, editable)).toList(), editable);
+        var previews = previewMap(records.stream().map(record -> record.get("id", UUID.class)).toList(), false);
+        return new CategoryList(records.stream().map(record -> summary(record, editable, previews)).toList(), editable);
     }
 
     @Transactional
@@ -163,17 +172,20 @@ public class CategoryRepository {
             }
         }
         dsl.execute("delete from book_categories where book_id = ?", bookId);
-        for (UUID categoryId : distinct) {
-            dsl.execute("insert into book_categories(book_id, category_id, created_by) values (?, ?, ?)",
-                    bookId, categoryId, actorId);
+        if (!distinct.isEmpty()) {
+            dsl.execute("""
+                    insert into book_categories(book_id, category_id, created_by)
+                    select ?, cat_id, ? from unnest(?::uuid[]) as cat_id
+                    """, bookId, actorId, distinct.toArray(UUID[]::new));
         }
         return assignedToBook(bookId, true);
     }
 
-    private CategorySummary summary(Record record, boolean publicOnly, boolean editable) {
+    private CategorySummary summary(Record record, boolean editable,
+                                    java.util.Map<UUID, List<BrowseBook>> previews) {
         UUID id = record.get("id", UUID.class);
         return new CategorySummary(id.toString(), record.get("name", String.class), record.get("description", String.class),
-                record.get("book_count", Long.class), preview(id, publicOnly), editable);
+                record.get("book_count", Long.class), previews.getOrDefault(id, List.of()), editable);
     }
 
     private CategoryDetail detail(Record record, boolean publicOnly, boolean editable) {
@@ -182,23 +194,41 @@ public class CategoryRepository {
                 record.get("book_count", Long.class), preview(id, publicOnly), editable);
     }
 
-    private List<BrowseBook> preview(UUID categoryId, boolean publicOnly) {
+    private java.util.Map<UUID, List<BrowseBook>> previewMap(List<UUID> categoryIds, boolean publicOnly) {
+        if (categoryIds.isEmpty()) return java.util.Map.of();
         String publicJoin = publicOnly
                 ? " join display_catalog_entries de on de.catalog_id = 1 and de.book_id = b.id "
                 : "";
         var records = dsl.fetch("""
-                select b.id as book_id, b.title, b.primary_author, b.description, b.created_at, b.updated_at,
-                       bf.format, bf.status
-                  from book_categories bc join books b on b.id = bc.book_id
-                """ + publicJoin + """
-                  left join lateral (
-                    select f.format, f.status from book_files f where f.book_id = b.id
-                     order by case f.status when 'AVAILABLE' then 0 when 'TRASHED' then 1 else 2 end,
-                              case f.format when 'EPUB' then 0 else 1 end, f.id limit 1
-                  ) bf on true
-                 where bc.category_id = ? order by b.created_at desc, b.id desc limit 3
-                """, categoryId);
-        return records.map(record -> mapBook(record, publicOnly));
+                select ranked.category_id, ranked.book_id, ranked.title, ranked.primary_author, ranked.description,
+                       ranked.created_at, ranked.updated_at, ranked.format, ranked.status
+                  from (
+                    select bc.category_id, b.id as book_id, b.title, b.primary_author, b.description,
+                           b.created_at, b.updated_at, bf.format, bf.status,
+                           row_number() over (partition by bc.category_id order by b.created_at desc, b.id desc) as rn
+                      from book_categories bc join books b on b.id = bc.book_id
+                    """ + publicJoin + """
+                      left join lateral (
+                        select f.format, f.status from book_files f where f.book_id = b.id
+                         order by case f.status when 'AVAILABLE' then 0 when 'TRASHED' then 1 else 2 end,
+                                  case f.format when 'EPUB' then 0 else 1 end, f.id limit 1
+                      ) bf on true
+                     where bc.category_id = any(?::uuid[])
+                  ) ranked
+                 where ranked.rn <= 3
+                 order by ranked.category_id, ranked.rn
+                """, (Object) categoryIds.toArray(UUID[]::new));
+        var result = new java.util.HashMap<UUID, java.util.ArrayList<BrowseBook>>();
+        for (Record record : records) {
+            UUID categoryId = record.get("category_id", UUID.class);
+            result.computeIfAbsent(categoryId, ignored -> new java.util.ArrayList<>(3)).add(mapBook(record, publicOnly));
+        }
+        return result.entrySet().stream().collect(
+                java.util.stream.Collectors.toUnmodifiableMap(java.util.Map.Entry::getKey, e -> List.copyOf(e.getValue())));
+    }
+
+    private List<BrowseBook> preview(UUID categoryId, boolean publicOnly) {
+        return previewMap(List.of(categoryId), publicOnly).getOrDefault(categoryId, List.of());
     }
 
     private BrowseBook mapBook(Record record, boolean publicOnly) {

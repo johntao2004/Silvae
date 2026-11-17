@@ -25,15 +25,19 @@ import org.springframework.transaction.annotation.Transactional;
 public class ArticleService {
     static final int MAX_CAPTURE_HTML_BYTES = 8 * 1024 * 1024;
     private static final java.util.regex.Pattern INTERNAL_ASSET_URL=java.util.regex.Pattern.compile("^/api/v1/articles/assets/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$");
+    private static final java.util.regex.Pattern SAFE_CSS_RULE=java.util.regex.Pattern.compile("(?i)(text-align\\s*:\\s*(left|right|center|justify)|font-weight\\s*:\\s*(bold|normal|[1-9]00)|font-style\\s*:\\s*(italic|normal)|text-decoration\\s*:\\s*(underline|line-through)|white-space\\s*:\\s*(pre-wrap|normal))");
+    private static final java.util.regex.Pattern SAFE_DATA_IMAGE_MIME=java.util.regex.Pattern.compile("(?i)image/(?:jpeg|png|webp)");
+    private static final Set<String> PARAGRAPH_ID_TAGS=Set.of("p","h1","h2","h3","h4","li","blockquote","pre","figure");
+    private static final Safelist SAFE_HTML=Safelist.relaxed().addTags("section","figure","figcaption","mark").addAttributes(":all","style","id").preserveRelativeLinks(true);
     private static final int MAX_COVER_BYTES = 5 * 1024 * 1024;
     private final java.util.concurrent.ConcurrentHashMap<UUID,Long> fetchTimes=new java.util.concurrent.ConcurrentHashMap<>();
     private final DSLContext db; private final UserRepository users; private final PublicWebFetcher web;
-    private final PrivateContentStore files; private final AiMetadataService ai; private final ObjectMapper json;
+    private final PrivateContentStore files; private final ObjectMapper json;
     private final RolePermissionService permissions;
     @org.springframework.beans.factory.annotation.Autowired
     public ArticleService(DSLContext db, UserRepository users, PublicWebFetcher web, PrivateContentStore files,
                           AiMetadataService ai, ObjectMapper json, RolePermissionService permissions) {
-        this.db=db;this.users=users;this.web=web;this.files=files;this.ai=ai;this.json=json;this.permissions=permissions;
+        this.db=db;this.users=users;this.web=web;this.files=files;this.json=json;this.permissions=permissions;
     }
     public ArticleService(DSLContext db, UserRepository users, PublicWebFetcher web, PrivateContentStore files, AiMetadataService ai, ObjectMapper json) {
         this(db,users,web,files,ai,json,null);
@@ -87,6 +91,23 @@ public class ArticleService {
                 id, user.id(), user.canManageFiles());
         if (row == null) throw ApiException.notFound("ARTICLE_NOT_FOUND", "文章不存在或无权访问。");
         return new ArticleReference(row.get("id", UUID.class), row.get("title", String.class));
+    }
+    public Map<UUID, String> references(List<UUID> ids, Principal principal) {
+        if (ids.isEmpty()) return Map.of();
+        var user = actor(principal);
+        List<UUID> distinct = ids.stream().distinct().toList();
+        return db.fetch("select id,title from articles where id = any(?::uuid[]) and (visibility='PUBLIC' or owner_id=? or ?)",
+                        distinct.toArray(UUID[]::new), user.id(), user.canManageFiles()).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> row.get("id", UUID.class),
+                        row -> row.get("title", String.class)));
+    }
+    private HumiteUser requireAccessible(UUID id, Principal principal) {
+        var user = actor(principal);
+        var exists = db.fetchExists(db.selectOne().from("articles").where("id=? and (visibility='PUBLIC' or owner_id=? or ?)",
+                id, user.id(), user.canManageFiles()));
+        if (!exists) throw ApiException.notFound("ARTICLE_NOT_FOUND", "文章不存在或无权访问。");
+        return user;
     }
     public record ArticleReference(UUID id, String title) {}
     public record Draft(@NotBlank @Size(max=300) String title,@NotNull @Size(max=300) String author,@NotNull @Size(max=4096) String sourceUrl,@NotNull @Size(max=100) String publishedAt,@NotNull String visibility,@NotNull @Size(max=1000) String tags,@NotNull @Size(max=30000000) String html,@Size(max=8000000) String coverUrl) {}
@@ -143,19 +164,18 @@ public class ArticleService {
         }
     }
     public static String sanitize(String html) {
-        var safe=Safelist.relaxed().addTags("section","figure","figcaption","mark").addAttributes(":all","style","id");
-        var doc=Jsoup.parseBodyFragment(Jsoup.clean(html,"https://humite.invalid",safe.preserveRelativeLinks(true)));
+        var doc=Jsoup.parseBodyFragment(Jsoup.clean(html,"https://humite.invalid",SAFE_HTML));
         for(var node:new ArrayList<>(doc.body().childNodes()))if(node instanceof org.jsoup.nodes.TextNode text && !text.isBlank())text.wrap("<p></p>");
         int i=0;
         for(var el:doc.body().getAllElements()) {
             StringBuilder style=new StringBuilder();
             for(String rule:el.attr("style").split(";")) {
                 String value=rule.trim();
-                if(value.matches("(?i)(text-align\\s*:\\s*(left|right|center|justify)|font-weight\\s*:\\s*(bold|normal|[1-9]00)|font-style\\s*:\\s*(italic|normal)|text-decoration\\s*:\\s*(underline|line-through)|white-space\\s*:\\s*(pre-wrap|normal))"))style.append(value).append(';');
+                if(SAFE_CSS_RULE.matcher(value).matches())style.append(value).append(';');
             }
             el.removeAttr("style");if(!style.isEmpty())el.attr("style",style.toString());
             el.removeAttr("id");
-            if(Set.of("p","h1","h2","h3","h4","li","blockquote","pre","figure").contains(el.tagName()))el.attr("id","p-"+(++i));
+            if(PARAGRAPH_ID_TAGS.contains(el.tagName()))el.attr("id","p-"+(++i));
             if(el.tagName().equals("a"))el.attr("rel","noreferrer noopener").attr("target","_blank");
         }
         return doc.body().html();
@@ -179,8 +199,9 @@ public class ArticleService {
                 }
                 String src=image.hasAttr("data-src")?image.attr("data-src"):image.attr("src");
                 String alt=image.attr("alt");
-                if(src.matches("/api/v1/articles/assets/[0-9a-f-]{36}")) {
-                    UUID id=UUID.fromString(src.substring(src.lastIndexOf('/')+1));
+                var assetMatch=INTERNAL_ASSET_URL.matcher(src);
+                if(assetMatch.matches()) {
+                    UUID id=UUID.fromString(assetMatch.group(1));
                     this.image(id,principal);
                 } else {
                     byte[] bytes;
@@ -288,7 +309,7 @@ public class ArticleService {
             throw ApiException.badRequest("COVER_INVALID","封面必须是图片或已授权的文章图片资源。");
         if(coverUrl.length()>8_000_000)throw ApiException.badRequest("COVER_INVALID","封面图片过大或格式无效。");
         String mediaType=coverUrl.substring("data:".length(),coverUrl.indexOf(';'));
-        if(!mediaType.matches("(?i)image/(?:jpeg|png|webp)"))throw ApiException.badRequest("COVER_INVALID","请选择 JPEG、PNG 或 WebP 封面。");
+        if(!SAFE_DATA_IMAGE_MIME.matcher(mediaType).matches())throw ApiException.badRequest("COVER_INVALID","请选择 JPEG、PNG 或 WebP 封面。");
         try {
             byte[] bytes=Base64.getDecoder().decode(coverUrl.substring(coverUrl.indexOf(',')+1));
             return asset(bytes,principal);
@@ -296,7 +317,7 @@ public class ArticleService {
             throw ApiException.badRequest("COVER_INVALID","封面图片无法读取或格式不受支持。");
         }
     }
-    @Transactional public void delete(UUID id,Principal p){manager(p);get(id,p);db.execute("delete from articles where id=?",id);}
+    @Transactional public void delete(UUID id,Principal p){manager(p);requireAccessible(id,p);db.execute("delete from articles where id=?",id);}
     public Map<String,Object> reading(UUID id,Principal p) {
         get(id,p);var row=db.fetchOne("select state::text,revision from article_reading where article_id=? and user_id=?",id,actor(p).id());
         return row==null?Map.of("state","{}","revision",0):row.intoMap();

@@ -248,15 +248,5 @@ public class EpubMetadataWriter {
         found.setAttribute("content", value);
     }
 
-    private void removeMeta(Element metadata, String name) {
-        var nodes = metadata.getElementsByTagNameNS("*", "meta");
-        List<Element> toRemove = new ArrayList<>();
-        for (int index = 0; index < nodes.getLength(); index++) {
-            Element candidate = (Element) nodes.item(index);
-            if (name.equals(candidate.getAttribute("name"))) toRemove.add(candidate);
-        }
-        toRemove.forEach(metadata::removeChild);
-    }
-
     private record CoverReplacement(String entryName, byte[] bytes) {}
 }

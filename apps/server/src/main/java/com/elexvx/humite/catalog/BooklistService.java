@@ -80,8 +80,8 @@ public class BooklistService {
         if (distinct.size() != bookIds.size()) {
             throw ApiException.conflict("DUPLICATE_BOOKLIST_BOOK", "同一本书不能重复加入书单。");
         }
-        for (UUID bookId : distinct) {
-            if (!books.exists(bookId)) throw ApiException.notFound("BOOK_NOT_FOUND", "部分书籍已不存在，请刷新后重试。");
+        if (!books.allExist(distinct)) {
+            throw ApiException.notFound("BOOK_NOT_FOUND", "部分书籍已不存在，请刷新后重试。");
         }
         if (current.visibility() == BooklistVisibility.PUBLIC) {
             ensurePublic(booklists.nonPublicBookTitles(distinct));

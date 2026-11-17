@@ -47,10 +47,19 @@ public class ArticleCollectionService {
         String query = q == null || q.isBlank() ? null : q.trim();
         if (query != null && query.length() > 200)
             throw ApiException.badRequest("COLLECTION_QUERY_TOO_LONG", "选集搜索词不能超过 200 个字符。");
-        var items = new ArrayList<Summary>();
-        for (var row : collections.findReadableCollections(viewer, query)) {
-            var articles = visibleArticles(row, viewer);
-            items.add(summary(row, viewer, articles));
+        var rows = collections.findReadableCollections(viewer, query);
+        var collectionIds = rows.stream().map(ArticleCollectionRepository.CollectionRow::id).toList();
+        var counts = collections.countVisibleArticlesByCollection(collectionIds, viewer);
+        var previews = collections.previewVisibleArticlesByCollection(collectionIds, viewer, MAX_PREVIEW_ARTICLES);
+        var items = new ArrayList<Summary>(rows.size());
+        for (var row : rows) {
+            int count = counts.getOrDefault(row.id(), 0);
+            if (count > MAX_ARTICLES) throw tooManyArticles();
+            var preview = previews.getOrDefault(row.id(), List.of()).stream()
+                    .map(ArticleCollectionService::articleView).toList();
+            boolean owned = row.ownerId().equals(viewer.id());
+            items.add(new Summary(row.id(), row.title(), row.description(), row.visibility(), row.ownerDisplayName(),
+                    owned, owned, count, preview, row.revision(), row.createdAt(), row.updatedAt()));
         }
         return new ListResponse(List.copyOf(items));
     }
@@ -116,8 +125,9 @@ public class ArticleCollectionService {
         if (related.size() > MAX_ARTICLES) throw tooManyArticles();
         if (requested.size() != articleIds.size())
             throw ApiException.conflict("DUPLICATE_ARTICLE_ID", "请求中包含重复文章，请刷新选集后重试。");
+        var relatedIds = new HashSet<>(related);
         for (UUID articleId : requested) {
-            if (related.contains(articleId))
+            if (relatedIds.contains(articleId))
                 throw ApiException.conflict("ARTICLE_ALREADY_IN_COLLECTION", "文章已在选集中，请刷新后重试。");
         }
         var additions = List.copyOf(requested);
@@ -133,8 +143,7 @@ public class ArticleCollectionService {
 
         if (!collections.bumpRevision(row.id(), viewer.id(), revision)) throw revisionConflict();
         collections.rewriteOrder(row.id(), related);
-        int position = related.size();
-        for (UUID articleId : additions) collections.insertRelation(row.id(), articleId, position++);
+        collections.insertRelations(row.id(), additions, related.size());
         return detailById(row.id(), viewer);
     }
 

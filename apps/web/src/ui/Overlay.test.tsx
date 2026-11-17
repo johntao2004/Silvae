@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { TestProviders } from "../test/TestProviders";
-import { Menu, MenuItem } from "./index";
+import { Menu, MenuItem } from "./primitives";
 
 afterEach(() => {
   vi.restoreAllMocks();

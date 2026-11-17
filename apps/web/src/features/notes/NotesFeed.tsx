@@ -30,15 +30,30 @@ export function NotesFeed({ kind }: { kind: PostFilter }) {
   const articles = useQuery({ queryKey: ["article-notes", user?.id], queryFn: articleNotesApi.list, enabled: Boolean(user) && kind !== "BOOK" });
   const posts = usePostCollection("ALL", kind === "ALL");
   const catalog = useQuery({ queryKey: ["post-source-articles", user?.id], queryFn: articleCatalog.list, enabled: Boolean(user) && kind !== "BOOK" });
-  const articleTags = new Map((catalog.data ?? []).map(article => [article.id, article.tags.split(/[,，、;；\n]/u).map(value => value.trim()).filter(Boolean)]));
-  const tags = [...new Set([...articleTags.values()].flat())].sort();
+  const articleTags = useMemo(
+    () => new Map((catalog.data ?? []).map(article => [article.id, article.tags.split(/[,，、;；\n]/u).map(value => value.trim()).filter(Boolean)])),
+    [catalog.data],
+  );
+  const tags = useMemo(() => [...new Set([...articleTags.values()].flat())].sort(), [articleTags]);
   const notes = useMemo(() => collectNotes(kind !== "ARTICLE" ? books.data ?? [] : [], kind !== "BOOK" ? articles.data ?? [] : []), [books.data, articles.data, kind]);
-  const allPosts = kind === "ALL" ? posts.data?.pages.flatMap(page => page.items) ?? [] : [];
-  const sources = [...new Map([...notes, ...allPosts].map(item => [`${item.kind}:${item.sourceId}`, { title: item.sourceTitle, kind: item.kind }])).entries()];
-  const matches = (text: string) => text.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
-  const filtered = notes.filter(note => (source === "ALL" || source === `${note.kind}:${note.sourceId}`) && (tag === "ALL" || (note.kind === "ARTICLE" && articleTags.get(note.sourceId)?.includes(tag))) && matches(`${note.sourceTitle} ${note.author} ${note.quote} ${note.note}`))
-    .sort((a, b) => sort === "oldest" ? a.updatedAt.localeCompare(b.updatedAt) : b.updatedAt.localeCompare(a.updatedAt));
-  const postItems = kind === "ALL" ? allPosts.filter(post => (source === "ALL" || source === `${post.kind}:${post.sourceId}`) && (tag === "ALL" || (post.kind === "ARTICLE" && articleTags.get(post.sourceId)?.includes(tag))) && matches(`${post.title} ${post.sourceTitle} ${post.excerpt}`)) : [];
+  const allPosts = useMemo(() => (kind === "ALL" ? posts.data?.pages.flatMap(page => page.items) ?? [] : []), [kind, posts.data]);
+  const sources = useMemo(
+    () => [...new Map([...notes, ...allPosts].map(item => [`${item.kind}:${item.sourceId}`, { title: item.sourceTitle, kind: item.kind }])).entries()],
+    [notes, allPosts],
+  );
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const filtered = useMemo(() => notes
+    .filter(note => (source === "ALL" || source === `${note.kind}:${note.sourceId}`)
+      && (tag === "ALL" || (note.kind === "ARTICLE" && articleTags.get(note.sourceId)?.includes(tag)))
+      && (!normalizedSearch || `${note.sourceTitle} ${note.author} ${note.quote} ${note.note}`.toLocaleLowerCase().includes(normalizedSearch)))
+    .sort((a, b) => sort === "oldest" ? a.updatedAt.localeCompare(b.updatedAt) : b.updatedAt.localeCompare(a.updatedAt)),
+    [notes, source, tag, articleTags, normalizedSearch, sort],
+  );
+  const postItems = useMemo(() => (kind === "ALL"
+    ? allPosts.filter(post => (source === "ALL" || source === `${post.kind}:${post.sourceId}`)
+      && (tag === "ALL" || (post.kind === "ARTICLE" && articleTags.get(post.sourceId)?.includes(tag)))
+      && (!normalizedSearch || `${post.title} ${post.sourceTitle} ${post.excerpt}`.toLocaleLowerCase().includes(normalizedSearch)))
+    : []), [kind, allPosts, source, tag, articleTags, normalizedSearch]);
   const openSource = (note: NoteRecord) => setParams(previous => {
     const next = new URLSearchParams(previous); next.set("view", "annotations");
     next.delete("bookId"); next.delete("articleId");
@@ -46,10 +61,10 @@ export function NotesFeed({ kind }: { kind: PostFilter }) {
   });
   const pending = (kind !== "ARTICLE" && books.isPending) || (kind !== "BOOK" && articles.isPending) || (kind === "ALL" && posts.isPending);
   const failed = (kind !== "ARTICLE" && books.isError) || (kind !== "BOOK" && articles.isError) || (kind === "ALL" && posts.isError);
-  const items = [
+  const items = useMemo(() => [
     ...filtered.map(note => ({ key: `${note.kind}:${note.sourceId}:${note.id}`, time: note.updatedAt, content: <NoteCard note={note} onOpen={() => openSource(note)} /> })),
     ...postItems.map(post => ({ key: `post:${post.kind}:${post.id}`, time: post.updatedAt, content: <PostCard post={post} /> })),
-  ].sort((a, b) => sort === "oldest" ? a.time.localeCompare(b.time) : b.time.localeCompare(a.time));
+  ].sort((a, b) => sort === "oldest" ? a.time.localeCompare(b.time) : b.time.localeCompare(a.time)), [filtered, postItems, sort]);
   return <>
     <Box component="section" aria-label="笔记搜索与筛选" sx={{ mb: `${tokens.spacing[6]}px` }}>
       <Typography component="div" variant="body2" sx={{ mb: `${tokens.spacing[2]}px` }}>搜索笔记</Typography>

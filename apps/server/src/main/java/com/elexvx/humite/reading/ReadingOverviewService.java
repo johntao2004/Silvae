@@ -34,9 +34,16 @@ public class ReadingOverviewService {
         var start = stats.weekStart().atStartOfDay(clock.getZone()).toOffsetDateTime();
         var end = stats.weekEnd().plusDays(1).atStartOfDay(clock.getZone()).toOffsetDateTime();
         var featured = books.newestAddedBetween(userId, start, end).orElse(null);
-        var recent = books.recentlyReadIds(userId).stream().flatMap(id ->
-                books.findSummary(userId, id).stream().flatMap(book ->
-                        reading.find(userId, id).stream().map(position -> new RecentReading(book, position)))).toList();
+        var recentIds = books.recentlyReadIds(userId);
+        var recentBooks = books.findSummaries(userId, recentIds);
+        var recentPositions = reading.findAll(userId, recentIds);
+        var recent = recentIds.stream().flatMap(id -> {
+            var book = recentBooks.get(id);
+            var position = recentPositions.get(id);
+            return book != null && position != null
+                    ? java.util.stream.Stream.of(new RecentReading(book, position))
+                    : java.util.stream.Stream.empty();
+        }).toList();
         return new Overview(today, featured, recent, stats);
     }
 

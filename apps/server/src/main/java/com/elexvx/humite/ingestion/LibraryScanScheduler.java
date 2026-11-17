@@ -12,8 +12,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Profile("worker")
-// Worker 定时启动扫描作业；实际调度属性以注解中的 page.scan.interval 为准。
-// Worker launches scan jobs on schedule; the actual scheduling property is page.scan.interval in the annotation.
+// Worker 定时启动扫描作业；调度间隔由 humite.scan.interval 控制。
+// Worker launches scan jobs on schedule using humite.scan.interval.
 public class LibraryScanScheduler {
     private static final Logger log = LoggerFactory.getLogger(LibraryScanScheduler.class);
     private final JobOperator operator;
@@ -24,7 +24,7 @@ public class LibraryScanScheduler {
         this.libraryScanJob = libraryScanJob;
     }
 
-    @Scheduled(fixedDelayString = "${page.scan.interval:5m}", initialDelayString = "10s")
+    @Scheduled(fixedDelayString = "${humite.scan.interval:5m}", initialDelayString = "10s")
     public void launch() {
         try {
             operator.start(libraryScanJob, new JobParametersBuilder().addLong("launchedAt", Instant.now().toEpochMilli()).toJobParameters());

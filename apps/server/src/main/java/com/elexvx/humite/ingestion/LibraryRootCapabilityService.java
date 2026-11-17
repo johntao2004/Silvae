@@ -1,6 +1,5 @@
 package com.elexvx.humite.ingestion;
 
-import com.elexvx.humite.config.HumiteProperties;
 import com.elexvx.humite.filemanagement.infrastructure.PrivateContentStore;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -12,25 +11,20 @@ import java.nio.file.StandardOpenOption;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
 @Profile({"api", "worker"})
 // 探测根目录可读写性并维护内部目录，结果更新根状态而非修改原书。
 // Probes root capabilities and maintains internal directories, updating root status rather than original books.
-public class LibraryRootCapabilityService  {
+public class LibraryRootCapabilityService {
     private static final Logger log = LoggerFactory.getLogger(LibraryRootCapabilityService.class);
     private final LibraryRootRepository roots;
-    private final HumiteProperties properties;
     private final PrivateContentStore content;
 
-    public LibraryRootCapabilityService(LibraryRootRepository roots, HumiteProperties properties, PrivateContentStore content) {
+    public LibraryRootCapabilityService(LibraryRootRepository roots, PrivateContentStore content) {
         this.roots = roots;
-        this.properties = properties;
         this.content = content;
     }
 

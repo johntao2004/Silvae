@@ -11,13 +11,25 @@ export function themaLabel(code: string) {
   const item = subjects.get(code);
   return item ? `${chinese[code]}（${code}）` : `未收录代码（${code}）`;
 }
+const themaPathCache = new Map<string, string>();
+const englishPathCache = new Map<string, string>();
 export function themaPath(code: string): string {
+  const cached = themaPathCache.get(code);
+  if (cached !== undefined) return cached;
   const item = subjects.get(code);
-  return item ? [item.parent ? themaPath(item.parent) : '', themaLabel(code)].filter(Boolean).join(' / ') : themaLabel(code);
+  const path = item
+    ? [item.parent ? themaPath(item.parent) : '', themaLabel(code)].filter(Boolean).join(' / ')
+    : themaLabel(code);
+  themaPathCache.set(code, path);
+  return path;
 }
 function englishPath(code: string): string {
+  const cached = englishPathCache.get(code);
+  if (cached !== undefined) return cached;
   const item = subjects.get(code);
-  return item ? [item.parent ? englishPath(item.parent) : '', item.label].filter(Boolean).join(' / ') : '';
+  const path = item ? [item.parent ? englishPath(item.parent) : '', item.label].filter(Boolean).join(' / ') : '';
+  englishPathCache.set(code, path);
+  return path;
 }
 export interface ThemaTreeNode { value: string; title: string; searchText: string; selectable: boolean; children: ThemaTreeNode[] }
 export function themaTree(filter = false): ThemaTreeNode[] {

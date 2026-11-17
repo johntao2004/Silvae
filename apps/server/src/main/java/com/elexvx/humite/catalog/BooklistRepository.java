@@ -22,8 +22,21 @@ public class BooklistRepository {
 
     public BooklistList listVisible(String query, UUID viewerId, boolean authenticated, boolean manager) {
         String normalized = query == null || query.isBlank() ? null : "%" + query.strip() + "%";
+        boolean publicOnly = !authenticated;
         var records = dsl.fetch("""
-                select bl.*, u.display_name as owner_display_name
+                select bl.*, u.display_name as owner_display_name,
+                       (case when ? then (
+                           select count(*) from booklist_entries be
+                             join display_catalog_entries de on de.catalog_id = 1 and de.book_id = be.book_id
+                            where be.booklist_id = bl.id
+                       ) else (
+                           select count(*) from booklist_entries be where be.booklist_id = bl.id
+                       ) end) as book_count,
+                       (case when bl.visibility = 'PUBLIC' then (
+                           select count(*)::int from booklist_entries be
+                            where be.booklist_id = bl.id
+                              and not exists (select 1 from display_catalog_entries de where de.catalog_id = 1 and de.book_id = be.book_id)
+                       ) else 0 end) as non_public_count
                   from booklists bl join app_users u on u.id = bl.owner_id
                  where (?::text is null or bl.title ilike ? or coalesce(bl.description, '') ilike ?)
                    and ((?::boolean = false and bl.visibility = 'PUBLIC')
@@ -32,10 +45,11 @@ public class BooklistRepository {
                           or bl.visibility in ('MEMBERS', 'PUBLIC')
                      )))
                  order by case bl.kind when 'OFFICIAL' then 0 else 1 end, bl.sort_order, bl.updated_at desc, bl.id
-                """, normalized, normalized, normalized, authenticated, authenticated, viewerId);
-        boolean publicOnly = !authenticated;
+                """, publicOnly, normalized, normalized, normalized, authenticated, authenticated, viewerId);
+        List<UUID> ids = records.stream().map(record -> record.get("id", UUID.class)).toList();
+        var previews = previewMap(ids, publicOnly);
         return new BooklistList(records.stream()
-                .map(record -> summary(record, viewerId, manager, publicOnly))
+                .map(record -> summary(record, viewerId, manager, previews))
                 .toList());
     }
 
@@ -121,18 +135,21 @@ public class BooklistRepository {
     @Transactional
     public RawBooklist addBooks(UUID id, List<UUID> bookIds, long revision) {
         lockAndCheck(id, revision);
-        Record nextOrderRecord = dsl.fetchOne("select coalesce(max(sort_order), 0) + 1 from booklist_entries where booklist_id = ?", id);
-        Long nextOrder = nextOrderRecord == null ? null : nextOrderRecord.get(0, Long.class);
-        long order = nextOrder == null ? 1L : nextOrder;
-        boolean changed = false;
-        for (UUID bookId : bookIds.stream().distinct().toList()) {
+        List<UUID> distinct = bookIds.stream().distinct().toList();
+        if (!distinct.isEmpty()) {
+            Record nextOrderRecord = dsl.fetchOne("select coalesce(max(sort_order), 0) + 1 from booklist_entries where booklist_id = ?", id);
+            Long nextOrder = nextOrderRecord == null ? null : nextOrderRecord.get(0, Long.class);
+            long order = nextOrder == null ? 1L : nextOrder;
+            Long[] orders = new Long[distinct.size()];
+            for (int index = 0; index < distinct.size(); index++) orders[index] = order + index;
             int inserted = dsl.execute("""
-                    insert into booklist_entries(booklist_id, book_id, sort_order) values (?, ?, ?)
+                    insert into booklist_entries(booklist_id, book_id, sort_order)
+                    select ?, item.book_id, item.sort_order
+                      from unnest(?::uuid[], ?::bigint[]) as item(book_id, sort_order)
                     on conflict (booklist_id, book_id) do nothing
-                    """, id, bookId, order++);
-            changed = changed || inserted > 0;
+                    """, id, distinct.toArray(UUID[]::new), orders);
+            if (inserted > 0) bumpRevision(id);
         }
-        if (changed) bumpRevision(id);
         return findRaw(id);
     }
 
@@ -154,9 +171,15 @@ public class BooklistRepository {
                 || !new HashSet<>(current).equals(new HashSet<>(orderedBookIds))) {
             throw ApiException.conflict("BOOKLIST_CHANGED", "书单已经变化，请刷新后重试。");
         }
-        for (int index = 0; index < orderedBookIds.size(); index++) {
-            dsl.execute("update booklist_entries set sort_order = ?, updated_at = now() where booklist_id = ? and book_id = ?",
-                    index + 1L, id, orderedBookIds.get(index));
+        if (!orderedBookIds.isEmpty()) {
+            Long[] orders = new Long[orderedBookIds.size()];
+            for (int index = 0; index < orderedBookIds.size(); index++) orders[index] = index + 1L;
+            dsl.execute("""
+                    update booklist_entries be
+                       set sort_order = ord.sort_order, updated_at = now()
+                      from unnest(?::uuid[], ?::bigint[]) as ord(book_id, sort_order)
+                     where be.booklist_id = ? and be.book_id = ord.book_id
+                    """, orderedBookIds.toArray(UUID[]::new), orders, id);
         }
         bumpRevision(id);
         return findRaw(id);
@@ -185,13 +208,17 @@ public class BooklistRepository {
                 """, (Object) bookIds.toArray(UUID[]::new)).getValues("title", String.class);
     }
 
-    private BooklistSummary summary(Record record, UUID viewerId, boolean manager, boolean publicOnly) {
+    private BooklistSummary summary(Record record, UUID viewerId, boolean manager,
+                                    java.util.Map<UUID, List<BrowseBook>> previews) {
         RawBooklist raw = raw(record);
         boolean editable = editable(raw, viewerId, manager);
+        Long bookCount = record.get("book_count", Long.class);
+        Integer nonPublic = record.get("non_public_count", Integer.class);
         return new BooklistSummary(raw.id().toString(), raw.title(), raw.description(), raw.kind(), raw.visibility(),
-                raw.ownerDisplayName(), count(raw.id(), publicOnly), preview(raw.id(), publicOnly),
+                raw.ownerDisplayName(), bookCount == null ? 0L : bookCount,
+                previews.getOrDefault(raw.id(), List.of()),
                 viewerId != null && raw.ownerId().equals(viewerId), editable, raw.revision(),
-                editable && raw.visibility() == BooklistVisibility.PUBLIC ? nonPublicCount(raw.id()) : 0,
+                editable && raw.visibility() == BooklistVisibility.PUBLIC && nonPublic != null ? nonPublic : 0,
                 raw.updatedAt());
     }
 
@@ -216,26 +243,51 @@ public class BooklistRepository {
     }
 
     private int nonPublicCount(UUID booklistId) {
-        return nonPublicBookTitles(booklistId).size();
+        Record record = dsl.fetchOne("""
+                select count(*)::int from booklist_entries be
+                 where be.booklist_id = ? and not exists (
+                   select 1 from display_catalog_entries de where de.catalog_id = 1 and de.book_id = be.book_id
+                 )
+                """, booklistId);
+        Integer value = record == null ? null : record.get(0, Integer.class);
+        return value == null ? 0 : value;
     }
 
-    private List<BrowseBook> preview(UUID booklistId, boolean publicOnly) {
+    private java.util.Map<UUID, List<BrowseBook>> previewMap(List<UUID> booklistIds, boolean publicOnly) {
+        if (booklistIds.isEmpty()) return java.util.Map.of();
         String publicJoin = publicOnly
                 ? " join display_catalog_entries de on de.catalog_id = 1 and de.book_id = b.id "
                 : "";
         var records = dsl.fetch("""
-                select b.id as book_id, b.title, b.primary_author, b.description, b.created_at, b.updated_at,
-                       bf.format, bf.status, be.sort_order
-                  from booklist_entries be join books b on b.id = be.book_id
-                """ + publicJoin + """
-                  left join lateral (
-                    select f.format, f.status from book_files f where f.book_id = b.id
-                     order by case f.status when 'AVAILABLE' then 0 when 'TRASHED' then 1 else 2 end,
-                              case f.format when 'EPUB' then 0 else 1 end, f.id limit 1
-                  ) bf on true
-                 where be.booklist_id = ? order by be.sort_order, be.book_id limit 4
-                """, booklistId);
-        return records.map(record -> mapBook(record, publicOnly));
+                select ranked.booklist_id, ranked.book_id, ranked.title, ranked.primary_author, ranked.description,
+                       ranked.created_at, ranked.updated_at, ranked.format, ranked.status
+                  from (
+                    select be.booklist_id, b.id as book_id, b.title, b.primary_author, b.description,
+                           b.created_at, b.updated_at, bf.format, bf.status,
+                           row_number() over (partition by be.booklist_id order by be.sort_order, be.book_id) as rn
+                      from booklist_entries be join books b on b.id = be.book_id
+                    """ + publicJoin + """
+                      left join lateral (
+                        select f.format, f.status from book_files f where f.book_id = b.id
+                         order by case f.status when 'AVAILABLE' then 0 when 'TRASHED' then 1 else 2 end,
+                                  case f.format when 'EPUB' then 0 else 1 end, f.id limit 1
+                      ) bf on true
+                     where be.booklist_id = any(?::uuid[])
+                  ) ranked
+                 where ranked.rn <= 4
+                 order by ranked.booklist_id, ranked.rn
+                """, (Object) booklistIds.toArray(UUID[]::new));
+        var result = new java.util.HashMap<UUID, java.util.ArrayList<BrowseBook>>();
+        for (Record record : records) {
+            UUID booklistId = record.get("booklist_id", UUID.class);
+            result.computeIfAbsent(booklistId, ignored -> new java.util.ArrayList<>(4)).add(mapBook(record, publicOnly));
+        }
+        return result.entrySet().stream().collect(
+                java.util.stream.Collectors.toUnmodifiableMap(java.util.Map.Entry::getKey, e -> List.copyOf(e.getValue())));
+    }
+
+    private List<BrowseBook> preview(UUID booklistId, boolean publicOnly) {
+        return previewMap(List.of(booklistId), publicOnly).getOrDefault(booklistId, List.of());
     }
 
     private BrowseBook mapBook(Record record, boolean publicOnly) {

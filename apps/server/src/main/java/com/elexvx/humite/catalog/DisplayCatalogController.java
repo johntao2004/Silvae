@@ -1,8 +1,6 @@
 package com.elexvx.humite.catalog;
 
 import com.elexvx.humite.common.ApiException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.Principal;
 import java.time.Duration;

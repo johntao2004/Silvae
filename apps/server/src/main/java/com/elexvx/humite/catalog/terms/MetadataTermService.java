@@ -124,12 +124,12 @@ public class MetadataTermService {
         if (raw == null) return null;
         if (raw.size() > 50) throw ApiException.badRequest("INVALID_METADATA_TERM_BATCH", "标签数量不能超过 50 项。");
         List<String> result = new ArrayList<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (String item : raw) {
             if (item == null || item.isBlank()) continue;
             String value = clean(item, MetadataTermKind.TAG);
             String canonical = repository.ensure(MetadataTermKind.TAG, value, value).value();
-            if (result.stream().noneMatch(existing -> MetadataTermText.normalizedKey(existing)
-                    .equals(MetadataTermText.normalizedKey(canonical)))) result.add(canonical);
+            if (seen.add(MetadataTermText.normalizedKey(canonical))) result.add(canonical);
         }
         return List.copyOf(result);
     }

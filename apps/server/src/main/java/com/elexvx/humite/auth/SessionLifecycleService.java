@@ -41,13 +41,31 @@ public class SessionLifecycleService {
     }
     public List<ActiveSession> active(String currentId) {
         long now=System.currentTimeMillis(); long maxAge=maxMinutes()*60_000L;
-        return db.fetch("select s.*,r.revoke_at from spring_session s left join session_revocation r on r.session_primary_id=s.primary_id where s.principal_name is not null and s.expiry_time>? and s.creation_time+?>? and (r.revoke_at is null or r.revoke_at>?) order by s.last_access_time desc",now,maxAge,now,now).stream().map(r -> {
-            var user=users.findByUsername(r.get("principal_name",String.class)).orElse(null);
+        return db.fetch("""
+                select s.primary_id, s.session_id, s.creation_time, s.last_access_time, s.expiry_time, r.revoke_at,
+                       u.id as user_id, u.username as user_username, u.display_name as user_display_name, u.role as user_role
+                  from spring_session s
+                  join app_users u on lower(u.username) = lower(s.principal_name)
+                  left join session_revocation r on r.session_primary_id = s.primary_id
+                 where s.principal_name is not null and s.expiry_time > ? and s.creation_time + ? > ?
+                   and (r.revoke_at is null or r.revoke_at > ?)
+                 order by s.last_access_time desc
+                """, now, maxAge, now, now).stream().map(r -> {
             long expires=Math.min(r.get("expiry_time",Long.class),r.get("creation_time",Long.class)+maxAge);
             Long revoke=r.get("revoke_at",Long.class);
             if(revoke!=null) expires=Math.min(expires,revoke);
-            return user==null?null:new ActiveSession(r.get("primary_id",String.class).trim(),user.id().toString(),user.username(),user.displayName(),user.role().name(),Instant.ofEpochMilli(r.get("creation_time",Long.class)),Instant.ofEpochMilli(r.get("last_access_time",Long.class)),Instant.ofEpochMilli(expires),r.get("session_id",String.class).trim().equals(currentId),revoke!=null);
-        }).filter(java.util.Objects::nonNull).toList();
+            return new ActiveSession(
+                    r.get("primary_id",String.class).trim(),
+                    r.get("user_id",java.util.UUID.class).toString(),
+                    r.get("user_username",String.class),
+                    r.get("user_display_name",String.class),
+                    r.get("user_role",String.class),
+                    Instant.ofEpochMilli(r.get("creation_time",Long.class)),
+                    Instant.ofEpochMilli(r.get("last_access_time",Long.class)),
+                    Instant.ofEpochMilli(expires),
+                    r.get("session_id",String.class).trim().equals(currentId),
+                    revoke!=null);
+        }).toList();
     }
     // 仅为现存会话设置短暂保存窗口，不撤销之后新建的登录会话。
     // Existing sessions get a short save window; a later login is never revoked.

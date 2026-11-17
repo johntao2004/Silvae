@@ -70,10 +70,12 @@ export async function importArticle(file: File): Promise<string> {
       if (!bytes) continue;
       if (!/\.(png|jpe?g|webp)$/i.test(path))
         throw new Error("配套图片仅支持 PNG、JPEG、WebP。");
-      let binary = "";
-      for (const byte of bytes) binary += String.fromCharCode(byte);
+      const chunks: string[] = [];
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        chunks.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)));
+      }
       image.removeAttribute("data-src");
-      image.src = `data:image/${/\.png$/i.test(path) ? "png" : /\.webp$/i.test(path) ? "webp" : "jpeg"};base64,${btoa(binary)}`;
+      image.src = `data:image/${/\.png$/i.test(path) ? "png" : /\.webp$/i.test(path) ? "webp" : "jpeg"};base64,${btoa(chunks.join(""))}`;
     }
     return safeHtml(doc.body.innerHTML);
   }

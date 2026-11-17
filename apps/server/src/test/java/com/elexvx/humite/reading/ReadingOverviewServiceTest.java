@@ -36,10 +36,10 @@ class ReadingOverviewServiceTest {
         when(reading.weeklyStats(user, today)).thenReturn(new ReadingRepository.WeeklyReadingStats(today.minusDays(3), today.plusDays(3), 0, 0, List.of()));
         when(books.recentlyReadIds(user)).thenReturn(List.of(second, first));
         var summary = mock(BookRepository.BookSummary.class);
-        when(books.findSummary(user, first)).thenReturn(Optional.of(summary));
-        when(books.findSummary(user, second)).thenReturn(Optional.of(summary));
-        for (var id : List.of(first, second)) when(reading.find(user, id)).thenReturn(Optional.of(
-                new ReadingRepository.ReadingPosition(id, "pdf:page=12", BigDecimal.ZERO, "web", OffsetDateTime.parse("2026-10-22T09:00:00+08:00"))));
+        when(books.findSummaries(user, List.of(second, first))).thenReturn(java.util.Map.of(first, summary, second, summary));
+        when(reading.findAll(user, List.of(second, first))).thenReturn(java.util.Map.of(
+                first, new ReadingRepository.ReadingPosition(first, "pdf:page=12", BigDecimal.ZERO, "web", OffsetDateTime.parse("2026-10-22T09:00:00+08:00")),
+                second, new ReadingRepository.ReadingPosition(second, "pdf:page=12", BigDecimal.ZERO, "web", OffsetDateTime.parse("2026-10-22T09:00:00+08:00"))));
         var result = new ReadingOverviewService(reading, books, Clock.fixed(Instant.parse("2026-10-22T10:00:00Z"), ZoneId.of("Asia/Shanghai"))).current(user);
         assertThat(result.recentReading()).extracting(item -> item.position().bookId()).containsExactly(second, first);
         assertThat(result.recentReading().getFirst().position().progress()).isEqualByComparingTo(BigDecimal.ZERO);

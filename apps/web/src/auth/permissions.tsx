@@ -80,9 +80,6 @@ export function usePermissions() {
   return { can, canVisit, grants, role: query.data?.role ?? user?.role, ready: authReady && (!user || api.isDemo || query.isSuccess), error: query.isError,
     requestError: query.error, fetching: query.isFetching, retry: query.refetch };
 }
-export function PermissionGate({ permission, children }: PropsWithChildren<{ permission: string }>) {
-  return usePermissions().can(permission) ? children : null;
-}
 /** Guard before children mount: hiding navigation alone cannot protect queries or a bookmarked route. */
 export function PermissionBoundary({ children }: PropsWithChildren) {
   const access = usePermissions(); const location = useLocation(); const client = useQueryClient();

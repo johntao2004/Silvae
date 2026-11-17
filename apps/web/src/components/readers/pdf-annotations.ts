@@ -15,11 +15,10 @@ export function applyPdfTextAnnotations(
   annotations: Annotation[],
   options: { overlaysCanvasText?: boolean; theme?: AnnotationTextTheme } = {},
 ) {
-  const allSpans = Array.from(layer.querySelectorAll<HTMLSpanElement>("span"));
-  const hasSourcePageSpans = allSpans.some((span) => span.dataset.pdfSourcePage !== undefined);
-  const spans = allSpans.filter((span) => hasSourcePageSpans
-    ? Number(span.dataset.pdfSourcePage) === pageNumber
-    : true);
+  const hasSourcePageSpans = Boolean(layer.querySelector("span[data-pdf-source-page]"));
+  const spans = Array.from(layer.querySelectorAll<HTMLSpanElement>(
+    hasSourcePageSpans ? `span[data-pdf-source-page="${pageNumber}"]` : "span",
+  ));
   spans.forEach((span) => {
     if (span.dataset.pdfOriginalText === undefined) span.dataset.pdfOriginalText = span.textContent ?? "";
     else if (span.querySelector("mark") || span.textContent !== span.dataset.pdfOriginalText) span.textContent = span.dataset.pdfOriginalText;
@@ -44,22 +43,29 @@ export function applyPdfTextAnnotations(
       if (!quote) return;
       const start = normalizedText.indexOf(quote);
       if (start < 0) return;
-      const characterIndexes = Array.from({ length: quote.length }, (_, index) => start + index);
-      if (characterIndexes.some((index) => occupied.has(index))) return;
-      characterIndexes.forEach((index) => occupied.add(index));
+      const end = start + quote.length;
+      for (let index = start; index < end; index += 1) {
+        if (occupied.has(index)) return;
+      }
 
       const bounds = new Map<HTMLSpanElement, { start: number; end: number }>();
-      characterIndexes.forEach((index) => {
+      for (let index = start; index < end; index += 1) {
+        occupied.add(index);
         const character = characters[index];
-        if (!character) return;
+        if (!character) continue;
         const current = bounds.get(character.span);
-        bounds.set(character.span, {
-          start: current ? Math.min(current.start, character.offset) : character.offset,
-          end: current ? Math.max(current.end, character.offset + 1) : character.offset + 1,
-        });
-      });
+        if (current) {
+          if (character.offset < current.start) current.start = character.offset;
+          if (character.offset + 1 > current.end) current.end = character.offset + 1;
+        } else {
+          bounds.set(character.span, { start: character.offset, end: character.offset + 1 });
+        }
+      }
       bounds.forEach((bound, span) => {
-        segmentsBySpan.set(span, [...(segmentsBySpan.get(span) ?? []), { ...bound, annotation }]);
+        const list = segmentsBySpan.get(span);
+        const entry = { ...bound, annotation };
+        if (list) list.push(entry);
+        else segmentsBySpan.set(span, [entry]);
       });
     });
 

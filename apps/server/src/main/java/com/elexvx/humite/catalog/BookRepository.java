@@ -108,8 +108,7 @@ public class BookRepository {
         };
     }
 
-    public Optional<BookSummary> findSummary(UUID userId, UUID bookId) {
-        return dsl.fetchOptional("""
+    private static final String SUMMARY_SELECT = """
                 select b.id, b.title, b.primary_author, b.description, b.created_at, b.updated_at, s.name as series_name,
                        bf.id as file_id, bf.format, bf.status, bf.relative_path, bf.fingerprint, bf.word_count,
                        lr.id as root_id, lr.name as root_name,
@@ -120,8 +119,20 @@ public class BookRepository {
                   join lateral (select f.* from book_files f where f.book_id = b.id and f.status = 'AVAILABLE' order by f.id limit 1) bf on true
                   join library_roots lr on lr.id = bf.library_root_id
                   left join reading_positions rp on rp.book_id = b.id and rp.user_id = ?
-                 where b.id = ?
-                """, userId, bookId).map(this::mapSummary);
+            """;
+
+    public Optional<BookSummary> findSummary(UUID userId, UUID bookId) {
+        return dsl.fetchOptional(SUMMARY_SELECT + " where b.id = ?", userId, bookId).map(this::mapSummary);
+    }
+
+    public java.util.Map<UUID, BookSummary> findSummaries(UUID userId, List<UUID> bookIds) {
+        if (bookIds.isEmpty()) return java.util.Map.of();
+        List<UUID> distinct = bookIds.stream().distinct().toList();
+        return dsl.fetch(SUMMARY_SELECT + " where b.id = any(?::uuid[])", userId, distinct.toArray(UUID[]::new)).stream()
+                .map(this::mapSummary)
+                .collect(java.util.stream.Collectors.toMap(
+                        summary -> UUID.fromString(summary.id()),
+                        java.util.function.Function.identity()));
     }
 
     // 概览的窄查询网关：只返回当前用户读过且仍有可用文件的书籍。
@@ -145,26 +156,39 @@ public class BookRepository {
     }
 
     public Optional<BookFile> findFile(UUID id) {
-        return dsl.fetchOptional("select * from book_files where id = ?", id).map(record -> new BookFile(
-                record.get("id", UUID.class), record.get("book_id", UUID.class), record.get("library_root_id", UUID.class),
-                record.get("relative_path", String.class), BookFormat.valueOf(record.get("format", String.class)),
-                BookFileStatus.valueOf(record.get("status", String.class)), record.get("size_bytes", Long.class),
-                record.get("modified_at", OffsetDateTime.class), record.get("fingerprint", String.class),
-                Boolean.TRUE.equals(record.get("encrypted", Boolean.class)), Boolean.TRUE.equals(record.get("drm_protected", Boolean.class)),
-                Boolean.TRUE.equals(record.get("digitally_signed", Boolean.class))));
+        return dsl.fetchOptional("select * from book_files where id = ?", id).map(this::mapBookFile);
     }
 
     /** Active file snapshots for coordinated title edits; recycled/deleted copies retain their history. */
     public List<BookFile> findActiveFiles(UUID bookId) {
-        return dsl.fetch("select id from book_files where book_id = ? and status not in ('TRASHED', 'DELETED') order by id", bookId)
-                .getValues("id", UUID.class).stream().map(id -> findFile(id).orElseThrow()).toList();
+        return dsl.fetch("select * from book_files where book_id = ? and status not in ('TRASHED', 'DELETED') order by id", bookId)
+                .map(this::mapBookFile);
     }
 
     public Optional<BookFile> findPreferredFile(UUID bookId) {
         return dsl.fetchOptional("""
                 select * from book_files where book_id = ? and status = 'AVAILABLE'
                  order by case format when 'EPUB' then 0 else 1 end, id limit 1
-                """, bookId).map(record -> findFile(record.get("id", UUID.class)).orElseThrow());
+                """, bookId).map(this::mapBookFile);
+    }
+
+    public boolean allExist(List<UUID> bookIds) {
+        if (bookIds.isEmpty()) return true;
+        List<UUID> distinct = bookIds.stream().distinct().toList();
+        var record = dsl.fetchOne("select count(*) from books where id = any(?::uuid[])",
+                (Object) distinct.toArray(UUID[]::new));
+        Long count = record == null ? null : record.get(0, Long.class);
+        return count != null && count == distinct.size();
+    }
+
+    private BookFile mapBookFile(Record record) {
+        return new BookFile(
+                record.get("id", UUID.class), record.get("book_id", UUID.class), record.get("library_root_id", UUID.class),
+                record.get("relative_path", String.class), BookFormat.valueOf(record.get("format", String.class)),
+                BookFileStatus.valueOf(record.get("status", String.class)), record.get("size_bytes", Long.class),
+                record.get("modified_at", OffsetDateTime.class), record.get("fingerprint", String.class),
+                Boolean.TRUE.equals(record.get("encrypted", Boolean.class)), Boolean.TRUE.equals(record.get("drm_protected", Boolean.class)),
+                Boolean.TRUE.equals(record.get("digitally_signed", Boolean.class)));
     }
 
     public boolean exists(UUID bookId) {
@@ -176,6 +200,16 @@ public class BookRepository {
     public Optional<BookReference> reference(UUID bookId) {
         return dsl.fetchOptional("select id, title from books where id = ?", bookId)
                 .map(row -> new BookReference(row.get("id", UUID.class), row.get("title", String.class)));
+    }
+
+    public java.util.Map<UUID, String> references(List<UUID> bookIds) {
+        if (bookIds.isEmpty()) return java.util.Map.of();
+        List<UUID> distinct = bookIds.stream().distinct().toList();
+        return dsl.fetch("select id, title from books where id = any(?::uuid[])",
+                        (Object) distinct.toArray(UUID[]::new)).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        row -> row.get("id", UUID.class),
+                        row -> row.get("title", String.class)));
     }
 
     public record BookReference(UUID id, String title) {}

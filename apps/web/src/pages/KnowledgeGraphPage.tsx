@@ -54,6 +54,8 @@ export function KnowledgeGraphPage() {
   const catalog = useQuery({ queryKey: ['books', 'knowledge-graph', user?.id], queryFn: ({ signal }) => fetchVirtualLibraryBooks(signal), enabled: Boolean(user) });
   const knowledgeQuery = useQuery({ queryKey: knowledgeQueryKey, queryFn: ({ signal }) => api.listBookKnowledge(signal), enabled: Boolean(user), refetchInterval: generating ? false : 30000 });
   const knowledge = knowledgeQuery.data ?? NO_KNOWLEDGE;
+  const knowledgeByBookId = useMemo(() => new Map(knowledge.map(item => [item.bookId, item])), [knowledge]);
+  const selectedBookSet = useMemo(() => new Set(selectedBooks), [selectedBooks]);
   const books = useMemo(() => catalog.data?.pages.flatMap(value => value.items) ?? [], [catalog.data]);
   const matches = useMemo(() => searchKnowledgeBooks(books, knowledge, query), [books, knowledge, query]);
   const fullGraph = useMemo(() => buildKnowledgeGraph(knowledge, new Set(matches.map(book => book.id))), [knowledge, matches]);
@@ -62,10 +64,10 @@ export function KnowledgeGraphPage() {
     const ids = new Set(nodes.map(node => node.id));
     return { nodes, edges: fullGraph.edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)) };
   }, [fullGraph]);
-  const selected = fullGraph.nodes.find(node => node.id === selectedId);
+  const selected = useMemo(() => selectedId ? fullGraph.nodes.find(node => node.id === selectedId) : undefined, [fullGraph.nodes, selectedId]);
   const filteredBooks = useMemo(() => filterBooksByNode(matches, selected), [matches, selected]);
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filteredBooks.length / PAGE_SIZE)));
-  const completed = knowledge.filter(item => item.status === 'READY').length;
+  const completed = useMemo(() => knowledge.filter(item => item.status === 'READY').length, [knowledge]);
   const options = useMemo<NetworkGraphOptions>(() => ({
     data,
     autoFit: 'view', padding: tokens.spacing[10], animation: false,
@@ -150,7 +152,7 @@ export function KnowledgeGraphPage() {
           <div className="bk-knowledge-selection"><Typography component="h2">{selected.data.label}</Typography><Button onClick={() => { setSelectedId(null); setPage(1); }}>清除筛选</Button></div>
           <section aria-label="图谱筛选结果"><Tag>{filteredBooks.length} 本相关书籍</Tag>
             <div className="bk-knowledge-related-books">{filteredBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(book => {
-              const analysis = knowledge.find(item => item.bookId === book.id);
+              const analysis = knowledgeByBookId.get(book.id);
               const evidence = analysis?.points.find(point => knowledgeKey(point.name) === selected.id);
               return <article key={book.id} className="bk-knowledge-related-book"><Typography component="h3"><Link to={`/reader/${book.id}`}>{book.title}</Link></Typography><span>{book.author}</span>
                 {analysis && <small>已分析 {analysis.sampledSections}/{analysis.totalSections} {book.format === 'PDF' ? '页' : '章'}</small>}
@@ -167,10 +169,13 @@ export function KnowledgeGraphPage() {
     {canGenerate && <Drawer open={drawer === 'analysis'} onClose={() => setDrawer(null)} anchor="right" title="正文分析" slotProps={{ paper: { sx: { width: `min(100vw, ${tokens.layout.touchTarget * 10}px)` } } }}>
       <div className="bk-knowledge-drawer-body">
         <TextField aria-label="搜索待分析书籍" placeholder="搜索书名或作者" value={analysisQuery} onChange={event => { setAnalysisQuery(event.target.value); setAnalysisLimit(PAGE_SIZE); if (analysisListRef.current) analysisListRef.current.scrollTop = 0; }} />
-        <div className="bk-knowledge-analysis-summary"><Checkbox disabled={batchBusy || !visibleAnalysisBooks.length} checked={Boolean(visibleAnalysisBooks.length) && visibleAnalysisBooks.every(book => selectedBooks.includes(book.id))} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSelectedBooks(current => event.target.checked ? [...new Set([...current, ...visibleAnalysisBooks.map(book => book.id)])] : current.filter(id => !visibleAnalysisBooks.some(book => book.id === id)))}>选择已加载</Checkbox><span>已选 {selectedBooks.length} 本</span></div>
+        <div className="bk-knowledge-analysis-summary"><Checkbox disabled={batchBusy || !visibleAnalysisBooks.length} checked={Boolean(visibleAnalysisBooks.length) && visibleAnalysisBooks.every(book => selectedBookSet.has(book.id))} onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+          const visibleIds = new Set(visibleAnalysisBooks.map(book => book.id));
+          setSelectedBooks(current => event.target.checked ? [...new Set([...current, ...visibleIds])] : current.filter(id => !visibleIds.has(id)));
+        }}>选择已加载</Checkbox><span>已选 {selectedBooks.length} 本</span></div>
         <div className="bk-knowledge-analysis-list" ref={analysisListRef} role="region" aria-label="待分析书籍" tabIndex={0} onScroll={event => { const list = event.currentTarget; if (list.scrollHeight - list.scrollTop - list.clientHeight <= tokens.layout.touchTarget) setAnalysisLimit(current => Math.min(current + PAGE_SIZE, analysisBooks.length)); }}>{visibleAnalysisBooks.map(book => {
-          const analysis = knowledge.find(item => item.bookId === book.id);
-          return <div key={book.id} className="bk-knowledge-analysis-row"><Checkbox aria-label={`选择 ${book.title}`} checked={selectedBooks.includes(book.id)} disabled={batchBusy} onChange={(event: React.ChangeEvent<HTMLInputElement>) => toggleBook(book.id, event.target.checked)} /><span><strong>{book.title}</strong><small>{book.author}</small></span><small>{generating === book.id ? '分析中' : analysis?.status === 'READY' ? `${analysis.points.length} 个知识点 · ${analysis.sampledSections}/${analysis.totalSections} ${book.format === 'PDF' ? '页' : '章'}` : analysis?.status === 'FAILED' ? '分析失败' : '未分析'}</small></div>;
+          const analysis = knowledgeByBookId.get(book.id);
+          return <div key={book.id} className="bk-knowledge-analysis-row"><Checkbox aria-label={`选择 ${book.title}`} checked={selectedBookSet.has(book.id)} disabled={batchBusy} onChange={(event: React.ChangeEvent<HTMLInputElement>) => toggleBook(book.id, event.target.checked)} /><span><strong>{book.title}</strong><small>{book.author}</small></span><small>{generating === book.id ? '分析中' : analysis?.status === 'READY' ? `${analysis.points.length} 个知识点 · ${analysis.sampledSections}/${analysis.totalSections} ${book.format === 'PDF' ? '页' : '章'}` : analysis?.status === 'FAILED' ? '分析失败' : '未分析'}</small></div>;
         })}{!analysisBooks.length && <Empty description="没有匹配书籍" />}</div>
         {generationError && <Alert type="error" showIcon title={generationError} />}
         {generationMessage && <Alert type="success" showIcon title={generationMessage} />}

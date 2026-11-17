@@ -11,30 +11,81 @@ function isReadableTextNode(node: Text) {
   return Boolean(node.data && parent && !parent.closest("script, style, noscript"));
 }
 
-export function findEpubTextRange(document: Document, quote: string, searchRoot: Node = document.body) {
-  const root = searchRoot;
-  const normalizedQuote = quote.replace(/\s/gu, "");
-  if (!root || !normalizedQuote) return undefined;
+interface EpubTextRun {
+  node: Text;
+  textStart: number;
+  normStart: number;
+  length: number;
+}
 
+export interface EpubTextIndex {
+  normalizedText: string;
+  runs: EpubTextRun[];
+}
+
+export function createEpubTextIndex(document: Document, searchRoot: Node = document.body): EpubTextIndex {
   const nodeFilter = document.defaultView?.NodeFilter ?? NodeFilter;
-  const walker = document.createTreeWalker(root, nodeFilter.SHOW_TEXT);
-  const characters: Array<{ node: Text; offset: number; value: string }> = [];
+  const walker = document.createTreeWalker(searchRoot, nodeFilter.SHOW_TEXT);
+  const chunks: string[] = [];
+  const runs: EpubTextRun[] = [];
+  let normOffset = 0;
   let current = walker.nextNode();
   while (current) {
     const node = current as Text;
     if (isReadableTextNode(node)) {
-      for (let offset = 0; offset < node.data.length; offset += 1) {
-        const value = node.data[offset];
-        if (!/\s/u.test(value)) characters.push({ node, offset, value });
+      const data = node.data;
+      let runStart = -1;
+      for (let offset = 0; offset < data.length; offset += 1) {
+        if (!/\s/u.test(data[offset])) {
+          if (runStart < 0) runStart = offset;
+        } else if (runStart >= 0) {
+          const chunk = data.slice(runStart, offset);
+          chunks.push(chunk);
+          runs.push({ node, textStart: runStart, normStart: normOffset, length: chunk.length });
+          normOffset += chunk.length;
+          runStart = -1;
+        }
+      }
+      if (runStart >= 0) {
+        const chunk = data.slice(runStart);
+        chunks.push(chunk);
+        runs.push({ node, textStart: runStart, normStart: normOffset, length: chunk.length });
+        normOffset += chunk.length;
       }
     }
     current = walker.nextNode();
   }
+  return { normalizedText: chunks.join(""), runs };
+}
 
-  const start = characters.map((character) => character.value).join("").indexOf(normalizedQuote);
+function locateRun(runs: EpubTextRun[], normPosition: number): { node: Text; offset: number } | undefined {
+  let low = 0;
+  let high = runs.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const run = runs[mid]!;
+    if (normPosition < run.normStart) high = mid - 1;
+    else if (normPosition >= run.normStart + run.length) low = mid + 1;
+    else return { node: run.node, offset: run.textStart + (normPosition - run.normStart) };
+  }
+  return undefined;
+}
+
+export function findEpubTextRange(
+  document: Document,
+  quote: string,
+  searchRoot: Node = document.body,
+  cachedIndex?: EpubTextIndex,
+) {
+  const root = searchRoot;
+  const normalizedQuote = quote.replace(/\s/gu, "");
+  if (!root || !normalizedQuote) return undefined;
+
+  const index = cachedIndex ?? createEpubTextIndex(document, root);
+  const start = index.normalizedText.indexOf(normalizedQuote);
   if (start < 0) return undefined;
-  const first = characters[start];
-  const last = characters[start + normalizedQuote.length - 1];
+  const first = locateRun(index.runs, start);
+  const last = locateRun(index.runs, start + normalizedQuote.length - 1);
   if (!first || !last) return undefined;
 
   const range = document.createRange();

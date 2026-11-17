@@ -17,7 +17,7 @@ import { persistenceUserId, registerSessionSaver } from "../../auth/session-save
 import type { Annotation } from "../../domain/types";
 import { tokens } from "../../theme/tokens";
 import { readerWidthSx } from "../PageHeader";
-import { applyEpubInlineAnnotation, clearEpubInlineAnnotations, EPUB_INLINE_ANNOTATION_CLASS, findEpubArticleParagraphRange, findEpubTextRange, isEpubArticleParagraphLocator } from "./epub-annotations";
+import { applyEpubInlineAnnotation, clearEpubInlineAnnotations, createEpubTextIndex, EPUB_INLINE_ANNOTATION_CLASS, type EpubTextIndex, findEpubArticleParagraphRange, findEpubTextRange, isEpubArticleParagraphLocator } from "./epub-annotations";
 import { bindAnnotationNoteActivation } from "./annotation-activation";
 import { isEditableReaderTarget, isReaderSwipe } from "./reader-navigation";
 import { PageTurnShade } from "./PageTurnShade";
@@ -121,7 +121,7 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
     style.dataset.pageReaderFont = "true";
     const familyName = fontFamily.match(/^"([^"]+)"/u)?.[1] ?? fontFamily.split(",")[0].trim();
     style.textContent = [
-      '@import url("/assets/fonts/humite-serif.css");',
+      '@import url("/fonts/humite-serif.css");',
       '@font-face { font-family: "Source Han Sans SC"; src: url("/fonts/source-han-sans-sc-regular.woff2") format("woff2"); font-display: swap; }',
       '@font-face { font-family: "Alibaba PuHuiTi"; src: url("/fonts/alibaba-puhuiti-regular.woff2") format("woff2"); font-display: swap; }',
       fontSourceUrl ? `@font-face { font-family: "${familyName}"; src: url("${fontSourceUrl}"); font-display: swap; }` : "",
@@ -432,6 +432,15 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
 
     const contentsList = renderedContents(rendition);
     contentsList.forEach((contents) => clearEpubInlineAnnotations(contents.document));
+    const documentIndexes = new Map<Document, EpubTextIndex>();
+    const textIndexFor = (doc: Document) => {
+      let cached = documentIndexes.get(doc);
+      if (!cached) {
+        cached = createEpubTextIndex(doc);
+        documentIndexes.set(doc, cached);
+      }
+      return cached;
+    };
     annotations.forEach((annotation) => {
       if (!annotation.locator || annotation.type === "BOOKMARK") return;
       if (isEpubArticleParagraphLocator(annotation.locator)) {
@@ -443,6 +452,7 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
           );
           if (range) {
             applyEpubInlineAnnotation(range, annotation, theme);
+            documentIndexes.delete(contents.document);
             break;
           }
         }
@@ -453,9 +463,12 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
         if (!cfiRange) return;
         const rangeDocument = cfiRange.startContainer.ownerDocument;
         const range = cfiRange.collapsed && annotation.quote && rangeDocument
-          ? findEpubTextRange(rangeDocument, annotation.quote)
+          ? findEpubTextRange(rangeDocument, annotation.quote, rangeDocument.body, textIndexFor(rangeDocument))
           : cfiRange;
-        if (range) applyEpubInlineAnnotation(range, annotation, theme);
+        if (range) {
+          applyEpubInlineAnnotation(range, annotation, theme);
+          if (rangeDocument) documentIndexes.delete(rangeDocument);
+        }
       } catch {
         // 忽略过期或外部变更的 CFI 范围，让书籍仍可阅读。
         // Ignore stale or externally changed CFI ranges while keeping the book readable.
