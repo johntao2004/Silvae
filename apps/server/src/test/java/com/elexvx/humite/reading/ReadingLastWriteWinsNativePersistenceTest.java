@@ -85,17 +85,19 @@ class ReadingLastWriteWinsNativePersistenceTest {
 
                     var vaultA = new VaultService(db, new UserRepository(db), null);
                     var vaultB = new VaultService(other, new UserRepository(other), null);
-                    vaultA.state(object, "encrypted-position-A", 1, () -> "alice");
+                    vaultA.updateState(object, "encrypted-position-A", () -> "alice");
                     first.commit();
-                    vaultB.state(object, "encrypted-position-B", 1, () -> "alice");
+                    vaultB.updateState(object, "encrypted-position-B", () -> "alice");
                     second.commit();
-                    vaultA.state(object, "encrypted-position-C", 1, () -> "alice");
+                    vaultA.updateState(object, "encrypted-position-C", () -> "alice");
                     first.commit();
-                    assertThat(vaultA.get(object, () -> "alice")).containsEntry("state", "encrypted-position-C").containsEntry("revision", 4L);
-                    assertThatThrownBy(() -> vaultB.state(object, "unauthorized", 1, () -> "bob"))
+                    var savedVault = vaultA.getObject(object, () -> "alice");
+                    assertThat(savedVault.state()).isEqualTo("encrypted-position-C");
+                    assertThat(savedVault.revision()).isEqualTo(4L);
+                    assertThatThrownBy(() -> vaultB.updateState(object, "unauthorized", () -> "bob"))
                             .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.status().value()).isEqualTo(404));
-                    assertThat(vaultA.get(object, () -> "alice")).containsEntry("state", "encrypted-position-C");
-                    assertThatThrownBy(() -> vaultA.config("{}", 999, () -> "alice"))
+                    assertThat(vaultA.getObject(object, () -> "alice").state()).isEqualTo("encrypted-position-C");
+                    assertThatThrownBy(() -> vaultA.updateConfig("{}", 999, () -> "alice"))
                             .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("REVISION_CONFLICT"));
 
                     var booksA = new ReadingRepository(db);

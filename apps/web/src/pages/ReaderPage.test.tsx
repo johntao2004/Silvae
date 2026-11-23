@@ -193,7 +193,11 @@ describe("ReaderPage", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "夜间" }));
 
     await waitFor(() => expect(document.documentElement).toHaveAttribute("data-humite-theme", "night"));
-    expect(localStorage.getItem("humite-site-theme")).toBe("NIGHT");
+    expect(localStorage.getItem("humite-theme-preference")).toBe("NIGHT");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "跟随系统" }));
+    expect(document.documentElement).toHaveAttribute("data-humite-theme", "paper");
+    expect(localStorage.getItem("humite-theme-preference")).toBeNull();
   });
 
   it("keeps the reader usable when local preference writes are blocked", async () => {

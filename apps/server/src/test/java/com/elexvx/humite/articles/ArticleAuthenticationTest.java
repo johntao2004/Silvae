@@ -6,9 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -118,6 +120,32 @@ class ArticleAuthenticationTest {
             mvc.perform(get("/api/v1/articles/knowledge").with(identity)).andExpect(status().isOk());
             mvc.perform(get("/api/v1/articles/" + ARTICLE_ID + "/reading").with(identity)).andExpect(status().isOk());
         }
+    }
+
+    @Test void batchImportRequiresManagerEditGrant() throws Exception {
+        String body = "{\"urls\":[\"https://example.test/a\",\"https://example.test/b\"],\"visibility\":\"PRIVATE\",\"tags\":\"\"}";
+        when(service.batchImport(any(), any(), any(), any(Principal.class)))
+                .thenReturn(new ArticleService.BatchImportResult(2, 0, 0, List.of()));
+
+        mvc.perform(post("/api/v1/articles/batch-import").with(csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(post("/api/v1/articles/batch-import").with(csrf()).with(user("member").roles("MEMBER"))
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/v1/articles/batch-import").with(csrf()).with(user("owner").roles("OWNER"))
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/articles/fetch-stream").with(csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content("{\"url\":\"https://example.test/a\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(post("/api/v1/articles/batch-import-stream").with(csrf()).with(user("member").roles("MEMBER"))
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isForbidden());
     }
 
     @Test void articlePageShellRemainsPublic() throws Exception {

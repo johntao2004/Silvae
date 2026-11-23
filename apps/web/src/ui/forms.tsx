@@ -30,10 +30,14 @@ export function TextField({ label, helperText, error, multiline, resizable = tru
   InputProps?: Record<string, unknown>;
   onChange?: (event: any) => void;
 }) {
-  const id = useId();
+  const generatedId = useId();
   const slotInput = (slotProps?.input ?? {}) as { startAdornment?: ReactNode; readOnly?: boolean } & Record<string, unknown>;
   const { startAdornment: slotStartAdornment, endAdornment: slotEndAdornment, ...slotInputProps } = slotInput;
   const inputProps = { ...(slotProps?.htmlInput ?? {}), ...slotInputProps };
+  const id = (typeof inputProps.id === "string" && inputProps.id) || (typeof props.id === "string" && props.id) || generatedId;
+  const helperId = helperText ? `${id}-helper` : undefined;
+  const existingDescribedBy = (inputProps["aria-describedby"] ?? props["aria-describedby"]) as string | undefined;
+  const describedBy = [existingDescribedBy, helperId].filter(Boolean).join(" ") || undefined;
   const prefix = slotStartAdornment ?? (InputProps as { startAdornment?: ReactNode } | undefined)?.startAdornment;
   const suffix = slotEndAdornment ?? (InputProps as { endAdornment?: ReactNode } | undefined)?.endAdornment;
   const common = {
@@ -50,7 +54,9 @@ export function TextField({ label, helperText, error, multiline, resizable = tru
     disabled: props.disabled,
     readOnly: Boolean(slotInput.readOnly),
     "aria-label": props["aria-label"] ?? (typeof label === "string" ? label : undefined),
+    "aria-invalid": Boolean(error),
     ...inputProps,
+    ...(describedBy ? { "aria-describedby": describedBy } : {}),
     prefix,
     suffix,
     className: "bk-field-control",
@@ -64,17 +70,17 @@ export function TextField({ label, helperText, error, multiline, resizable = tru
       ? <AntInput.Password {...(common as any)} visibilityToggle={suffix ? false : undefined} />
       : <AntInput {...(common as any)} />;
   const fieldClassName = mergeClassNames("bk-field", fullWidth && "bk-field-full", error && "bk-field-error", sxClassName(sx, useTheme()), className);
-  return <div className={fieldClassName}>{label && <label htmlFor={id} className="bk-field-label">{label}{props.required ? " *" : ""}</label>}{control}{helperText && <span className="bk-field-helper">{helperText}</span>}</div>;
+  return <div className={fieldClassName}>{label && <label htmlFor={id} className="bk-field-label">{label}{props.required ? " *" : ""}</label>}{control}{helperText && <span id={helperId} className="bk-field-helper">{helperText}</span>}</div>;
 }
 
 
-export function Select({ value, defaultValue, onChange, label, children, sx, className, startAdornment, labelId: _labelId, size: _size, ...props }: BoxProps & { label?: ReactNode; startAdornment?: ReactNode; onChange?: (event: any) => void; labelId?: string }) {
+export function Select({ value, defaultValue, onChange, label, children, sx, className, startAdornment, labelId, size: _size, ...props }: BoxProps & { label?: ReactNode; startAdornment?: ReactNode; onChange?: (event: any) => void; labelId?: string }) {
   const options = Children.toArray(children).flatMap((child) => {
     if (!isValidElement(child)) return [];
     const item = child.props as { value?: string; children?: ReactNode; disabled?: boolean };
     return item.value === undefined ? [] : [{ value: item.value, label: item.children, disabled: item.disabled }];
   });
-  return <AntSelect {...(props as any)} size="middle" value={value} defaultValue={defaultValue} aria-label={typeof label === "string" ? label : undefined} options={options} prefix={startAdornment} className={mergeClassNames("bk-select", sxClassName(sx, useTheme()), className)} onChange={(nextValue) => onChange?.({ target: { value: nextValue } } as any)} />;
+  return <AntSelect {...(props as any)} size="middle" value={value} defaultValue={defaultValue} aria-labelledby={props["aria-labelledby"] ?? labelId} aria-label={props["aria-label"] ?? (typeof label === "string" ? label : undefined)} options={options} prefix={startAdornment} className={mergeClassNames("bk-select", sxClassName(sx, useTheme()), className)} onChange={(nextValue) => onChange?.({ target: { value: nextValue } } as any)} />;
 }
 
 export function Checkbox({ checked, defaultChecked, onChange, sx, className, slotProps, ...props }: BoxProps & { slotProps?: { input?: Record<string, unknown> }; onChange?: (event: any) => void }) {

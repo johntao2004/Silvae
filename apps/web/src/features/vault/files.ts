@@ -165,24 +165,106 @@ export async function decryptFile(
     throw error;
   }
 }
+const MAX_EPUB_ENTRIES = 5000;
+const MAX_EPUB_ENTRY_BYTES = 20 * 1024 * 1024;
+const MAX_EPUB_EXPANDED_BYTES = 200 * 1024 * 1024;
+
+interface ZipInternalStream {
+  on(event: "data", callback: (chunk: Uint8Array) => void): ZipInternalStream;
+  on(event: "end", callback: () => void): ZipInternalStream;
+  on(event: "error", callback: (error: unknown) => void): ZipInternalStream;
+  pause(): ZipInternalStream;
+  resume(): ZipInternalStream;
+}
+
+function getInternalStream(entry: JSZip.JSZipObject): ZipInternalStream | null {
+  const candidate = entry as JSZip.JSZipObject & {
+    internalStream?: (type: "uint8array") => ZipInternalStream;
+  };
+  return typeof candidate.internalStream === "function"
+    ? candidate.internalStream("uint8array")
+    : null;
+}
+
+async function readZipEntryBounded(
+  entry: JSZip.JSZipObject,
+  retainBytes: boolean,
+  totalExpanded: { value: number },
+): Promise<Uint8Array | null> {
+  const stream = getInternalStream(entry);
+  if (!stream) {
+    const bytes = await entry.async("uint8array");
+    totalExpanded.value += bytes.byteLength;
+    if (
+      bytes.byteLength > MAX_EPUB_ENTRY_BYTES ||
+      totalExpanded.value > MAX_EPUB_EXPANDED_BYTES
+    ) {
+      throw new Error("EPUB 解压大小超限。");
+    }
+    return retainBytes ? bytes : null;
+  }
+
+  return new Promise<Uint8Array | null>((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let entryBytes = 0;
+    let settled = false;
+    const fail = (reason: unknown) => {
+      if (settled) return;
+      settled = true;
+      try {
+        stream.pause();
+      } catch {
+        // Ignore pause errors if the stream worker already terminated.
+      }
+      chunks.length = 0;
+      reject(reason instanceof Error ? reason : new Error("EPUB 解压失败。"));
+    };
+    stream.on("data", (chunk) => {
+      if (settled) return;
+      entryBytes += chunk.byteLength;
+      totalExpanded.value += chunk.byteLength;
+      if (
+        entryBytes > MAX_EPUB_ENTRY_BYTES ||
+        totalExpanded.value > MAX_EPUB_EXPANDED_BYTES
+      ) {
+        fail(new Error("EPUB 解压大小超限。"));
+        return;
+      }
+      if (retainBytes) chunks.push(chunk);
+    });
+    stream.on("error", fail);
+    stream.on("end", () => {
+      if (settled) return;
+      settled = true;
+      if (!retainBytes) {
+        resolve(null);
+        return;
+      }
+      const combined = new Uint8Array(entryBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        combined.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      resolve(combined);
+    });
+    stream.resume();
+  });
+}
+
 // EPUB 内的主动内容及外部引用不得逃出加密阅读器边界。
 /** EPUB's own active/external content must not escape the encrypted reader. */
 export async function privateEpub(bytes: Uint8Array) {
   const zip = await JSZip.loadAsync(bytes);
   const entries = Object.values(zip.files).filter((x) => !x.dir);
-  let expanded = 0;
-  if (entries.length > 5000) throw new Error("EPUB 文件数量过多。");
+  if (entries.length > MAX_EPUB_ENTRIES) throw new Error("EPUB 文件数量过多。");
+  const totalExpanded = { value: 0 };
+  const decoder = new TextDecoder();
   for (const entry of entries) {
-    const size =
-      (entry as unknown as { _data?: { uncompressedSize?: number } })._data
-        ?.uncompressedSize ?? 0;
-    expanded += size;
-    if (size > 20 * 1024 * 1024 || expanded > 200 * 1024 * 1024)
-      throw new Error("EPUB 解压大小超限。");
-  }
-  for (const entry of entries) {
-    if (/\.(x?html?|svg)$/i.test(entry.name)) {
-      const html = DOMPurify.sanitize(await entry.async("string"), {
+    const isMarkup = /\.(x?html?|svg)$/i.test(entry.name);
+    const extracted = await readZipEntryBounded(entry, isMarkup, totalExpanded);
+    if (isMarkup && extracted) {
+      const html = DOMPurify.sanitize(decoder.decode(extracted), {
         WHOLE_DOCUMENT: true,
         FORBID_TAGS: [
           "script",

@@ -32,7 +32,7 @@ class MetadataProviderSettingsPersistenceTest {
                         var setup = connection.createStatement()) {
                     setup.execute("set search_path to " + schema + ",public");
                     var db = DSL.using(connection, SQLDialect.POSTGRES);
-                    db.execute("insert into app_users(id,username,display_name,password_hash,role) values (?,'metadata-owner','测试主人','test','OWNER')", ownerId);
+                    db.execute("insert into app_users(id,username,display_name,password_hash,role) values (?,'metadata-owner','测试站点所有者','test','OWNER')", ownerId);
 
                     var repository = new MetadataProviderSettingsRepository(db);
                     assertThat(repository.findEnabled()).isEmpty();

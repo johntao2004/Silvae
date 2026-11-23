@@ -1,6 +1,8 @@
 # Prototype Instructions
 
-The article-collection landing page goes directly from the 选集 heading/create action to 我的选集 and 书库共享. Omit the 查找选集 section and search input, and do not silently filter the list using legacy q URL parameters; preserve collection creation, permissions and return navigation.
+Book-detail source-bibliography failures show concise, safe reasons without redundant error prefixes in both public and signed-in views. Encrypted PDFs say exactly PDF 已加密，无法读取补充资料。 Omit retry for this known limitation while retaining retry for temporary failures.
+
+The article-collection landing page goes directly from the 合集 heading/create action to 我的私密合集 and 成员共享合集. Omit the 查找合集 section and search input, and do not silently filter the list using legacy q URL parameters; preserve collection creation, permissions and return navigation.
 
 Current-content reader annotations appear as compact shared cards inside the notes drawer. Bound each card body to a short, viewport-aware height with independent vertical scrolling for the quote and note, and keep its type and jump/edit/delete actions outside that scroll area. The outer list may scroll between cards; do not introduce other articles/books or unrelated article controls. Preserve click-to-reveal targeting and full note text.
 
@@ -60,7 +62,7 @@ Buttons share normal, warning and danger semantics through ui/action-button.tsx,
 
 Book and article note cards in the shared masonry feed omit the redundant 返回原文 footer button. Keep the existing title click/keyboard action and the visible date; do not leave empty action space in the card footer. This applies to the notes overview and both source-filtered feeds.
 
-The October 23 Ming-study naming supersedes the earlier literary labels: 藏书楼 (/library), 文钞馆 (/articles), 读书录 (/annotations and all source views), 秘阁 (/vault). Secondary entries use 楼中一览 (/library/overview), 书目 (/booklists), 选集 (/article-collections), 读书札记 (/annotations/books), 阅文札记 (/annotations/articles). Keep matching page headings, return links, desktop/mobile menus and collection actions consistent. All notes source-page headings remain 读书录; source names belong to submenu entries. Preserve existing routes, permissions, data and security behavior. Management settings and their functional/permission labels stay direct and descriptive. This supersedes earlier names for these reader-facing entries.
+Use direct Chinese labels for site navigation and matching page titles. Keep 藏书楼 (/library), and use 文章 (/articles), 阅读笔记 (/annotations), and 加密书库 (/vault). Use 书库概览, 书单, 知识图谱 and 3D 书库 in the library submenu, 全部文章 and 合集 in the article submenu, and 书籍笔记 and 文章笔记 in the notes submenu. Match accessible names, search results, settings and return links to these names. Preserve routes, permissions and stored content.
 
 Vault identity-verification recovery and authenticator-rebinding actions use full-width bordered buttons with a touch-sized hit area and visible keyboard focus, including their return-to-verification states. Do not present these actions as bare links or unbordered text.
 
@@ -76,7 +78,7 @@ The ordinary-book storage card title is exactly 书籍书库; do not append 主�
 
 Book, article and vault storage cards use one shared presentation: name and access status above a divider, available space and last completed scan below. Omit all card icons, paths, descriptions and storage-type footer labels. The article/vault management response must not expose filesystem paths. Use live server data on this page even in demo-capable builds; unavailable capacity stays unknown and an absent scan stays 尚未扫描. Persist real, successful read-only directory-scan completion times, never substitute request, refresh or startup times without completing a scan. This supersedes earlier path/description display rules for these cards.
 
-Articles have independent 合集 under the 文章收藏 desktop submenu and mobile group. Reuse booklist collection flows with landscape article cards: private by default, optional authenticated 书库共享, owner-only editing, revision conflicts, membership ordering and remove-only collection deletion. Keep article data and reading state separate from books/booklists/vault. Shared collections must not disclose private articles; grant collection organization independently of source article editing. Use the shared top-left PageBackAction before breadcrumbs/headings on collection detail pages.
+Articles have independent 合集 under the 文章 desktop submenu and mobile group. Reuse booklist collection flows with landscape article cards: private by default, optional authenticated 书库成员可见, owner-only editing, revision conflicts, membership ordering and remove-only collection deletion. Keep article data and reading state separate from books/booklists/vault. Shared collections must not disclose private articles; grant collection organization independently of source article editing. Use the shared top-left PageBackAction before breadcrumbs/headings on collection detail pages.
 
 Applying reader highlights, underlines, bold or highlight notes should save silently and show the annotation directly in the content. Do not show a success toast/snackbar after these actions; retain actionable save-failure feedback. Apply this consistently through the shared book/article reader workspace.
 
@@ -622,6 +624,6 @@ Reader bookmarks apply to both books and articles through the shared workspace. 
 
 Ordinary books currently use one deployment-configured default library. Do not expose library registration or book MOVE controls, including the upload target picker. Keep capability checks, reading, uploads, rename/writeback and recoverable trash available under existing permissions. Existing storage and historical operations must not be deleted or migrated by this UI change.
 
-The same naming update uses 学脉图 for the knowledge graph, 书楼漫游 for the virtual library and 随笔 for reading posts. These are reader-facing names; keep routes, permission codes, stored records and feature flags unchanged. Historical rationale and the distinction between attested terms and modern combinations are recorded in design/brand/ming-study/README.md.
+Keep 随笔 in writing actions and use 阅读随笔 when distinguishing the post tab from 笔记与摘录.
 
 The Ming library lighting control is one button that switches between the existing 日光 / 暮色 presets on click. Its icon and label show the current scene mode, including after view restoration, and it always has the same selected treatment. Do not display the next toggle action as the current label or expose a deselected state. This supersedes the earlier two-choice radio control.

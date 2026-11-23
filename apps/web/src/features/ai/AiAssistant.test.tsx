@@ -109,7 +109,7 @@ it("directs members to the owner or administrator without exposing an inaccessib
   vi.mocked(api.getAiServiceAvailability).mockResolvedValue(unconfigured);
   render(view()); await open();
   expect(await screen.findByRole("dialog", { name: "AI 服务尚未配置" })).toBeInTheDocument();
-  expect(screen.getByText("请联系主人或管理员配置 AI 服务。")).toBeInTheDocument();
+  expect(screen.getByText("请联系站点所有者或管理员配置 AI 服务。")).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "前往 AI 服务配置" })).not.toBeInTheDocument();
   expect(request).not.toHaveBeenCalled();
 });

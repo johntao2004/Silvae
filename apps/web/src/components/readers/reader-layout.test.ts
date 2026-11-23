@@ -43,4 +43,10 @@ describe("reader layout", () => {
     expect(readerShellHeight(390)).toBe(`${390 - tokens.layout.navHeight}px`);
     expect(readerShellHeight(undefined)).toBe(`calc(100dvh - ${tokens.layout.navHeight}px)`);
   });
+
+  it("omits the global header height on mobile reader shells", () => {
+    expect(readerShellHeight(844, false)).toBe("844px");
+    expect(readerShellHeight(undefined, false)).toBe("100dvh");
+    expect(readerShellHeight(null, false)).toBe("100dvh");
+  });
 });

@@ -1,10 +1,16 @@
 package com.elexvx.humite.ingestion;
 
-import java.util.List;
+import com.elexvx.humite.common.ApiException;
 import com.elexvx.humite.filemanagement.ContentStorageService;
+import java.util.List;
+import java.util.UUID;
+import java.util.function.Supplier;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -19,8 +25,12 @@ public class LibraryRootController {
     private final LibraryRootCapabilityService capabilities;
     private final ContentStorageService content;
 
-    public LibraryRootController(LibraryRootRepository roots, LibraryRootRegistrationService registration, LibraryRootCapabilityService capabilities, ContentStorageService content) {
-        this.roots = roots; this.registration = registration; this.capabilities = capabilities; this.content = content;
+    public LibraryRootController(LibraryRootRepository roots, LibraryRootRegistrationService registration,
+                                 LibraryRootCapabilityService capabilities, ContentStorageService content) {
+        this.roots = roots;
+        this.registration = registration;
+        this.capabilities = capabilities;
+        this.content = content;
     }
 
     @GetMapping("/content-storage")
@@ -31,22 +41,39 @@ public class LibraryRootController {
         return new RootList(roots.findAll());
     }
 
-    @org.springframework.web.bind.annotation.PostMapping("/preview")
-    Object preview(@org.springframework.web.bind.annotation.RequestBody Location input) { return registration.preview(input.path()); }
-    @org.springframework.web.bind.annotation.PostMapping
-    LibraryRoot create(@org.springframework.web.bind.annotation.RequestBody Registration input) { return registration.create(input.name(), input.path(), input.expectedFingerprint(), input.idempotencyKey()); }
-    @org.springframework.web.bind.annotation.PostMapping("/check")
+    @PostMapping("/preview")
+    Object preview(@RequestBody Location input) {
+        return withLocationErrorMapping(() -> registration.preview(input.path()));
+    }
+
+    @PostMapping
+    LibraryRoot create(@RequestBody Registration input) {
+        return withLocationErrorMapping(() -> registration.create(
+                input.name(), input.path(), input.expectedFingerprint(), input.idempotencyKey()));
+    }
+
+    @PostMapping("/check")
     RootList check() {
-        capabilities.checkAll();
-        if (!content.scanAll()) throw new com.elexvx.humite.common.ApiException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
-            "CONTENT_SCAN_FAILED", "文章或禁书区目录扫描未完成，请检查目录可读性后重试。");
-        return new RootList(roots.findAll());
+        return withLocationErrorMapping(() -> {
+            capabilities.checkAll();
+            if (!content.scanAll()) {
+                throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "CONTENT_SCAN_FAILED", "文章或加密书库目录扫描未完成，请检查目录可读性后重试。");
+            }
+            return new RootList(roots.findAll());
+        });
     }
-    @org.springframework.web.bind.annotation.ExceptionHandler(IllegalArgumentException.class)
-    org.springframework.http.ResponseEntity<java.util.Map<String, String>> invalidLocation(IllegalArgumentException error) {
-        return org.springframework.http.ResponseEntity.badRequest().body(java.util.Map.of("code", "INVALID_LIBRARY_LOCATION", "detail", error.getMessage()));
+
+    private <T> T withLocationErrorMapping(Supplier<T> action) {
+        try {
+            return action.get();
+        } catch (IllegalArgumentException error) {
+            String message = error.getMessage() == null || error.getMessage().isBlank() ? "书库路径无效。" : error.getMessage();
+            throw ApiException.badRequest("INVALID_LIBRARY_LOCATION", message);
+        }
     }
+
     public record Location(String path) {}
-    public record Registration(String name, String path, String expectedFingerprint, java.util.UUID idempotencyKey) {}
+    public record Registration(String name, String path, String expectedFingerprint, UUID idempotencyKey) {}
     public record RootList(List<LibraryRoot> items) {}
 }

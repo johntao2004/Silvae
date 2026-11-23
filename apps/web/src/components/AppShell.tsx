@@ -3,58 +3,56 @@ import { usePermissions, PermissionBoundary } from "../auth/permissions";
 // Shared navigation/account shell derives display permissions from auth state without replacing server authorization.
 import { useSiteSettingsQuery, SiteMetadata, SiteFooter } from "../site/site-settings";
 import { pageWidthSx, topNavigationSurfaceSx } from "./PageHeader";
-import { LibraryBooksOutlined } from "@/ui/icons";
-import { LockOutlined } from "@/ui/icons";
-import { ExpandMoreRounded } from "@/ui/icons";
+import {
+  AutoStoriesOutlined,
+  CategoryOutlined,
+  CloseRounded,
+  DescriptionOutlined,
+  EditNoteRounded,
+  ExpandMoreRounded,
+  HomeOutlined,
+  LibraryBooksOutlined,
+  LockOutlined,
+  NotesOutlined,
+  SearchRounded,
+  SettingsOutlined,
+  ThreeDRotationOutlined,
+} from "@/ui/icons";
 
-import { MenuRounded } from "@/ui/icons";
-import { NotesOutlined } from "@/ui/icons";
-import { PaletteOutlined } from "@/ui/icons";
-import { SearchRounded } from "@/ui/icons";
-
-import { AppBar } from "@/ui/primitives";
-import { Alert } from "@/ui/feedback";
-import { Avatar } from "@/ui/feedback";
-import { Box } from "@/ui/primitives";
-import { Button, IconButton } from "@/ui/buttons";
+import { AppBar, Box, Stack, Toolbar, Typography, type UiTheme } from "@/ui/primitives";
+import { Alert, Avatar } from "@/ui/feedback";
+import { Button } from "@/ui/buttons";
 import { Dropdown } from "@/ui/antd";
-import { Drawer } from "@/ui/overlays";
 import { InputAdornment } from "@/ui/primitives";
-import { List } from "@/ui/primitives";
-import { ListItemButton } from "@/ui/primitives";
-import { ListItemIcon } from "@/ui/primitives";
-import { ListItemText } from "@/ui/primitives";
-import { Stack } from "@/ui/primitives";
 import { TextField } from "@/ui/forms";
-import { Toolbar } from "@/ui/primitives";
-import { Typography } from "@/ui/primitives";
-import { useEffect, useRef, useState, type KeyboardEvent, type PropsWithChildren } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type MouseEvent, type PropsWithChildren } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { DEFAULT_SITE_SETTINGS } from "../api/client";
-import type { ReaderTheme } from "./readers/reader-fonts";
+import { useIsMobileViewport } from "../hooks/useIsMobileViewport";
 import { tokens } from "../theme/tokens";
-import { useHumiteTheme } from "../theme/HumiteThemeProvider";
-import { humiteThemeOptions } from "../theme/theme";
+import { MobileBottomNav, type MobileBottomNavItem } from "./MobileBottomNav";
+import { SiteThemeMenu } from "./SiteThemeMenu";
 import { useOrdinaryPageScale } from "../theme/useOrdinaryPageScale";
 import { articlesNavigationSections, libraryNavigationSections, notesNavigationSections } from "./app-navigation-sections";
 import { useVaultNavigationStatus } from "../features/vault/use-vault-navigation-status";
 
 const navigation = [
   { label: "藏书楼", path: "/library", icon: <LibraryBooksOutlined /> },
-  { label: "文钞馆", path: "/articles", icon: <NotesOutlined /> },
-  { label: "读书录", path: "/annotations", icon: <NotesOutlined /> },
-  { label: "秘阁", path: "/vault", icon: <LockOutlined /> },
+  { label: "发现", path: "/discover", icon: <CategoryOutlined /> },
+  { label: "文章", path: "/articles", icon: <NotesOutlined /> },
+  { label: "阅读笔记", path: "/annotations", icon: <NotesOutlined /> },
+  { label: "加密书库", path: "/vault", icon: <LockOutlined /> },
 ];
 
 const headerControlSx = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: `${tokens.layout.touchTarget}px`,
-  height: `${tokens.layout.touchTarget}px`,
-  minWidth: `${tokens.layout.touchTarget}px`,
-  minHeight: `${tokens.layout.touchTarget}px`,
+  width: `${tokens.layout.iconButtonSize}px`,
+  height: `${tokens.layout.iconButtonSize}px`,
+  minWidth: `${tokens.layout.iconButtonSize}px`,
+  minHeight: `${tokens.layout.iconButtonSize}px`,
   p: 0,
   flexShrink: 0,
   border: 0,
@@ -62,9 +60,13 @@ const headerControlSx = {
   bgcolor: "transparent",
   color: "text.primary",
   cursor: "pointer",
+  transition: "background-color 150ms ease, color 150ms ease",
   "&:hover": { bgcolor: "action.hover" },
   "&:focus-visible": { outline: "none", boxShadow: "var(--shadow-focus)" },
 };
+
+const mobileLibraryHubPaths = new Set(["/library", "/library/overview", "/knowledge-graph"]);
+const mobileNotesHubPaths = new Set(["/annotations", "/annotations/books", "/annotations/articles"]);
 
 export function AppShell({ children }: PropsWithChildren) {
   const siteQuery = useSiteSettingsQuery();
@@ -73,31 +75,28 @@ export function AppShell({ children }: PropsWithChildren) {
   const { canVisit } = usePermissions();
   const vaultEnabled = useVaultNavigationStatus(user?.id, Boolean(user && canVisit("/vault")));
   const [logoutError, setLogoutError] = useState("");
-  const { mode: humiteTheme, setMode: setHumiteTheme } = useHumiteTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
-  const [libraryGroupOpen, setLibraryGroupOpen] = useState(true);
   const [notesMenuOpen, setNotesMenuOpen] = useState(false);
-  const [notesGroupOpen, setNotesGroupOpen] = useState(true);
-  const [articlesMenuOpen, setArticlesMenuOpen] = useState(false);
-  const [articlesGroupOpen, setArticlesGroupOpen] = useState(true);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
-  const themeMenuSelectionRef = useRef(false);
-  const librarySections = libraryNavigationSections.filter(item => (!item.requiresUser || user)
-    && (item.path !== "/virtual-library" || (siteQuery.isSuccess && site.virtualLibraryEnabled)))
+  const librarySections = libraryNavigationSections
+    .filter(item => (!item.requiresUser || user)
+      && (item.path !== "/virtual-library" || (siteQuery.isSuccess && site.virtualLibraryEnabled)))
     .filter(item => canVisit(item.path));
   const notesSections = notesNavigationSections.filter(item => canVisit(item.path));
   const articlesSections = articlesNavigationSections.filter(item => canVisit(item.path));
-  const libraryNavigation = (user ? navigation : navigation.filter(item => item.path === "/library"))
-    .filter(item => item.path !== "/vault" || vaultEnabled).filter(item =>
-    canVisit(item.path) || (item.path === "/articles" && articlesSections.length > 0)
+  const libraryNavigation = (user ? navigation : navigation.filter(item => item.path === "/library" || item.path === "/discover"))
+    .filter(item => item.path !== "/vault" || vaultEnabled)
+    .filter(item => canVisit(item.path) || (item.path === "/articles" && articlesSections.length > 0)
       || (item.path === "/annotations" && notesSections.length > 0));
-  const searchLabel = "搜索书籍、笔记、书目";
+  const searchLabel = "搜索书籍、文章、笔记、书单";
   const searchableLibrary = canVisit("/search");
+  const isMobile = useIsMobileViewport();
+  const isImmersiveRoute = /^\/reader\/[^/]+/.test(location.pathname)
+    || /^\/articles\/[^/]+/.test(location.pathname)
+    || location.pathname === "/virtual-library";
   const readerRoute = location.pathname.startsWith("/reader/") || /^\/articles\/[^/]+\/?$/.test(location.pathname);
   useOrdinaryPageScale(!readerRoute && location.pathname !== "/virtual-library");
   const [query, setQuery] = useState(location.pathname === "/search" ? new URLSearchParams(location.search).get("q") ?? "" : "");
@@ -106,60 +105,174 @@ export function AppShell({ children }: PropsWithChildren) {
   }, [location.pathname, location.search]);
   const [searchExpanded, setSearchExpanded] = useState(Boolean(query));
   const searchTriggerRef = useRef<HTMLElement>(null);
-  const isActivePath = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`)
-    || (path === "/articles" && location.pathname.startsWith("/article-collections"))
-    || (path === "/library" && ["/knowledge-graph", "/virtual-library", "/booklists"].some(section => location.pathname === section || location.pathname.startsWith(`${section}/`)));
+  const matchesRoute = (prefix: string) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`);
+  const isActivePath = (path: string) => matchesRoute(path)
+    || (path === "/discover" && (matchesRoute("/booklists") || matchesRoute("/article-collections")))
+    || (path === "/library" && ["/knowledge-graph", "/virtual-library"].some(matchesRoute));
+
+  const hasVaultAccess = Boolean(user && vaultEnabled && canVisit("/vault"));
+  const showSettingsBottomTab = Boolean(user && canVisit("/settings"));
+  const showDiscoverBottomTab = canVisit("/discover");
+  const showVaultBottomTab = !showSettingsBottomTab && hasVaultAccess;
+  const showDedicated3dTab = !showSettingsBottomTab && !showVaultBottomTab && siteQuery.isSuccess && site.virtualLibraryEnabled && canVisit("/virtual-library");
+  const bottomNavItems: MobileBottomNavItem[] = [];
+  if (isMobile && !isImmersiveRoute) {
+    const articlesDestination = canVisit("/articles") ? "/articles" : articlesSections[0]?.path;
+    const notesDestination = canVisit("/annotations") ? "/annotations" : notesSections[0]?.path;
+
+    if (canVisit("/library")) {
+      bottomNavItems.push({
+        label: "藏书",
+        path: "/library",
+        icon: <AutoStoriesOutlined />,
+        active: isActivePath("/library") && (!showDedicated3dTab || location.pathname !== "/virtual-library"),
+      });
+    }
+    if (showDiscoverBottomTab) {
+      bottomNavItems.push({
+        label: "发现",
+        path: "/discover",
+        icon: <CategoryOutlined />,
+        active: isActivePath("/discover"),
+      });
+    }
+    if (user && articlesDestination) {
+      bottomNavItems.push({
+        label: "文章",
+        path: articlesDestination,
+        icon: <DescriptionOutlined />,
+        active: isActivePath("/articles"),
+      });
+    }
+    if (user && notesDestination) {
+      bottomNavItems.push({
+        label: "笔记",
+        path: notesDestination,
+        icon: <EditNoteRounded />,
+        active: isActivePath("/annotations"),
+      });
+    }
+    if (showVaultBottomTab) {
+      bottomNavItems.push({
+        label: "加密库",
+        path: "/vault",
+        icon: <LockOutlined />,
+        active: isActivePath("/vault"),
+      });
+    } else if (showSettingsBottomTab) {
+      bottomNavItems.push({
+        label: "设置",
+        path: "/settings",
+        icon: <SettingsOutlined />,
+        active: location.pathname.startsWith("/settings"),
+      });
+    } else if (showDedicated3dTab) {
+      bottomNavItems.push({
+        label: "3D",
+        path: "/virtual-library",
+        icon: <ThreeDRotationOutlined />,
+        active: location.pathname === "/virtual-library",
+      });
+    } else if (user) {
+      bottomNavItems.push({
+        label: "我的",
+        path: "/profile",
+        icon: <HomeOutlined />,
+        active: location.pathname === "/profile",
+      });
+    }
+  }
+
   const selectedLibraryPath = librarySections.find(section => location.pathname === section.path || location.pathname.startsWith(`${section.path}/`))?.path;
-  const selectedArticlesPath = location.pathname.startsWith("/article-collections") ? "/article-collections"
-    : isActivePath("/articles") ? "/articles" : undefined;
   const selectedNotesPath = location.pathname.startsWith("/annotations/posts/book/") ? "/annotations/books"
     : location.pathname.startsWith("/annotations/posts/article/") ? "/annotations/articles"
       : notesSections.find(section => isActivePath(section.path))?.path;
+
+  let mobileSectionTabs: Array<{ label: string; path: string; active: boolean }> = [];
+  if (isMobile && !isImmersiveRoute) {
+    if (mobileLibraryHubPaths.has(location.pathname)) {
+      const items = [
+        ...(canVisit("/library") ? [{ label: "全部藏书", path: "/library" }] : []),
+        ...librarySections.map(({ label, path }) => ({ label, path })),
+      ];
+      mobileSectionTabs = items.map(item => ({ ...item, active: location.pathname === item.path }));
+    } else if (mobileNotesHubPaths.has(location.pathname)) {
+      const items = [
+        ...(canVisit("/annotations") ? [{ label: "全部笔记", path: "/annotations" }] : []),
+        ...notesSections.map(({ label, path }) => ({ label, path })),
+      ];
+      mobileSectionTabs = items.map(item => ({ ...item, active: location.pathname === item.path }));
+    }
+  }
+  const hasMobileSubNav = mobileSectionTabs.length > 1;
 
   const updateQuery = (value: string) => setQuery(value);
 
   const linkButton = (item: (typeof navigation)[number]) => {
     const library = item.path === "/library";
-    const articleGroup = item.path === "/articles";
-    const grouped = library || articleGroup || item.path === "/annotations";
-    const menuOpen = library ? libraryMenuOpen : articleGroup ? articlesMenuOpen : notesMenuOpen;
-    const setMenuOpen = library ? setLibraryMenuOpen : articleGroup ? setArticlesMenuOpen : setNotesMenuOpen;
-    const sections = library ? librarySections : articleGroup ? articlesSections : notesSections;
-    const selectedPath = library ? selectedLibraryPath : articleGroup ? selectedArticlesPath : selectedNotesPath;
+    const notes = item.path === "/annotations";
+    const sections = library ? librarySections : notes ? notesSections : [];
+    const grouped = (library || notes) && sections.length > 0;
+    const menuOpen = library ? libraryMenuOpen : notesMenuOpen;
+    const setMenuOpen = library ? setLibraryMenuOpen : setNotesMenuOpen;
+    const selectedPath = library ? selectedLibraryPath : notes ? selectedNotesPath : undefined;
     const destination = canVisit(item.path) ? item.path : sections[0]?.path ?? item.path;
-    const button = <Box
-      key={item.path}
-      component={grouped ? Link : NavLink}
-      to={destination}
-      aria-haspopup={grouped ? "menu" : undefined}
-      aria-expanded={grouped ? menuOpen : undefined}
-      aria-current={grouped && isActivePath(item.path) ? "page" : undefined}
-      onClick={grouped ? () => setMenuOpen(false) : undefined}
-      onKeyDown={grouped ? (event: KeyboardEvent<HTMLElement>) => {
-        if (event.key === "ArrowDown") { event.preventDefault(); setMenuOpen(true); }
-        if (event.key === "Escape") setMenuOpen(false);
-      } : undefined}
-      className={`bk-nav-link${isActivePath(item.path) ? " bk-nav-link-active" : ""}`}
-    >
-      <span className="bk-nav-label">{item.label}</span>
-      {grouped && <ExpandMoreRounded className="bk-nav-chevron" />}
-    </Box>;
-    return grouped ? <Dropdown key={item.path} open={menuOpen} onOpenChange={setMenuOpen}
-      trigger={["hover", "click"]} mouseEnterDelay={0} placement="bottomLeft" autoFocus
-      styles={{ root: { minWidth: tokens.layout.menuMinWidth } }}
-      menu={{
-        selectedKeys: selectedPath ? [selectedPath] : [],
-        items: sections.map(section => ({ key: section.path, label: <NavLink to={section.path}>{section.label}</NavLink> })),
-        onClick: () => setMenuOpen(false),
-      }}>
-      {button}
-    </Dropdown> : button;
+    const active = isActivePath(item.path);
+    const button = (
+      <Box
+        key={item.path}
+        component={Link}
+        to={destination}
+        aria-haspopup={grouped ? "menu" : undefined}
+        aria-expanded={grouped ? menuOpen : undefined}
+        aria-current={active ? "page" : undefined}
+        onClick={grouped ? () => setMenuOpen(false) : undefined}
+        onKeyDown={grouped ? (event: KeyboardEvent<HTMLElement>) => {
+          if (event.key === "ArrowDown") { event.preventDefault(); setMenuOpen(true); }
+          if (event.key === "Escape") setMenuOpen(false);
+        } : undefined}
+        className={`bk-nav-link${active ? " bk-nav-link-active" : ""}`}
+      >
+        <span className="bk-nav-label">{item.label}</span>
+        {grouped && <ExpandMoreRounded className="bk-nav-chevron" />}
+      </Box>
+    );
+    return grouped ? (
+      <Dropdown
+        key={item.path}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        trigger={["hover", "click"]}
+        mouseEnterDelay={0}
+        placement="bottomLeft"
+        autoFocus
+        styles={{ root: { minWidth: tokens.layout.menuMinWidth } }}
+        menu={{
+          selectedKeys: selectedPath ? [selectedPath] : [],
+          items: sections.map(section => ({ key: section.path, label: <NavLink to={section.path}>{section.label}</NavLink> })),
+          onClick: () => setMenuOpen(false),
+        }}
+      >
+        {button}
+      </Dropdown>
+    ) : button;
   };
 
   return (
-    <Box sx={{ minHeight: "var(--app-viewport-height, 100vh)", bgcolor: "background.default", color: "text.primary" }}>
+    <Box
+      sx={{
+        minHeight: "var(--app-viewport-height, 100vh)",
+        bgcolor: "background.default",
+        color: "text.primary",
+        "--layout-active-nav-height": isMobile && isImmersiveRoute
+          ? "0px"
+          : isMobile
+            ? (hasMobileSubNav ? "100px" : "54px")
+            : `${tokens.layout.navHeight}px`,
+      }}
+    >
       {logoutError && <Alert severity="error" onClose={() => setLogoutError("")}>{logoutError}</Alert>}
-      <>
+      {!(isMobile && isImmersiveRoute) && (
         <AppBar
           className="bk-top-nav"
           position="sticky"
@@ -172,242 +285,226 @@ export function AppShell({ children }: PropsWithChildren) {
             aria-label="全站导航"
             className="bk-top-nav-inner"
             sx={{
+              position: "relative",
               minHeight: `${tokens.layout.navHeight}px !important`,
               ...pageWidthSx,
-              display: { xs: "flex", md: "grid" },
-              gridTemplateColumns: { md: "minmax(0, 1fr) max-content" },
-              justifyContent: { md: "space-between" },
-              gap: { xs: 0.5, sm: 1, md: 2 },
+              display: { xs: "flex", sm: "grid" },
+              gridTemplateColumns: { sm: "minmax(0, 1fr) max-content" },
+              justifyContent: { sm: "space-between" },
+              gap: { xs: 1, sm: 1.5, md: 2 },
             }}
           >
-            <Stack direction="row" sx={{ alignItems: "center", gap: { xs: 0.5, md: 2 }, minWidth: 0, flexWrap: "wrap" }}>
-              <Box
-                component="button"
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                aria-label="打开导航"
-                sx={{ ...headerControlSx, display: { xs: "inline-flex", md: "none" } }}
-              >
-                <MenuRounded />
-              </Box>
+            <Stack direction="row" sx={{ alignItems: "center", gap: { xs: 1, sm: 1.5, md: 2 }, minWidth: 0, flexWrap: "wrap" }}>
               <Typography
                 component={NavLink}
                 to="/library"
                 variant="h5"
                 sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  height: `${tokens.layout.iconButtonSize}px`,
+                  lineHeight: 1,
                   color: "text.primary",
                   textDecoration: "none",
                   whiteSpace: "nowrap",
-                  maxWidth: { xs: `${tokens.spacing[24]*1.5}px`, sm: `${tokens.spacing[24]*2.5}px` },
+                  maxWidth: { xs: `${tokens.spacing[24] * 1.5}px`, sm: `${tokens.spacing[24] * 2.5}px` },
                   overflow: "hidden", textOverflow: "ellipsis",
                   fontFamily: tokens.typography.fontFamily.display,
                   fontWeight: tokens.typography.fontWeight.regular,
-                  fontSize: { xs: `${tokens.typography.fontSize.titleSm}px`, sm: `${tokens.typography.fontSize.title}px` },
+                  fontSize: { xs: "20px", sm: "21px" },
                 }}
               >
                 {site.name}
               </Typography>
 
-              <Stack direction="row" spacing={0.5} sx={{ display: { xs: "none", md: "flex" }, minWidth: 0, flexWrap: "wrap" }}>
+              <Stack direction="row" spacing={0.5} sx={{ display: { xs: "none", sm: "flex" }, minWidth: 0, flexWrap: "wrap" }}>
                 {libraryNavigation.map(linkButton)}
               </Stack>
             </Stack>
 
-            <Stack direction="row" sx={{ position: "relative", alignItems: "center", gap: { xs: 0.5, sm: 1, md: 2 }, flexShrink: 0, ml: { xs: "auto", md: 0 }, justifySelf: { md: "end" } }}>
-              {searchableLibrary && <Box
-                data-testid="global-navigation-search"
-                onMouseEnter={() => setSearchExpanded(true)}
-                onMouseLeave={() => setSearchExpanded(false)}
-                sx={{
-                  position: { xs: "static", md: "relative" },
-                  width: { xs: `${tokens.layout.touchTarget}px`, md: searchExpanded ? `clamp(${tokens.spacing[24] + tokens.spacing[12]}px, calc(100vw - ${tokens.spacing[24] * 9 + tokens.spacing[8]}px), ${tokens.spacing[24] * 3}px)` : `${tokens.layout.touchTarget}px` },
-                  height: `${tokens.layout.touchTarget}px`,
-                  flexShrink: 0,
-                }}
-              >
+            <Stack direction="row" sx={{ position: { xs: "static", md: "relative" }, alignItems: "center", gap: { xs: 0.75, sm: 1, md: 1.5 }, flexShrink: 0, ml: { xs: "auto", sm: 0 }, justifySelf: { sm: "end" } }}>
+              {searchableLibrary && (
                 <Box
-                  ref={searchTriggerRef}
-                  component="button"
-                  type="button"
-                  aria-label="展开搜索"
-                  aria-expanded={searchExpanded}
-                  aria-controls="global-navigation-search-panel"
-                  onClick={() => setSearchExpanded(true)}
-                  sx={headerControlSx}
+                  data-testid="global-navigation-search"
+                  onMouseEnter={() => setSearchExpanded(true)}
+                  onMouseLeave={() => setSearchExpanded(false)}
+                  sx={{
+                    position: { xs: "static", md: "relative" },
+                    display: "flex",
+                    alignItems: "center",
+                    width: { xs: `${tokens.layout.iconButtonSize}px`, md: searchExpanded ? `clamp(${tokens.spacing[24] + tokens.spacing[12]}px, calc(100vw - ${tokens.spacing[24] * 9 + tokens.spacing[8]}px), ${tokens.spacing[24] * 3}px)` : `${tokens.layout.iconButtonSize}px` },
+                    height: `${tokens.layout.iconButtonSize}px`,
+                    flexShrink: 0,
+                  }}
                 >
-                  <SearchRounded fontSize="small" />
+                  <Box
+                    ref={searchTriggerRef}
+                    component="button"
+                    type="button"
+                    className="bk-top-nav-control"
+                    aria-label="展开搜索"
+                    aria-expanded={searchExpanded}
+                    aria-controls="global-navigation-search-panel"
+                    onClick={() => setSearchExpanded(true)}
+                    sx={headerControlSx}
+                  >
+                    <SearchRounded sx={{ fontSize: 20 }} />
+                  </Box>
+                  <Box
+                    id="global-navigation-search-panel"
+                    data-testid="global-navigation-search-panel"
+                    sx={(theme: UiTheme) => ({
+                      position: "absolute",
+                      top: 0,
+                      bottom: 0,
+                      right: 0,
+                      left: { xs: 0, md: "auto" },
+                      zIndex: 4,
+                      display: "flex",
+                      alignItems: "center",
+                      px: { xs: `${tokens.spacing[4]}px`, sm: `${tokens.spacing[6]}px`, md: 0 },
+                      bgcolor: { xs: "background.default", md: "transparent" },
+                      width: { xs: "auto", md: "100%" },
+                      visibility: searchExpanded ? "visible" : "hidden",
+                      pointerEvents: searchExpanded ? "auto" : "none",
+                      transition: theme.transitions.create("width"),
+                      "@media (prefers-reduced-motion: reduce)": { transition: "none" },
+                    })}
+                  >
+                    {searchExpanded && (
+                      <TextField
+                        className="bk-top-nav-search-field"
+                        autoFocus
+                        value={query}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) => updateQuery(event.target.value)}
+                        onBlur={() => setSearchExpanded(false)}
+                        onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+                          if (event.key === "Enter" && !event.nativeEvent?.isComposing && query.trim()) {
+                            event.preventDefault();
+                            navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+                            setSearchExpanded(false);
+                          }
+                          if (event.key === "Escape") {
+                            setSearchExpanded(false);
+                            searchTriggerRef.current?.focus();
+                          }
+                        }}
+                        placeholder={searchLabel ?? undefined}
+                        aria-label={searchLabel ?? undefined}
+                        sx={{ width: "100%", "& .bk-field-control": { bgcolor: "background.default" } }}
+                        slotProps={{
+                          input: {
+                            startAdornment: <InputAdornment position="start"><SearchRounded sx={{ fontSize: 18 }} /></InputAdornment>,
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <Box
+                                  component="button"
+                                  type="button"
+                                  aria-label="关闭搜索"
+                                  onMouseDown={(event: MouseEvent<HTMLButtonElement>) => event.preventDefault()}
+                                  onClick={(event: MouseEvent<HTMLButtonElement>) => {
+                                    event.stopPropagation();
+                                    setSearchExpanded(false);
+                                    searchTriggerRef.current?.focus();
+                                  }}
+                                  sx={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: 24,
+                                    height: 24,
+                                    p: 0,
+                                    border: 0,
+                                    borderRadius: `${tokens.radius.md}px`,
+                                    bgcolor: "transparent",
+                                    color: "text.secondary",
+                                    cursor: "pointer",
+                                    "&:hover": { color: "text.primary", bgcolor: "action.hover" },
+                                  }}
+                                >
+                                  <CloseRounded sx={{ fontSize: 16 }} />
+                                </Box>
+                              </InputAdornment>
+                            ),
+                          },
+                        }}
+                      />
+                    )}
+                  </Box>
                 </Box>
-                <Box id="global-navigation-search-panel" data-testid="global-navigation-search-panel" sx={(theme: any) => ({
-                  position: "absolute", right: 0, top: { xs: "100%", md: 0 },
-                  zIndex: 2,
-                  width: { xs: searchExpanded ? `min(${tokens.spacing[24] * 3}px, calc(100vw - ${tokens.spacing[6] * 2}px))` : `${tokens.layout.touchTarget}px`, md: "100%" },
-                  visibility: searchExpanded ? "visible" : "hidden",
-                  transition: theme.transitions.create("width"),
-                  "@media (prefers-reduced-motion: reduce)": { transition: "none" },
-                })}>
-                  {searchExpanded && <TextField
-                    autoFocus
-                    value={query}
-                    onChange={(event: any) => updateQuery(event.target.value)}
-                    onBlur={() => setSearchExpanded(false)}
-                    onKeyDown={(event: any) => {
-                      if (event.key === "Enter" && !event.nativeEvent?.isComposing && query.trim()) {
-                        event.preventDefault();
-                        navigate(`/search?q=${encodeURIComponent(query.trim())}`);
-                        setSearchExpanded(false);
+              )}
+              <SiteThemeMenu sx={headerControlSx} />
+              {user ? (
+                <Dropdown
+                  open={accountMenuOpen}
+                  onOpenChange={setAccountMenuOpen}
+                  trigger={["click"]}
+                  placement="bottomRight"
+                  menu={{
+                    items: [
+                      { key: "account", label: user.displayName, disabled: true },
+                      { type: "divider" },
+                      { key: "/profile", label: "个人信息" },
+                      ...(isMobile && hasVaultAccess && !showVaultBottomTab ? [{ key: "/vault", label: "加密书库" }] : []),
+                      ...(canVisit("/settings") && !(isMobile && showSettingsBottomTab) ? [{ key: "/settings", label: "管理设置" }] : []),
+                      { type: "divider" },
+                      { key: "logout", label: "退出登录" },
+                    ],
+                    onClick: async ({ key }) => {
+                      setAccountMenuOpen(false);
+                      if (key === "logout") {
+                        setLogoutError("");
+                        try { await logout(); navigate("/login"); }
+                        catch (reason) { setLogoutError(reason instanceof Error ? reason.message : "退出失败，请重试。"); }
+                      } else {
+                        navigate(key);
                       }
-                      if (event.key === "Escape") {
-                        setSearchExpanded(false);
-                        searchTriggerRef.current?.focus();
-                      }
-                    }}
-                    placeholder={searchLabel ?? undefined}
-                    aria-label={searchLabel ?? undefined}
-                    sx={{ width: "100%", "& .bk-field-control": { bgcolor: "background.default" } }}
-                    slotProps={{ input: { startAdornment: <InputAdornment position="start"><SearchRounded fontSize="small" /></InputAdornment> } }}
-                  />}
-                </Box>
-              </Box>}
-              <Dropdown
-                open={themeMenuOpen}
-                onOpenChange={(open) => {
-                  if (open && themeMenuSelectionRef.current) return;
-                  setThemeMenuOpen(open);
-                }}
-                trigger={["hover", "click"]}
-                placement="bottomRight"
-                menu={{
-                  selectable: true,
-                  selectedKeys: [humiteTheme],
-                  items: (Object.keys(humiteThemeOptions) as ReaderTheme[]).map((mode) => ({
-                    key: mode,
-                    label: humiteThemeOptions[mode].label,
-                    icon: <Box sx={{ width: tokens.spacing[5], height: tokens.spacing[5], borderRadius: `${tokens.radius.pill}px`, bgcolor: humiteThemeOptions[mode].reader.background, border: 1, borderColor: "divider" }} />,
-                  })),
-                  onClick: ({ key }) => {
-                    themeMenuSelectionRef.current = true;
-                    setHumiteTheme(key as ReaderTheme);
-                    setThemeMenuOpen(false);
-                    globalThis.setTimeout(() => { themeMenuSelectionRef.current = false; }, 400);
-                  },
-                }}
-              >
-                <Box
-                  component="button"
-                  type="button"
-                  aria-label="切换全站主题"
-                  aria-haspopup="menu"
-                  aria-expanded={themeMenuOpen}
-                  sx={headerControlSx}
+                    },
+                  }}
                 >
-                  <PaletteOutlined />
-                </Box>
-              </Dropdown>
-              {user ? <Dropdown open={accountMenuOpen} onOpenChange={setAccountMenuOpen} trigger={["click"]} placement="bottomRight"
-                menu={{
-                  items: [
-                    { key: "account", label: user.displayName, disabled: true },
-                    { type: "divider" },
-                    { key: "/profile", label: "个人信息" },
-                    ...(canVisit("/settings") ? [{ key: "/settings", label: "管理设置" }] : []),
-                    { type: "divider" },
-                    { key: "logout", label: "退出登录" },
-                  ],
-                  onClick: async ({ key }) => {
-                    setAccountMenuOpen(false);
-                    if (key === "logout") {
-                      setLogoutError("");
-                      try { await logout(); navigate("/login"); }
-                      catch (reason) { setLogoutError(reason instanceof Error ? reason.message : "退出失败，请重试。"); }
-                    }
-                    else navigate(key);
-                  },
-                }}
-              ><Box
-                component="button"
-                type="button"
-                className="bk-account-trigger"
-                aria-label="账户菜单"
-                aria-haspopup="menu"
-                aria-expanded={accountMenuOpen}
-                sx={headerControlSx}
-              >
-                <Avatar className="bk-account-avatar" sx={{ width: 40, height: 40, flexShrink: 0, bgcolor: "secondary.main", color: "common.white", fontFamily: tokens.typography.fontFamily.display }}>
-                  {user.displayName.slice(0, 1)}
-                </Avatar>
-              </Box></Dropdown> : <Button color="inherit" onClick={() => navigate("/login")} sx={{ whiteSpace: "nowrap", px: 1, minWidth: tokens.layout.touchTarget, flexShrink: 0 }}>登录</Button>}
+                  <Box
+                    component="button"
+                    type="button"
+                    className="bk-account-trigger bk-top-nav-control"
+                    aria-label="账户菜单"
+                    aria-haspopup="menu"
+                    aria-expanded={accountMenuOpen}
+                    sx={headerControlSx}
+                  >
+                    <Avatar className="bk-account-avatar" sx={{ width: 26, height: 26, fontSize: 13, flexShrink: 0, bgcolor: "secondary.main", color: "common.white", fontFamily: tokens.typography.fontFamily.display }}>
+                      {user.displayName.slice(0, 1)}
+                    </Avatar>
+                  </Box>
+                </Dropdown>
+              ) : (
+                <Button color="inherit" onClick={() => navigate("/login")} sx={{ whiteSpace: "nowrap", px: 1.5, minWidth: tokens.layout.iconButtonSize, height: tokens.layout.iconButtonSize, minHeight: tokens.layout.iconButtonSize, flexShrink: 0 }}>登录</Button>
+              )}
             </Stack>
           </Toolbar>
-        </AppBar>
 
-        <Drawer
-          className="bk-navigation-drawer"
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          slotProps={{ paper: { sx: { bgcolor: "var(--color-surface-card)" } } }}
-          size={`min(${tokens.spacing[24] * 3}px, calc(100vw - ${tokens.spacing[6]}px))`}
-          title={<Typography variant="h5" sx={{ fontFamily: tokens.typography.fontFamily.display, fontWeight: tokens.typography.fontWeight.regular }}>{site.name}</Typography>}
-        >
-          <Box
-            role="navigation"
-            aria-label="移动端导航"
-            sx={{
-              width: "100%",
-              minWidth: 0,
-              px: "calc(var(--bk-drawer-gutter) - var(--spacing-3))",
-              py: `${tokens.spacing[4]}px`,
-              overflowX: "hidden",
-            }}
-          >
-            <List sx={{ width: "100%" }}>
-              {libraryNavigation.map((item) => {
-                const group = item.path === "/library" ? "library" : item.path === "/articles" ? "articles" : item.path === "/annotations" ? "notes" : undefined;
-                const groupOpen = group === "library" ? libraryGroupOpen : group === "articles" ? articlesGroupOpen : notesGroupOpen;
-                const setGroupOpen = group === "library" ? setLibraryGroupOpen : group === "articles" ? setArticlesGroupOpen : setNotesGroupOpen;
-                const sections = group === "library" ? librarySections : group === "articles" ? articlesSections : notesSections;
-                const selectedPath = group === "library" ? selectedLibraryPath : group === "articles" ? selectedArticlesPath : selectedNotesPath;
-                const destination = canVisit(item.path) ? item.path : sections[0]?.path ?? item.path;
-                return group ? <Box key={item.path}>
-                <Stack direction="row" className={`bk-navigation-row${isActivePath(item.path) ? " bk-navigation-row-active" : ""}`} sx={{ alignItems: "center" }}>
-                <ListItemButton selected={isActivePath(item.path)}
-                  onClick={() => { setDrawerOpen(false); navigate(destination); }}
-                  sx={{ flex: 1, minWidth: 0 }}>
-                  <ListItemIcon>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.label} />
-                </ListItemButton>
-                <IconButton aria-label={`${item.label}二级菜单`} aria-expanded={groupOpen} aria-controls={`${group}-navigation-children`}
-                  sx={{ minWidth: tokens.layout.touchTarget, minHeight: tokens.layout.touchTarget }}
-                  onClick={() => setGroupOpen(open => !open)}>
-                  <ExpandMoreRounded className="bk-nav-chevron" sx={{ transform: groupOpen ? "rotate(180deg)" : undefined }} />
-                </IconButton>
-                </Stack>
-                {groupOpen && <List id={`${group}-navigation-children`} role="group" aria-label={`${item.label}二级菜单`}>
-                  {sections.map(section => <ListItemButton key={section.path}
-                    selected={selectedPath === section.path} aria-current={selectedPath === section.path ? "page" : undefined}
-                    onClick={() => { setDrawerOpen(false); navigate(section.path); }}
-                    sx={{ minWidth: 0 }}>
-                    <ListItemText primary={section.label} />
-                  </ListItemButton>)}
-                </List>}
-              </Box> : (
-                <ListItemButton
-                  key={item.path}
-                  selected={isActivePath(item.path)}
-                  onClick={() => { setDrawerOpen(false); navigate(item.path); }}
-                  sx={{ minWidth: 0 }}
+          {hasMobileSubNav && (
+            <Box component="nav" aria-label="分区导航" className="bk-mobile-subnav">
+              {mobileSectionTabs.map((tab) => (
+                <NavLink
+                  key={tab.path}
+                  to={tab.path}
+                  aria-current={tab.active ? "page" : undefined}
+                  className={`bk-mobile-subnav__item${tab.active ? " bk-mobile-subnav__item--active" : ""}`}
                 >
-                  <ListItemIcon>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.label} />
-                </ListItemButton>
-              );})}
-            </List>
-          </Box>
-        </Drawer>
-      </>
+                  {tab.label}
+                </NavLink>
+              ))}
+            </Box>
+          )}
+        </AppBar>
+      )}
 
       <SiteMetadata />
-      <Box component="main"><PermissionBoundary>{children}</PermissionBoundary></Box>
+      <Box component="main" className={isMobile && !isImmersiveRoute ? "bk-app-main bk-app-main--with-bottom-nav" : "bk-app-main"}>
+        <PermissionBoundary>{children}</PermissionBoundary>
+      </Box>
       <SiteFooter />
+      {isMobile && !isImmersiveRoute && <MobileBottomNav items={bottomNavItems} />}
     </Box>
   );
 }

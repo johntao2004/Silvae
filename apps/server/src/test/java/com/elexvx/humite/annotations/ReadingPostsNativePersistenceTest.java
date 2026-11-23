@@ -46,11 +46,23 @@ class ReadingPostsNativePersistenceTest {
                     var articleService=new ArticleService(db,users,null,null,null,new ObjectMapper());
                     var service=new ReadingPostsService(new ArticlePostRepository(db),bookService,catalog,articleService,users);
                     var old=bookService.create(book,"已有读后长文","# 旧内容",null,()->"alice");
+                    var sharedBook=service.create(ReadingPostsService.Kind.BOOK,book,"共享书评","# 共享正文",ReviewVisibility.LIBRARY,()->"alice");
                     var post=service.create(ReadingPostsService.Kind.ARTICLE,article,"文章随笔","# 标题\n\n"+"正文".repeat(1000),null,()->"alice");
                     assertEquals(ReviewVisibility.PRIVATE,post.visibility());
                     assertEquals(ReadingPostsService.Kind.ARTICLE,post.kind());
                     assertTrue(service.get(post.kind(),post.id(),()->"alice").markdown().length()>1000);
-                    assertThat(service.mine(ReadingPostsService.Kind.BOOK,null,()->"alice").items()).extracting(ReadingPostsService.Post::id).containsExactly(old.id());
+                    assertThat(service.mine(ReadingPostsService.Kind.BOOK,null,()->"alice").items()).extracting(ReadingPostsService.Post::id).containsExactlyInAnyOrder(old.id(),sharedBook.id());
+                    var byBookAlice=service.mine(ReadingPostsService.Kind.BOOK,book,null,()->"alice");
+                    assertNull(byBookAlice.nextCursor());
+                    assertThat(byBookAlice.items()).extracting(ReadingPostsService.Post::id).containsExactlyInAnyOrder(old.id(),sharedBook.id());
+                    assertThat(byBookAlice.items()).allSatisfy(item->{
+                        assertEquals("书籍来源",item.sourceTitle());
+                        assertNotNull(item.markdown());
+                    });
+                    var byBookBob=service.mine(ReadingPostsService.Kind.BOOK,book,null,()->"bob");
+                    assertThat(byBookBob.items()).extracting(ReadingPostsService.Post::id).containsExactly(sharedBook.id());
+                    assertEquals(400,assertThrows(ApiException.class,()->service.mine(ReadingPostsService.Kind.ALL,book,null,()->"alice")).status().value());
+                    assertEquals(404,assertThrows(ApiException.class,()->service.mine(ReadingPostsService.Kind.BOOK,UUID.randomUUID(),null,()->"alice")).status().value());
                     var articles=service.mine(ReadingPostsService.Kind.ARTICLE,null,()->"alice").items();
                     assertThat(articles).extracting(ReadingPostsService.Post::id).containsExactly(post.id());
                     assertNull(articles.getFirst().markdown());
@@ -77,7 +89,7 @@ class ReadingPostsNativePersistenceTest {
                     var ids=new HashSet<UUID>();
                     first.items().forEach(item->assertTrue(ids.add(item.id())));
                     second.items().forEach(item->assertTrue(ids.add(item.id())));
-                    assertEquals(35,ids.size());
+                    assertEquals(36,ids.size());
                     assertNull(second.nextCursor());
                     var bobsPost=service.create(ReadingPostsService.Kind.ARTICLE,article,"已有公开来源的私人随笔","自己的既有思考",null,()->"bob");
                     db.execute("update articles set visibility='PRIVATE' where id=?",article);

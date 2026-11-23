@@ -42,7 +42,7 @@ public class ReaderFontController {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     ReaderFontList list(@RequestParam(defaultValue = "false") boolean includeDisabled, Principal principal) {
-        if (includeDisabled && !isManager(principal)) throw ApiException.forbidden("FONT_ADMIN_REQUIRED", "只有主人和管理员可以查看停用字体。");
+        if (includeDisabled && !isManager(principal)) throw ApiException.forbidden("FONT_ADMIN_REQUIRED", "只有站点所有者和管理员可以查看停用字体。");
         return new ReaderFontList(service.list(includeDisabled));
     }
 

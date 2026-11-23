@@ -41,6 +41,6 @@
 
     <text x="24" y="126" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 主人 / 管理员 / 成员三级权限，全家共享同一套藏书库</text>
     <text x="24" y="154" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 阅读进度、划线与私人笔记严格按账号隔离，默认不可互窥</text>
-    <text x="24" y="182" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 独立加密禁书区（秘阁），配备 TOTP 二次验证与审计</text>
+    <text x="24" y="182" font-family="-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="13.5" fill="#44403C">• 加密书库，支持动态验证码和访问审计</text>
   </g>
 </svg>

@@ -42,14 +42,15 @@ describe("reading posts", () => {
   });
 
   it.each<PostFilter>(["BOOK", "ARTICLE", "ALL"])("loads only the requested %s collection and retains independent detail URLs", async kind => {
+    const titles: Record<PostFilter, string> = { BOOK: "书籍笔记", ARTICLE: "文章笔记", ALL: "阅读笔记" };
     render(<TestProviders initialPath={`/annotations/${kind.toLowerCase()}?view=posts`}><ReadingNotesPage kind={kind} /></TestProviders>);
-    expect(screen.getByRole("heading", { name: "读书录", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: titles[kind], level: 1 })).toBeInTheDocument();
     expect(await screen.findByText("书页之后")).toBeInTheDocument();
     expect(screen.getAllByRole("link").some(link => link.getAttribute("href") === "/annotations/posts/book/post-1")).toBe(true);
     expect(readingPosts.list).toHaveBeenCalledWith(kind, undefined);
     expect(screen.queryByRole("button", { name: "阅读批注" })).not.toBeInTheDocument();
     if (kind === "ALL") expect(screen.queryByRole("tab")).not.toBeInTheDocument();
-    else expect(screen.getByRole("tab", { name: "随笔", selected: true })).toBeInTheDocument();
+    else expect(screen.getByRole("tab", { name: "阅读随笔", selected: true })).toBeInTheDocument();
 
   });
 
@@ -57,7 +58,7 @@ describe("reading posts", () => {
     render(<TestProviders initialPath={`/annotations/books?view=posts&bookId=${saved.sourceId}`}><ReadingNotesPage kind="BOOK" /></TestProviders>);
 
     expect(await screen.findByText(saved.title)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "返回笔记" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "返回阅读笔记" })).not.toBeInTheDocument();
   });
 
   it("creates a private book post from the editable Markdown canvas without writing to annotations", async () => {
@@ -117,15 +118,15 @@ describe("reading posts", () => {
     expect(screen.getByRole("article", { name: "随笔正文" }).querySelector("table")).not.toBeNull();
     expect(screen.queryByRole("button", { name: /^编辑$/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: saved.sourceTitle })).toHaveAttribute("href", `/library/books/${saved.sourceId}`);
-    expect(screen.getAllByRole("link", { name: "返回笔记" })).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "返回笔记" })).toHaveAttribute("href", "/annotations/books?view=posts");
+    expect(screen.getAllByRole("link", { name: "返回阅读笔记" })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "返回阅读笔记" })).toHaveAttribute("href", "/annotations/books?view=posts");
   });
 
   it("keeps the page-level return during loading and sends failures to the notes overview", async () => {
     let resolvePost!: (post: ReadingPost) => void;
     vi.mocked(readingPosts.get).mockReturnValueOnce(new Promise<ReadingPost>(resolve => { resolvePost = resolve; }));
     const loadingView = render(<TestProviders initialPath="/annotations/posts/book/post-1"><Routes><Route path="/annotations/posts/:kind/:postId" element={<ReadingPostPage />} /></Routes></TestProviders>);
-    expect(screen.getByRole("link", { name: "返回笔记" })).toHaveAttribute("href", "/annotations/books?view=posts");
+    expect(screen.getByRole("link", { name: "返回阅读笔记" })).toHaveAttribute("href", "/annotations/books?view=posts");
     resolvePost(saved);
     expect(await screen.findByRole("heading", { name: saved.title, level: 1 })).toBeInTheDocument();
     loadingView.unmount();
@@ -133,7 +134,7 @@ describe("reading posts", () => {
     vi.mocked(readingPosts.get).mockRejectedValueOnce(new Error("offline"));
     render(<TestProviders initialPath="/annotations/posts/book/post-1"><Routes><Route path="/annotations/posts/:kind/:postId" element={<ReadingPostPage />} /></Routes></TestProviders>);
     expect(await screen.findByRole("heading", { name: "无法读取随笔" })).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "返回笔记" })).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "返回笔记" })).toHaveAttribute("href", "/annotations");
+    expect(screen.getAllByRole("link", { name: "返回阅读笔记" })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "返回阅读笔记" })).toHaveAttribute("href", "/annotations");
   });
 });

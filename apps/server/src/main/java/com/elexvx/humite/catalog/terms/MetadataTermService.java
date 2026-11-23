@@ -6,7 +6,10 @@ import com.elexvx.humite.common.ApiException;
 import com.elexvx.humite.catalog.BookMetadataRepository;
 import java.security.Principal;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.http.HttpStatus;
@@ -114,17 +117,36 @@ public class MetadataTermService {
     /** Returns the existing catalog spelling, inserting a reusable term when this metadata edit introduces it. */
     @Transactional
     public String canonicalSeries(String raw) {
+        return resolveCanonicalSeries(raw);
+    }
+
+    @Transactional
+    public List<String> canonicalTags(List<String> raw) {
+        return resolveCanonicalTags(raw);
+    }
+
+    @Transactional
+    public BookMetadataRepository.MetadataPatch canonicalizeMetadataTerms(BookMetadataRepository.MetadataPatch patch) {
+        Set<String> fields = patch.manualFields() == null ? Set.of()
+                : new HashSet<>(Arrays.asList(patch.manualFields()));
+        String series = fields.contains("series") ? resolveCanonicalSeries(patch.series()) : patch.series();
+        List<String> tags = fields.contains("tags") ? resolveCanonicalTags(patch.tags()) : patch.tags();
+        return new BookMetadataRepository.MetadataPatch(patch.title(), patch.subtitle(), patch.authors(), patch.translators(),
+                patch.language(), patch.publisher(), patch.publishedDate(), patch.isbn(), patch.description(), series,
+                patch.seriesIndex(), tags, patch.subjectCodes(), patch.manualFields(), patch.authorBiography(), patch.tableOfContents());
+    }
+
+    private String resolveCanonicalSeries(String raw) {
         if (raw == null || raw.isBlank()) return raw;
         String value = clean(raw, MetadataTermKind.SERIES);
         return repository.ensure(MetadataTermKind.SERIES, value, value).value();
     }
 
-    @Transactional
-    public List<String> canonicalTags(List<String> raw) {
+    private List<String> resolveCanonicalTags(List<String> raw) {
         if (raw == null) return null;
         if (raw.size() > 50) throw ApiException.badRequest("INVALID_METADATA_TERM_BATCH", "标签数量不能超过 50 项。");
         List<String> result = new ArrayList<>();
-        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        HashSet<String> seen = new HashSet<>();
         for (String item : raw) {
             if (item == null || item.isBlank()) continue;
             String value = clean(item, MetadataTermKind.TAG);
@@ -132,16 +154,6 @@ public class MetadataTermService {
             if (seen.add(MetadataTermText.normalizedKey(canonical))) result.add(canonical);
         }
         return List.copyOf(result);
-    }
-
-    public BookMetadataRepository.MetadataPatch canonicalizeMetadataTerms(BookMetadataRepository.MetadataPatch patch) {
-        java.util.Set<String> fields = patch.manualFields() == null ? java.util.Set.of()
-                : new java.util.HashSet<>(java.util.Arrays.asList(patch.manualFields()));
-        String series = fields.contains("series") ? canonicalSeries(patch.series()) : patch.series();
-        List<String> tags = fields.contains("tags") ? canonicalTags(patch.tags()) : patch.tags();
-        return new BookMetadataRepository.MetadataPatch(patch.title(), patch.subtitle(), patch.authors(), patch.translators(),
-                patch.language(), patch.publisher(), patch.publishedDate(), patch.isbn(), patch.description(), series,
-                patch.seriesIndex(), tags, patch.subjectCodes(), patch.manualFields(), patch.authorBiography(), patch.tableOfContents());
     }
 
     public MetadataTerm previewLanguage(String value, String label) {

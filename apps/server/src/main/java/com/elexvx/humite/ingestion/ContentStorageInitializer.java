@@ -29,6 +29,6 @@ public class ContentStorageInitializer implements ApplicationRunner {
     private void validate(String configured) throws Exception {
         Path path = Path.of(configured).toAbsolutePath().normalize();
         if (content.overlaps(path) || (Files.exists(path) && content.overlaps(path.toRealPath())))
-            throw new IllegalArgumentException("书籍书库不能与文章书库或禁书区目录重叠，请检查存储配置");
+            throw new IllegalArgumentException("书籍书库不能与文章书库或加密书库目录重叠，请检查存储配置");
     }
 }

@@ -83,7 +83,6 @@ humite:
     max-file-size: ${HUMITE_FONT_MAX_FILE_SIZE:26214400}
   metadata-providers:
     open-library-enabled: ${HUMITE_METADATA_OPEN_LIBRARY_ENABLED:true}
-    google-api-key: ${HUMITE_METADATA_GOOGLE_API_KEY:}
   ai:
     enabled: ${HUMITE_AI_ENABLED:false}
     auto-match: ${HUMITE_AI_AUTO_MATCH:true}
@@ -100,56 +99,56 @@ humite:
         enabled: ${HUMITE_AI_OPENAI_ENABLED:false}
         base-url: ${HUMITE_AI_OPENAI_BASE_URL:https://api.openai.com/v1}
         api-key: ${HUMITE_AI_OPENAI_API_KEY:}
-        model: ${HUMITE_AI_OPENAI_MODEL:gpt-4o-mini}
+        model: ${HUMITE_AI_OPENAI_MODEL:}
       - id: deepseek
         label: DeepSeek
         type: OPENAI_COMPATIBLE
         enabled: ${HUMITE_AI_DEEPSEEK_ENABLED:false}
         base-url: ${HUMITE_AI_DEEPSEEK_BASE_URL:https://api.deepseek.com}
         api-key: ${HUMITE_AI_DEEPSEEK_API_KEY:}
-        model: ${HUMITE_AI_DEEPSEEK_MODEL:deepseek-v4-flash}
+        model: ${HUMITE_AI_DEEPSEEK_MODEL:}
       - id: zhipu
         label: 智谱
         type: OPENAI_COMPATIBLE
         enabled: ${HUMITE_AI_ZHIPU_ENABLED:false}
         base-url: ${HUMITE_AI_ZHIPU_BASE_URL:https://open.bigmodel.cn/api/paas/v4/}
         api-key: ${HUMITE_AI_ZHIPU_API_KEY:}
-        model: ${HUMITE_AI_ZHIPU_MODEL:glm-4.7-flash}
+        model: ${HUMITE_AI_ZHIPU_MODEL:}
       - id: qwen
         label: 通义千问
         type: OPENAI_COMPATIBLE
         enabled: ${HUMITE_AI_QWEN_ENABLED:false}
         base-url: ${HUMITE_AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
         api-key: ${HUMITE_AI_QWEN_API_KEY:}
-        model: ${HUMITE_AI_QWEN_MODEL:qwen-plus}
+        model: ${HUMITE_AI_QWEN_MODEL:}
       - id: siliconflow
         label: SiliconFlow
         type: OPENAI_COMPATIBLE
         enabled: ${HUMITE_AI_SILICONFLOW_ENABLED:false}
         base-url: ${HUMITE_AI_SILICONFLOW_BASE_URL:https://api.siliconflow.cn/v1}
         api-key: ${HUMITE_AI_SILICONFLOW_API_KEY:}
-        model: ${HUMITE_AI_SILICONFLOW_MODEL:Qwen/Qwen3-32B}
+        model: ${HUMITE_AI_SILICONFLOW_MODEL:}
       - id: anthropic
         label: Anthropic
         type: ANTHROPIC
         enabled: ${HUMITE_AI_ANTHROPIC_ENABLED:false}
         base-url: ${HUMITE_AI_ANTHROPIC_BASE_URL:https://api.anthropic.com}
         api-key: ${HUMITE_AI_ANTHROPIC_API_KEY:}
-        model: ${HUMITE_AI_ANTHROPIC_MODEL:claude-sonnet-4-6}
+        model: ${HUMITE_AI_ANTHROPIC_MODEL:}
       - id: gemini
         label: Google Gemini
         type: GEMINI
         enabled: ${HUMITE_AI_GEMINI_ENABLED:false}
         base-url: ${HUMITE_AI_GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
         api-key: ${HUMITE_AI_GEMINI_API_KEY:}
-        model: ${HUMITE_AI_GEMINI_MODEL:gemini-3.5-flash}
+        model: ${HUMITE_AI_GEMINI_MODEL:}
       - id: ollama
         label: Ollama（本地）
         type: OPENAI_COMPATIBLE
         enabled: ${HUMITE_AI_OLLAMA_ENABLED:false}
         base-url: ${HUMITE_AI_OLLAMA_BASE_URL:http://127.0.0.1:11434/v1}
         api-key: ${HUMITE_AI_OLLAMA_API_KEY:}
-        model: ${HUMITE_AI_OLLAMA_MODEL:qwen3}
+        model: ${HUMITE_AI_OLLAMA_MODEL:}
 
 logging:
   pattern:

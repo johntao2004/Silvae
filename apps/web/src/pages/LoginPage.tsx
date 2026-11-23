@@ -10,8 +10,8 @@ import { Stack } from "@/ui/primitives";
 import { TextField } from "@/ui/forms";
 import { Typography } from "@/ui/primitives";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { useState, type ChangeEvent, type FormEvent } from "react";
+import { Link, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { setupStatusQueryOptions } from "../auth/setup-status";
 import { api } from "../api/client";
@@ -26,8 +26,8 @@ export function getLoginDefaults(isDemo: boolean) {
 
 export function LoginPage() {
   const { login, user, ready, sessionError, retrySession } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
+  const returnTo = (location.state as { from?: string } | null)?.from ?? "/library";
   const defaults = getLoginDefaults(api.isDemo);
   const [username, setUsername] = useState(defaults.username);
   const [password, setPassword] = useState(defaults.password);
@@ -42,9 +42,7 @@ export function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const user = await login(username.trim(), password);
-      const from = (location.state as { from?: string } | null)?.from;
-      navigate(user.mustChangePassword ? "/change-password" : from ?? "/library", { replace: true });
+      await login(username.trim(), password);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "登录失败");
     } finally {
@@ -54,19 +52,19 @@ export function LoginPage() {
 
   if (!ready) return <AppLoading label="正在确认登录状态…" />;
   if (sessionError) return <AuthFrame title="登录"><Alert severity="error">{sessionError}</Alert><Button onClick={retrySession} sx={{ width: { xs: "100%", sm: "auto" } }}>重试</Button></AuthFrame>;
-  if (user) return <Navigate to={user.mustChangePassword ? "/change-password" : "/library"} replace />;
+  if (user) return <Navigate to={user.mustChangePassword ? "/change-password" : returnTo} replace />;
 
   return (
     <AuthFrame title="登录">
       {(location.state as {registered?:boolean} | null)?.registered && <Alert severity="success">注册成功，请登录。</Alert>}
       <Stack component="form" spacing={2.5} onSubmit={submit}>
-        <TextField label="用户名" autoComplete="username" value={username} onChange={(event: any) => setUsername(event.target.value)} required autoFocus />
+        <TextField label="用户名" autoComplete="username" value={username} onChange={(event: ChangeEvent<HTMLInputElement>) => setUsername(event.target.value)} required autoFocus />
         <TextField
           label="密码"
           type={showPassword ? "text" : "password"}
           autoComplete="current-password"
           value={password}
-          onChange={(event: any) => setPassword(event.target.value)}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => setPassword(event.target.value)}
           required
           slotProps={{
             input: {
@@ -86,7 +84,7 @@ export function LoginPage() {
       <Typography variant="body2" sx={{ mt: 2 }}><Link to="/forgot-password">忘记密码？</Link></Typography>
       {setupStatus.isSuccess && !setupStatus.isFetching && setupStatus.data.initialized === false && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
-          首次运行？<Link to="/setup">初始化主人账户</Link>
+          首次使用？<Link to="/setup">创建站点所有者账户</Link>
         </Typography>
       )}
       {registration.data?.registrationEnabled && <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>

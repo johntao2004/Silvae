@@ -30,14 +30,23 @@ public class ArticleService {
     private static final Set<String> PARAGRAPH_ID_TAGS=Set.of("p","h1","h2","h3","h4","li","blockquote","pre","figure");
     private static final Safelist SAFE_HTML=Safelist.relaxed().addTags("section","figure","figcaption","mark").addAttributes(":all","style","id").preserveRelativeLinks(true);
     private static final int MAX_COVER_BYTES = 5 * 1024 * 1024;
-    private final java.util.concurrent.ConcurrentHashMap<UUID,Long> fetchTimes=new java.util.concurrent.ConcurrentHashMap<>();
+    static final int MAX_BATCH_IMPORT_URLS = 20;
+    private static final long FETCH_WINDOW_MS = 60_000L;
+    private static final int FETCH_MAX_PER_WINDOW = 20;
+    private final java.util.concurrent.ConcurrentHashMap<UUID, java.util.Deque<Long>> fetchHistory = new java.util.concurrent.ConcurrentHashMap<>();
+    private final ThreadLocal<Boolean> saveInNewTx = new ThreadLocal<>();
     private final DSLContext db; private final UserRepository users; private final PublicWebFetcher web;
     private final PrivateContentStore files; private final ObjectMapper json;
     private final RolePermissionService permissions;
+    private org.springframework.transaction.PlatformTransactionManager transactionManager;
     @org.springframework.beans.factory.annotation.Autowired
     public ArticleService(DSLContext db, UserRepository users, PublicWebFetcher web, PrivateContentStore files,
                           AiMetadataService ai, ObjectMapper json, RolePermissionService permissions) {
         this.db=db;this.users=users;this.web=web;this.files=files;this.json=json;this.permissions=permissions;
+    }
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setTransactionManager(org.springframework.transaction.PlatformTransactionManager transactionManager) {
+        this.transactionManager = transactionManager;
     }
     public ArticleService(DSLContext db, UserRepository users, PublicWebFetcher web, PrivateContentStore files, AiMetadataService ai, ObjectMapper json) {
         this(db,users,web,files,ai,json,null);
@@ -47,7 +56,7 @@ public class ArticleService {
         return users.findByUsername(principal.getName()).orElseThrow(() -> ApiException.forbidden("AUTH_REQUIRED","请先登录。"));
     }
     private HumiteUser manager(Principal principal) {
-        var user=actor(principal);if(!user.canManageFiles())throw ApiException.forbidden("MANAGER_REQUIRED","仅主人和管理员可导入或管理文章。");return user;
+        var user=actor(principal);if(!user.canManageFiles())throw ApiException.forbidden("MANAGER_REQUIRED","仅站点所有者和管理员可导入或管理文章。");return user;
     }
     public List<Map<String,Object>> list(Principal principal) {
         var user=actor(principal);
@@ -111,23 +120,280 @@ public class ArticleService {
     }
     public record ArticleReference(UUID id, String title) {}
     public record Draft(@NotBlank @Size(max=300) String title,@NotNull @Size(max=300) String author,@NotNull @Size(max=4096) String sourceUrl,@NotNull @Size(max=100) String publishedAt,@NotNull String visibility,@NotNull @Size(max=1000) String tags,@NotNull @Size(max=30000000) String html,@Size(max=8000000) String coverUrl) {}
+    public record BatchImportItem(String url, String status, String id, String title, String message) {}
+    public record BatchImportResult(int imported, int duplicate, int failed, List<BatchImportItem> items) {}
+    public record PreparedBatch(List<String> urls, String visibility, String tags) {}
+    public record StreamEvent(
+            String type,
+            String stage,
+            String message,
+            String url,
+            String title,
+            String author,
+            Integer itemIndex,
+            Integer itemTotal,
+            Integer imageIndex,
+            Integer imageTotal,
+            Integer percent,
+            BatchImportItem item,
+            Draft draft,
+            BatchImportResult batchResult,
+            Integer status,
+            String code) {
+        static StreamEvent progress(String stage, String message, String url, String title, String author,
+                                    int itemIndex, int itemTotal, int imageIndex, int imageTotal, int percent) {
+            return new StreamEvent("progress", stage, message, url, title, author,
+                    itemIndex, itemTotal, imageIndex, imageTotal, percent, null, null, null, null, null);
+        }
+        static StreamEvent item(BatchImportItem item, String message, int itemIndex, int itemTotal, int percent) {
+            return new StreamEvent("item", "ITEM_DONE", message, item.url(), item.title(), null,
+                    itemIndex, itemTotal, 0, 0, percent, item, null, null, null, null);
+        }
+        static StreamEvent result(Draft draft) {
+            return new StreamEvent("result", "DONE", "读取完成，正在打开预览…", draft.sourceUrl(), draft.title(), draft.author(),
+                    1, 1, 0, 0, 100, null, draft, null, null, null);
+        }
+        static StreamEvent batchResult(BatchImportResult batchResult) {
+            return new StreamEvent("result", "DONE", "批量导入已完成。", null, null, null,
+                    batchResult.items().size(), batchResult.items().size(), 0, 0, 100, null, null, batchResult, null, null);
+        }
+        static StreamEvent error(int status, String code, String message) {
+            return new StreamEvent("error", "ERROR", message, null, null, null,
+                    null, null, null, null, null, null, null, null, status, code);
+        }
+    }
+    @FunctionalInterface
+    private interface CaptureProgressCallback {
+        void emit(String stage, String message, String title, String author, int imageIndex, int imageTotal, int subPercent);
+    }
+    @FunctionalInterface
+    private interface ImageProgressCallback {
+        void onImage(int index, int total);
+    }
+    public String serializeStreamEvent(StreamEvent event) {
+        ObjectMapper mapper = json != null ? json : new ObjectMapper();
+        return mapper.writeValueAsString(event);
+    }
     public String prepare(String html,String sourceUrl,Principal principal) {
         manager(principal);
         return clean(html,sourceUrl,principal);
     }
+    public String prepareFetch(String url, Principal principal) {
+        var requesting = manager(principal);
+        rejectDuplicateSource(url, null);
+        enforceFetchRate(requesting, 1);
+        return url;
+    }
     public Draft fetch(String url,Principal principal) {
-        var requesting=manager(principal);long now=System.currentTimeMillis();
-        rejectDuplicateSource(url,null);
-        fetchTimes.compute(requesting.id(),(id,previous)->{if(previous!=null&&now-previous<5000)throw new ApiException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,"FETCH_RATE","请稍等几秒再抓取。");return now;});
+        prepareFetch(url, principal);
+        return captureDraft(url, principal, null);
+    }
+    public Draft executeFetch(String url, Principal principal, java.util.function.Consumer<StreamEvent> listener) {
+        return captureDraft(url, principal, (stage, message, title, author, imageIndex, imageTotal, subPercent) ->
+                emitProgress(listener, stage, message, url, title, author, 1, 1, imageIndex, imageTotal, subPercent));
+    }
+    public PreparedBatch prepareBatchImport(List<String> urls, String visibility, String tags, Principal principal) {
+        var requesting = manager(principal);
+        if (!Set.of("PUBLIC", "PRIVATE").contains(visibility)) {
+            throw ApiException.badRequest("VISIBILITY", "可见范围无效。");
+        }
+        if (urls == null || urls.isEmpty() || urls.size() > MAX_BATCH_IMPORT_URLS) {
+            throw ApiException.badRequest("BATCH_LIMIT", "单次批量导入链接数需在 1–" + MAX_BATCH_IMPORT_URLS + " 之间。");
+        }
+        enforceFetchRate(requesting, urls.size());
+        String batchTags = clampText(tags == null ? "" : tags.trim(), 1000);
+        return new PreparedBatch(urls, visibility, batchTags);
+    }
+    public BatchImportResult batchImport(List<String> urls, String visibility, String tags, Principal principal) {
+        return executeBatchImport(prepareBatchImport(urls, visibility, tags, principal), principal, null);
+    }
+    public BatchImportResult executeBatchImport(PreparedBatch prepared, Principal principal, java.util.function.Consumer<StreamEvent> listener) {
+        List<String> urls = prepared.urls();
+        String visibility = prepared.visibility();
+        String batchTags = prepared.tags();
+        int total = urls.size();
+        var items = new ArrayList<BatchImportItem>(total);
+        var seenSourceKeys = new HashSet<String>();
+        int imported = 0, duplicate = 0, failed = 0;
+        for (int index = 0; index < total; index++) {
+            int itemIndex = index + 1;
+            String rawUrl = urls.get(index);
+            String trimmedUrl = rawUrl == null ? "" : rawUrl.trim();
+            int startPercent = Math.round((index * 100f) / total);
+            int endPercent = Math.round((itemIndex * 100f) / total);
+            if (trimmedUrl.isEmpty()) {
+                failed++;
+                var item = new BatchImportItem("", "FAILED", null, null, "链接不能为空。");
+                items.add(item);
+                emitItem(listener, item, "第 " + itemIndex + "/" + total + " 篇链接为空，已跳过", itemIndex, total, endPercent);
+                continue;
+            }
+            emitProgress(listener, "FETCHING_PAGE",
+                    "正在请求第 " + itemIndex + "/" + total + " 篇：" + trimmedUrl,
+                    trimmedUrl, null, null, itemIndex, total, 0, 0, startPercent);
+            String requestKey = ArticleIdentity.sourceKey(trimmedUrl);
+            if (!requestKey.isEmpty() && !seenSourceKeys.add(requestKey)) {
+                duplicate++;
+                var item = new BatchImportItem(trimmedUrl, "DUPLICATE", null, null, "本次提交中存在重复链接，已跳过。");
+                items.add(item);
+                emitItem(listener, item, "第 " + itemIndex + "/" + total + " 篇链接重复，已跳过", itemIndex, total, endPercent);
+                continue;
+            }
+            try {
+                rejectDuplicateSource(trimmedUrl, null);
+                Draft captured = captureDraft(trimmedUrl, principal, (stage, message, title, author, imageIndex, imageTotal, subPercent) -> {
+                    int mappedPercent = Math.min(99, Math.round(startPercent + (subPercent / 100f) * (100f / total)));
+                    String prefix = "第 " + itemIndex + "/" + total + " 篇";
+                    String scopedMessage = (title != null && !title.isBlank())
+                            ? prefix + "《" + clampText(title, 36) + "》" + message
+                            : prefix + "：" + message;
+                    emitProgress(listener, stage, scopedMessage, trimmedUrl, title, author,
+                            itemIndex, total, imageIndex, imageTotal, mappedPercent);
+                });
+                String finalKey = ArticleIdentity.sourceKey(captured.sourceUrl());
+                if (!finalKey.isEmpty() && !finalKey.equals(requestKey) && !seenSourceKeys.add(finalKey)) {
+                    duplicate++;
+                    var item = new BatchImportItem(trimmedUrl, "DUPLICATE", null, null, "本次提交中存在重复来源链接，已跳过。");
+                    items.add(item);
+                    emitItem(listener, item, "第 " + itemIndex + "/" + total + " 篇来源重复，已跳过", itemIndex, total, endPercent);
+                    continue;
+                }
+                String title = captured.title() == null || captured.title().isBlank()
+                        ? fallbackTitle(captured.sourceUrl(), trimmedUrl)
+                        : clampText(captured.title().trim(), 300);
+                emitProgress(listener, "SAVING",
+                        "正在保存第 " + itemIndex + "/" + total + " 篇《" + clampText(title, 36) + "》…",
+                        trimmedUrl, title, captured.author(), itemIndex, total, 0, 0, Math.max(startPercent, endPercent - 1));
+                Draft draft = new Draft(
+                        title,
+                        clampText(captured.author(), 300),
+                        clampText(captured.sourceUrl(), 4096),
+                        clampText(captured.publishedAt(), 100),
+                        visibility,
+                        batchTags,
+                        captured.html(),
+                        captured.coverUrl());
+                Map<String, Object> saved = saveInNewTransaction(draft, principal);
+                imported++;
+                var item = new BatchImportItem(
+                        trimmedUrl,
+                        "IMPORTED",
+                        String.valueOf(saved.get("id")),
+                        String.valueOf(saved.get("title")),
+                        null);
+                items.add(item);
+                emitItem(listener, item, "已完成第 " + itemIndex + "/" + total + " 篇：《" + item.title() + "》", itemIndex, total, endPercent);
+            } catch (ApiException error) {
+                if ("ARTICLE_DUPLICATE".equals(error.code())) {
+                    duplicate++;
+                    var item = new BatchImportItem(trimmedUrl, "DUPLICATE", null, null, error.getMessage());
+                    items.add(item);
+                    emitItem(listener, item, "第 " + itemIndex + "/" + total + " 篇已存在，已跳过", itemIndex, total, endPercent);
+                } else {
+                    failed++;
+                    var item = new BatchImportItem(trimmedUrl, "FAILED", null, null, error.getMessage());
+                    items.add(item);
+                    emitItem(listener, item, "第 " + itemIndex + "/" + total + " 篇失败：" + error.getMessage(), itemIndex, total, endPercent);
+                }
+            } catch (Exception error) {
+                failed++;
+                var item = new BatchImportItem(trimmedUrl, "FAILED", null, null, "抓取或导入失败，请稍后重试或手动导入。");
+                items.add(item);
+                emitItem(listener, item, "第 " + itemIndex + "/" + total + " 篇抓取或导入失败", itemIndex, total, endPercent);
+            }
+        }
+        return new BatchImportResult(imported, duplicate, failed, items);
+    }
+    private static void emitProgress(java.util.function.Consumer<StreamEvent> listener, String stage, String message,
+                                     String url, String title, String author,
+                                     int itemIndex, int itemTotal, int imageIndex, int imageTotal, int percent) {
+        if (listener == null) return;
+        listener.accept(StreamEvent.progress(stage, message, url, title, author, itemIndex, itemTotal, imageIndex, imageTotal, percent));
+    }
+    private static void emitItem(java.util.function.Consumer<StreamEvent> listener, BatchImportItem item,
+                                 String message, int itemIndex, int itemTotal, int percent) {
+        if (listener == null) return;
+        listener.accept(StreamEvent.item(item, message, itemIndex, itemTotal, percent));
+    }
+    private void enforceFetchRate(HumiteUser requesting, int permits) {
+        long now = System.currentTimeMillis();
+        fetchHistory.compute(requesting.id(), (id, previous) -> {
+            java.util.Deque<Long> entries = previous != null ? previous : new java.util.ArrayDeque<>();
+            while (!entries.isEmpty() && now - entries.peekFirst() >= FETCH_WINDOW_MS) {
+                entries.pollFirst();
+            }
+            if (entries.size() + permits > FETCH_MAX_PER_WINDOW) {
+                throw new ApiException(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "FETCH_RATE", "抓取请求过于频繁，请稍等片刻再试。");
+            }
+            for (int i = 0; i < permits; i++) {
+                entries.addLast(now);
+            }
+            return entries;
+        });
+    }
+    private Draft captureDraft(String url, Principal principal, CaptureProgressCallback progress) {
+        if (progress != null) {
+            progress.emit("FETCHING_PAGE", "正在请求网页：" + url, null, null, 0, 0, 10);
+        }
         var result=web.get(url,MAX_CAPTURE_HTML_BYTES);
         rejectDuplicateSource(result.url(),null);
         if(result.mime()==null || !result.mime().toLowerCase(Locale.ROOT).contains("html"))throw ApiException.badRequest("NOT_HTML","链接不是 HTML 网页。");
+        if (progress != null) {
+            progress.emit("PARSING", "已读取网页（" + formatByteSize(result.bytes().length) + "），正在解析标题与正文…", null, null, 0, 0, 30);
+        }
         var document=Jsoup.parse(new String(result.bytes(),java.nio.charset.StandardCharsets.UTF_8),result.url());
         Element body=document.selectFirst("#js_content,article,main");if(body==null)body=document.body();
         var title=document.selectFirst("#activity-name,h1");var author=document.selectFirst("#js_name,[rel=author]");
+        String extractedTitle = title==null?document.title():title.text();
+        String extractedAuthor = author==null?"":author.text();
         String publishedAt=ArticlePublicationTime.extract(document,json);
+        if (progress != null) {
+            progress.emit("CAPTURING_COVER", "已读取标题《" + clampText(extractedTitle, 40) + "》，正在检查封面图…", extractedTitle, extractedAuthor, 0, 0, 40);
+        }
         String coverUrl=captureCover(document,body,result.url(),principal);
-        return new Draft(title==null?document.title():title.text(),author==null?"":author.text(),result.url(),publishedAt,"PRIVATE","",clean(body.html(),result.url(),principal),coverUrl);
+        String cleanedBody = clean(body.html(), result.url(), principal, (imageIndex, imageTotal) -> {
+            if (progress == null) return;
+            int subPercent = imageTotal > 0 ? 45 + Math.round(((imageIndex - 1) * 50f) / imageTotal) : 90;
+            progress.emit("CAPTURING_IMAGES",
+                    imageTotal > 0 ? "正在读取正文图片（" + imageIndex + "/" + imageTotal + "）…" : "正在清洗正文内容…",
+                    extractedTitle, extractedAuthor, imageIndex, imageTotal, subPercent);
+        });
+        return new Draft(extractedTitle,extractedAuthor,result.url(),publishedAt,"PRIVATE","",cleanedBody,coverUrl);
+    }
+    private static String formatByteSize(int bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024f)) + " KB";
+        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+    private Map<String, Object> saveInNewTransaction(Draft draft, Principal principal) {
+        if (transactionManager != null) {
+            saveInNewTx.set(Boolean.TRUE);
+            try {
+                return save(null, draft, principal);
+            } finally {
+                saveInNewTx.remove();
+            }
+        }
+        return save(null, draft, principal);
+    }
+    private static String clampText(String value, int maxLength) {
+        if (value == null) return "";
+        if (value.length() <= maxLength) return value;
+        int end = maxLength;
+        if (end > 0 && Character.isHighSurrogate(value.charAt(end - 1))) {
+            end--;
+        }
+        return value.substring(0, end);
+    }
+    private static String fallbackTitle(String resolvedUrl, String rawUrl) {
+        String candidate = resolvedUrl != null && !resolvedUrl.isBlank() ? resolvedUrl : rawUrl;
+        try {
+            var uri = java.net.URI.create(candidate);
+            if (uri.getHost() != null && !uri.getHost().isBlank()) {
+                return clampText(uri.getHost(), 300);
+            }
+        } catch (IllegalArgumentException ignored) {}
+        return clampText(candidate, 300);
     }
     private String captureCover(org.jsoup.nodes.Document document,Element body,String base,Principal principal) {
         for(var meta:document.select("meta[property=og:image],meta[property=twitter:image],meta[name=twitter:image]")) {
@@ -181,14 +447,28 @@ public class ArticleService {
         return doc.body().html();
     }
     public String clean(String html,String base,Principal principal) {
+        return clean(html, base, principal, null);
+    }
+    private String clean(String html, String base, Principal principal, ImageProgressCallback onImage) {
         if(html==null||html.length()>30_000_000)throw ApiException.badRequest("ARTICLE_SIZE","文章正文过大或为空。");
         var doc=Jsoup.parseBodyFragment(html,base==null?"":base);
         doc.select("script,iframe,form,object,embed,video,audio").remove();
         for(var style:doc.select("style"))if(style.closest("svg")==null)style.remove();
-        int count=0;
-        for(var image:new ArrayList<>(doc.select("img,svg"))) {
-            if(image.parents().stream().anyMatch(parent->parent.tagName().equals("svg")))continue;
-            if(++count>40){image.remove();continue;}
+        var media = new ArrayList<Element>();
+        for(var candidate:new ArrayList<>(doc.select("img,svg"))) {
+            if(candidate.parents().stream().anyMatch(parent->parent.tagName().equals("svg")))continue;
+            if(media.size() < 40) media.add(candidate);
+            else candidate.remove();
+        }
+        int total = media.size();
+        if (total == 0 && onImage != null) {
+            onImage.onImage(0, 0);
+        }
+        for(int index = 0; index < total; index++) {
+            var image = media.get(index);
+            if (onImage != null) {
+                onImage.onImage(index + 1, total);
+            }
             try {
                 if(image.tagName().equals("svg")) {
                     String alt=image.attr("aria-roledescription").startsWith("flowchart")?"文章流程图":"文章插图";
@@ -237,34 +517,68 @@ public class ArticleService {
         var row=db.fetchOne("select owner_id from article_assets where id=? and (owner_id=? or exists(select 1 from article_asset_links l join articles a on a.id=l.article_id where l.asset_id=? and (a.visibility='PUBLIC' or a.owner_id=? or ?)))",id,user.id(),id,user.id(),user.canManageFiles());
         if(row==null)throw ApiException.notFound("ASSET_NOT_FOUND","图片不存在。");return files.resource("articles",row.get("owner_id",UUID.class),id);
     }
-    @Transactional public Map<String,Object> save(UUID id,Draft input,Principal principal) {
-        var user=manager(principal);if(id==null)id=UUID.randomUUID();else get(id,principal);
-        if(input.title()==null||input.title().isBlank()||input.title().length()>300)throw ApiException.badRequest("TITLE_REQUIRED","请输入不超过 300 字的标题。");
-        if(!Set.of("PUBLIC","PRIVATE").contains(input.visibility()))throw ApiException.badRequest("VISIBILITY","可见范围无效。");
-        rejectDuplicateSource(input.sourceUrl(),id);
-        String html=clean(input.html(),input.sourceUrl(),principal);
-        String sourceKey=ArticleIdentity.sourceKey(input.sourceUrl());
-        String contentKey=articleContentKey(html,principal);
-        // Serialize check + write across API instances, including concurrent create/update requests.
-        db.execute("lock table articles in share row exclusive mode");
-        for(var legacy:db.fetch("select id,source_url,html from articles where duplicate_source_key is null or duplicate_content_key is null")) {
+    public Map<String, Object> save(UUID id, Draft input, Principal principal) {
+        var user = manager(principal);
+        UUID articleId = id == null ? UUID.randomUUID() : id;
+        if (id != null) get(articleId, principal);
+        if (input.title() == null || input.title().isBlank() || input.title().length() > 300) {
+            throw ApiException.badRequest("TITLE_REQUIRED", "请输入不超过 300 字的标题。");
+        }
+        if (!Set.of("PUBLIC", "PRIVATE").contains(input.visibility())) {
+            throw ApiException.badRequest("VISIBILITY", "可见范围无效。");
+        }
+        rejectDuplicateSource(input.sourceUrl(), articleId);
+        // Perform HTML sanitization, image downloading, hashing, and cover transcoding outside any DB lock/transaction.
+        String html = clean(input.html(), input.sourceUrl(), principal);
+        String sourceKey = ArticleIdentity.sourceKey(input.sourceUrl());
+        String contentKey = articleContentKey(html, principal);
+        UUID coverAsset = normalizeCover(input.coverUrl(), principal);
+        boolean requireNew = Boolean.TRUE.equals(saveInNewTx.get());
+        return executeSaveTransaction(requireNew, () ->
+                persistSavedArticle(articleId, user, input, html, sourceKey, contentKey, coverAsset, principal));
+    }
+
+    private <T> T executeSaveTransaction(boolean requireNew, java.util.function.Supplier<T> action) {
+        if (transactionManager != null) {
+            var template = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+            if (requireNew) {
+                template.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            }
+            return template.execute(status -> action.get());
+        }
+        return action.get();
+    }
+
+    private Map<String, Object> persistSavedArticle(UUID id, HumiteUser user, Draft input, String html,
+                                                    String sourceKey, String contentKey, UUID coverAsset, Principal principal) {
+        // Serialize duplicate check and upsert across API instances without locking reads on articles.
+        db.execute("select pg_advisory_xact_lock(hashtext('humite:articles:save'))");
+        for (var legacy : db.fetch("select id,source_url,html from articles where duplicate_source_key is null or duplicate_content_key is null")) {
             db.execute("update articles set duplicate_source_key=?,duplicate_content_key=? where id=?",
-                    ArticleIdentity.sourceKey(legacy.get("source_url",String.class)),articleContentKey(legacy.get("html",String.class),principal),legacy.get("id",UUID.class));
+                    ArticleIdentity.sourceKey(legacy.get("source_url", String.class)),
+                    articleContentKey(legacy.get("html", String.class), principal),
+                    legacy.get("id", UUID.class));
         }
-        if(!sourceKey.isEmpty()&&db.fetchExists(db.selectOne().from("articles").where("id<>? and duplicate_source_key=?",id,sourceKey)))
+        if (!sourceKey.isEmpty() && db.fetchExists(db.selectOne().from("articles").where("id<>? and duplicate_source_key=?", id, sourceKey))) {
             throw duplicateArticle("已有相同来源链接的文章，请在文章列表中查看或编辑。");
-        if(!contentKey.isEmpty()&&db.fetchExists(db.selectOne().from("articles").where("id<>? and duplicate_content_key=?",id,contentKey)))
-            throw duplicateArticle("已有相同正文的文章，无需重复导入。");
-        UUID coverAsset=normalizeCover(input.coverUrl(),principal);
-        db.execute("insert into articles(id,owner_id,title,author,source_url,published_at,visibility,tags,html,cover_asset_id) values (?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set title=excluded.title,author=excluded.author,source_url=excluded.source_url,published_at=excluded.published_at,visibility=excluded.visibility,tags=excluded.tags,html=excluded.html,cover_asset_id=excluded.cover_asset_id,knowledge='[]',knowledge_revision=null,updated_at=now()",id,user.id(),input.title(),input.author(),input.sourceUrl(),input.publishedAt(),input.visibility(),input.tags(),html,coverAsset);
-        db.execute("update articles set duplicate_source_key=?,duplicate_content_key=? where id=?",sourceKey,contentKey,id);
-        db.execute("delete from article_asset_links where article_id=?",id);
-        for(var image:Jsoup.parseBodyFragment(html).select("img")) {
-            var match=INTERNAL_ASSET_URL.matcher(image.attr("src"));
-            if(match.matches())db.execute("insert into article_asset_links values (?,?) on conflict do nothing",id,UUID.fromString(match.group(1)));
         }
-        if(coverAsset!=null)db.execute("insert into article_asset_links values (?,?) on conflict do nothing",id,coverAsset);
-        return get(id,principal);
+        if (!contentKey.isEmpty() && db.fetchExists(db.selectOne().from("articles").where("id<>? and duplicate_content_key=?", id, contentKey))) {
+            throw duplicateArticle("已有相同正文的文章，无需重复导入。");
+        }
+        db.execute("insert into articles(id,owner_id,title,author,source_url,published_at,visibility,tags,html,cover_asset_id) values (?,?,?,?,?,?,?,?,?,?) on conflict(id) do update set title=excluded.title,author=excluded.author,source_url=excluded.source_url,published_at=excluded.published_at,visibility=excluded.visibility,tags=excluded.tags,html=excluded.html,cover_asset_id=excluded.cover_asset_id,knowledge='[]',knowledge_revision=null,updated_at=now()",
+                id, user.id(), input.title(), input.author(), input.sourceUrl(), input.publishedAt(), input.visibility(), input.tags(), html, coverAsset);
+        db.execute("update articles set duplicate_source_key=?,duplicate_content_key=? where id=?", sourceKey, contentKey, id);
+        db.execute("delete from article_asset_links where article_id=?", id);
+        for (var image : Jsoup.parseBodyFragment(html).select("img")) {
+            var match = INTERNAL_ASSET_URL.matcher(image.attr("src"));
+            if (match.matches()) {
+                db.execute("insert into article_asset_links(article_id, asset_id) values (?,?) on conflict do nothing", id, UUID.fromString(match.group(1)));
+            }
+        }
+        if (coverAsset != null) {
+            db.execute("insert into article_asset_links(article_id, asset_id) values (?,?) on conflict do nothing", id, coverAsset);
+        }
+        return get(id, principal);
     }
     private static ApiException duplicateArticle(String message) {
         return ApiException.conflict("ARTICLE_DUPLICATE",message);

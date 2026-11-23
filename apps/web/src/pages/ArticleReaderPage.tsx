@@ -239,11 +239,11 @@ export function ArticleReaderPage() {
     };
   }, [articleId, user?.id]);
 
-  if (error) return <RequestErrorPage error={error} onRetry={() => window.location.reload()} back={<PageBackAction to="/articles">返回文钞馆</PageBackAction>} />;
+  if (error) return <RequestErrorPage error={error} onRetry={() => window.location.reload()} back={<PageBackAction to="/articles">返回文章列表</PageBackAction>} />;
   if (!loaded) {
     return (
       <PageContainer>
-        <PageBackAction to="/articles">返回文钞馆</PageBackAction>
+        <PageBackAction to="/articles">返回文章列表</PageBackAction>
         <Skeleton active />
       </PageContainer>
     );
@@ -435,7 +435,7 @@ function ArticleReading({
       contentUrl,
       annotationPermission: "articles.annotate",
       label: "文章",
-      backLabel: "返回文钞馆",
+      backLabel: "返回文章列表",
       initialLocator,
       progress: state.progress,
       annotations: state.annotations.map((entry) =>
@@ -466,8 +466,8 @@ function ArticleReading({
   if (epubError) {
     return (
       <PageContainer>
-        <PageBackAction to="/articles">返回文钞馆</PageBackAction>
         <PageHeader
+          back={<PageBackAction inline to="/articles">返回文章列表</PageBackAction>}
           eyebrow="ARTICLE"
           title={article.title}
         />
@@ -478,7 +478,7 @@ function ArticleReading({
   if (!contentUrl) {
     return (
       <PageContainer>
-        <PageBackAction to="/articles">返回文钞馆</PageBackAction>
+        <PageBackAction to="/articles">返回文章列表</PageBackAction>
         <Skeleton active />
       </PageContainer>
     );

@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 // 将显式前端路由转发至 SPA 壳；此转发不授予底层 API 权限。
 // Forwards explicit frontend routes to the SPA shell without granting access to underlying APIs.
 public class SpaForwardController {
-    @GetMapping({"/", "/recover", "/forgot-password", "/articles", "/article-collections", "/vault", "/profile", "/login", "/register", "/setup", "/change-password", "/library", "/recycle-bin", "/annotations",
+    @GetMapping({"/", "/recover", "/forgot-password", "/discover", "/articles", "/article-collections", "/vault", "/profile", "/login", "/register", "/setup", "/change-password", "/library", "/recycle-bin", "/annotations",
             "/annotations/books", "/annotations/articles", "/annotations/all", "/library/all", "/library/overview", "/search", "/categories", "/booklists", "/virtual-library", "/knowledge-graph", "/settings", "/settings/display-books", "/display-books",
             "/admin/users", "/admin/file-operations", "/admin/recycle-bin", "/admin/library-roots", "/admin/reader-fonts"})
     String fixedRoutes() {

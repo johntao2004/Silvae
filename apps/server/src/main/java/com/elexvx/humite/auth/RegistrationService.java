@@ -17,8 +17,8 @@ public class RegistrationService {
  public boolean enabled() { return policy.enabled() && users.findOwner().isPresent(); }
  @Transactional
  public void configure(String username, boolean enabled) {
-  var actor=users.findByUsername(username).orElseThrow(() -> ApiException.forbidden("OWNER_REQUIRED","仅主人可修改安全设置"));
-  if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅主人可修改安全设置");
+  var actor=users.findByUsername(username).orElseThrow(() -> ApiException.forbidden("OWNER_REQUIRED","仅站点所有者可修改安全设置"));
+  if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅站点所有者可修改安全设置");
   policy.lock(); policy.update(enabled);
   audit.record(actor.id(),"REGISTRATION_POLICY_CHANGED","SECURITY","registration",null,null,null,null,"SUCCEEDED","{\"enabled\":"+enabled+"}");
  }

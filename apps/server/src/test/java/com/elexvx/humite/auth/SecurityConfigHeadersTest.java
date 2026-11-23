@@ -11,11 +11,17 @@ class SecurityConfigHeadersTest {
     void onlyTheMingLibrarySceneCanBeFramedByTheSameOriginHost() {
         var sceneResponse = headersFor("/assets/ming-library/index.html");
         assertThat(sceneResponse.getHeader("X-Frame-Options")).isEqualTo("SAMEORIGIN");
-        assertThat(sceneResponse.getHeader("Content-Security-Policy")).contains("frame-ancestors 'self'");
+        assertThat(sceneResponse.getHeader("Content-Security-Policy"))
+                .contains("frame-ancestors 'self'", "form-action 'self'");
+        assertThat(sceneResponse.getHeader("Permissions-Policy"))
+                .isEqualTo("camera=(), microphone=(), geolocation=()");
 
         var appResponse = headersFor("/index.html");
         assertThat(appResponse.getHeader("X-Frame-Options")).isEqualTo("DENY");
-        assertThat(appResponse.getHeader("Content-Security-Policy")).contains("frame-ancestors 'none'");
+        assertThat(appResponse.getHeader("Content-Security-Policy"))
+                .contains("frame-ancestors 'none'", "form-action 'self'");
+        assertThat(appResponse.getHeader("Permissions-Policy"))
+                .isEqualTo("camera=(), microphone=(), geolocation=()");
     }
 
     private MockHttpServletResponse headersFor(String path) {

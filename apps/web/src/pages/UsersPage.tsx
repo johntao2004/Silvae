@@ -30,14 +30,14 @@ import { Switch } from "@/ui/forms";
 import { TextField } from "@/ui/forms";
 import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useContext, useEffect, type FormEvent } from "react";
+import { useState, useContext, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ActionToolbar, EmbeddedSettingsContext, PageContainer, PageHeader } from "../components/PageHeader";
 import type { ManagedUser, SessionUser, UserRole } from "../domain/types";
 import { tokens } from "../theme/tokens";
 
-const roleLabels: Record<UserRole, string> = { OWNER: "主人", ADMIN: "管理员", MEMBER: "成员" };
+const roleLabels: Record<UserRole, string> = { OWNER: "站点所有者", ADMIN: "管理员", MEMBER: "成员" };
 const dialogViewportMaxHeight = `calc(100dvh - ${tokens.spacing[6]}px)`;
 
 export function UsersPage() {
@@ -75,7 +75,6 @@ export function UsersPage() {
   return (
     <PageContainer>
       {embedded ? <Stack sx={{ mb: 2 }}><ActionToolbar><Button variant="contained" disabled={!can("settings.users.create")} onClick={() => setCreateOpen(true)}>创建用户</Button></ActionToolbar></Stack> : <PageHeader
-        eyebrow="ACCESS CONTROL"
         title="用户管理"
         action={<Button variant="contained" disabled={!can("settings.users.create")} onClick={() => setCreateOpen(true)}>创建用户</Button>}
       />}
@@ -173,9 +172,9 @@ function UserCard({ user, sessionUser, onResetPassword, onRevokeSessions, onTogg
       <Stack spacing={1.25} sx={{ mt: `${tokens.spacing[4]}px` }}>
         <UserRoleControl user={user} />
         {can("settings.users.manage") && canManageAccountActions(user, sessionUser) && (
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: "100%" }}>
-            <Button size="small" onClick={() => void onResetPassword(user)} sx={{ width: { xs: "100%", sm: "auto" } }}>临时密码</Button>
-            <Button size="small" onClick={() => void onRevokeSessions(user)} sx={{ width: { xs: "100%", sm: "auto" } }}>退出全部会话</Button>
+          <Stack direction="row" spacing={1} sx={{ width: "100%" }}>
+            <Button size="medium" variant="outlined" onClick={() => void onResetPassword(user)} sx={{ flex: 1, minWidth: 0 }}>临时密码</Button>
+            <Button size="medium" variant="outlined" onClick={() => void onRevokeSessions(user)} sx={{ flex: 1, minWidth: 0 }}>退出全部会话</Button>
           </Stack>
         )}
         <Stack direction="row" spacing={1} sx={{ alignItems: "center", justifyContent: "space-between" }}>
@@ -243,9 +242,9 @@ function CreateUserDialog({ open, allowAdmin, onClose, onCreated }: {
       <Stack component="form" onSubmit={submit} sx={{ maxHeight: dialogViewportMaxHeight, minHeight: 0 }}>
         <DialogTitle sx={{ flexShrink: 0 }}><Typography variant="h4" component="span">创建家庭账户</Typography></DialogTitle>
         <DialogContent sx={{ minHeight: 0, overflowY: "auto" }}><Stack spacing={2.5} sx={{ pt: 1 }}>
-          <TextField label="显示名称" value={form.displayName} onChange={(event: any) => setForm({ ...form, displayName: event.target.value })} required autoFocus />
-          <TextField label="用户名" value={form.username} onChange={(event: any) => setForm({ ...form, username: event.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "") })} helperText="仅使用小写字母、数字、点、下划线或短横线。" required />
-          <FormControl><InputLabel id="new-user-role">角色</InputLabel><Select labelId="new-user-role" label="角色" value={form.role} onChange={(event: any) => setForm({ ...form, role: event.target.value as "ADMIN" | "MEMBER" })}><MenuItem value="MEMBER">成员 · 只读藏书</MenuItem>{allowAdmin && <MenuItem value="ADMIN">管理员 · 可管理书库</MenuItem>}</Select></FormControl>
+          <TextField label="显示名称" value={form.displayName} onChange={(event: ChangeEvent<HTMLInputElement>) => setForm({ ...form, displayName: event.target.value })} required autoFocus />
+          <TextField label="用户名" value={form.username} onChange={(event: ChangeEvent<HTMLInputElement>) => setForm({ ...form, username: event.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "") })} helperText="仅使用小写字母、数字、点、下划线或短横线。" required />
+          <FormControl><InputLabel id="new-user-role">角色</InputLabel><Select labelId="new-user-role" label="角色" value={form.role} onChange={(event: { target: { value: string } }) => setForm({ ...form, role: event.target.value as "ADMIN" | "MEMBER" })}><MenuItem value="MEMBER">成员 · 只读藏书</MenuItem>{allowAdmin && <MenuItem value="ADMIN">管理员 · 可管理书库</MenuItem>}</Select></FormControl>
           {error && <Alert severity="error">{error}</Alert>}
         </Stack></DialogContent>
         <DialogActions sx={{ flexShrink: 0, flexWrap: "wrap", p: { xs: 2, sm: 3 } }}><Button onClick={onClose} color="inherit" sx={{ width: { xs: "100%", sm: "auto" } }}>取消</Button><Button type="submit" variant="contained" disabled={loading} sx={{ width: { xs: "100%", sm: "auto" } }}>{loading ? "正在创建…" : "创建账户"}</Button></DialogActions>

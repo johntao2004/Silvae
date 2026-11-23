@@ -21,8 +21,18 @@ export default tseslint.config(
           object, property, message: "Use ui/confirmations useConfirmation() so dialogs inherit the active theme and locale.",
         }))),
       ],
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+      "no-var": "error",
+      "prefer-const": "error",
+      "no-debugger": "error",
+      "eqeqeq": ["error", "always", { "null": "ignore" }],
     }
+  },
+  {
+    files: ["src/ui/**/*.{ts,tsx}", "src/**/*.test.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
   }
 );

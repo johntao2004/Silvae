@@ -9,9 +9,9 @@ import { useConfirmation } from "../ui/confirmations";
 import { Checkbox } from "../ui/forms";
 import { tokens } from "../theme/tokens";
 import type { UserRole } from "../domain/types";
-import { ActionToolbar } from "../components/PageHeader";
 import { permissionPageModel, rolePermissionGroups, rolePermissionPages } from "./role-permission-groups";
 import type { RolePermissionRouteNode } from "./role-permission-groups";
+import "./settings-page.css";
 
 interface PermissionTreeOption { title: string; value: string; selectable: boolean; children?: PermissionTreeOption[] }
 
@@ -65,11 +65,11 @@ export function RolePermissionsPage() {
     children: node.children?.map(child => treeNode(child)),
   });
   return <Stack spacing={3}>
-    <ActionToolbar>
-      <Button disabled={busy} onClick={() => { setDraft({ ...policy, grants: { OWNER: defaultGrants("OWNER"), ADMIN: defaultGrants("ADMIN"), MEMBER: defaultGrants("MEMBER") } }); setMessage(""); }}>恢复全部默认（待保存）</Button>
+    <div className="bk-role-permissions-actions">
+      <Button disabled={busy} onClick={() => { setDraft({ ...policy, grants: { OWNER: defaultGrants("OWNER"), ADMIN: defaultGrants("ADMIN"), MEMBER: defaultGrants("MEMBER") } }); setMessage(""); }}>恢复默认设置</Button>
       <Button disabled={busy} onClick={() => { setDraft(null); setError(""); void query.refetch(); }}>重新加载</Button>
       <Button variant="contained" disabled={!changeCount || busy} onClick={() => modal.confirm({ title: "保存角色权限？", content: "更改会影响该角色的所有账户和已登录会话。", okText: "保存权限", cancelText: "取消", onOk: save })}>保存权限</Button>
-    </ActionToolbar>
+    </div>
     {changeCount > 0 && <Typography role="status" color="text.secondary">共 {changeCount} 项权限待保存，切换页面会保留更改。</Typography>}
     {message && <Alert severity="success">{message}</Alert>}{error && <Alert severity="error">{error}</Alert>}
     <Stack spacing={2}>
@@ -83,12 +83,12 @@ export function RolePermissionsPage() {
       <DataTable key={selectedPage} aria-label={`${pageTitle}角色权限矩阵`} rowKey="key" dataSource={rows}
         tableLayout="fixed" columns={[
           { title: "页面与操作", key: "function", render: (_, row) => <Typography sx={{ overflowWrap: "anywhere" }}>{row.label}</Typography> },
-          ...roles.map(role => ({ title: { ADMIN: "管理员", MEMBER: "成员", OWNER: "主人" }[role], key: role, align: "center" as const,
+          ...roles.map(role => ({ title: { ADMIN: "管理员", MEMBER: "成员", OWNER: "站点所有者" }[role], key: role, align: "center" as const,
             width: tokens.layout.touchTarget * 2,
             render: (_: unknown, row: typeof rows[number]) => {
               const codes = row.codes.filter(code => permissionCatalog.find(permission => permission.code === code)?.roles.includes(role));
               const enabled = codes.filter(code => policy.grants[role]?.includes(code)).length;
-              return <Checkbox aria-label={`${{ ADMIN: "管理员", MEMBER: "成员", OWNER: "主人" }[role]} · ${row.label}`} checked={codes.length > 0 && enabled === codes.length} indeterminate={enabled > 0 && enabled < codes.length} disabled={busy || codes.length === 0} onChange={event => toggleMany(role, codes, event.target.checked)} />;
+              return <Checkbox aria-label={`${{ ADMIN: "管理员", MEMBER: "成员", OWNER: "站点所有者" }[role]} · ${row.label}`} checked={codes.length > 0 && enabled === codes.length} indeterminate={enabled > 0 && enabled < codes.length} disabled={busy || codes.length === 0} onChange={event => toggleMany(role, codes, event.target.checked)} />;
             } })),
         ]} />
     </Stack>

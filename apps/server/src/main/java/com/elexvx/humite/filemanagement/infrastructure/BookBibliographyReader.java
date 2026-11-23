@@ -1,6 +1,7 @@
 package com.elexvx.humite.filemanagement.infrastructure;
 
 import com.elexvx.humite.catalog.BookFormat;
+import com.elexvx.humite.common.ApiException;
 import com.elexvx.humite.filemanagement.FileInspector;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -9,6 +10,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipFile;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
+import org.springframework.http.HttpStatus;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
@@ -43,7 +46,7 @@ public class BookBibliographyReader {
         }
         try (var pdf = org.apache.pdfbox.Loader.loadPDF(path.toFile())) {
             if (pdf.isEncrypted())
-                throw new java.io.IOException("加密 PDF 不支持资料识别");
+                throw encryptedPdf();
             var info = pdf.getDocumentInformation();
             String codes = info.getCustomMetadataValue("Thema");
             return new Source(info.getSubject(),
@@ -53,7 +56,14 @@ public class BookBibliographyReader {
                             info.getCustomMetadataValue("SilvaeTableOfContents")), pdfContents(pdf)),
                     com.elexvx.humite.catalog.ThemaSubjects
                             .extract(codes == null ? List.of() : List.of(codes.split(","))));
+        } catch (InvalidPasswordException exception) {
+            throw encryptedPdf();
         }
+    }
+
+    private static ApiException encryptedPdf() {
+        return new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "BIBLIOGRAPHY_PDF_ENCRYPTED",
+                "PDF 已加密，无法读取补充资料。");
     }
 
     // 有界读取原文件目录，不推测作者生平，也不改写正文或阅读定位。

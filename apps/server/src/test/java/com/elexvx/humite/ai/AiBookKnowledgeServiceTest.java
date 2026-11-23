@@ -80,7 +80,7 @@ class AiBookKnowledgeServiceTest {
     void memberCannotGenerateForAnUploadAndConsentIsRequiredBeforeAnyReads() {
         when(permissions.actor(MEMBER)).thenReturn(user(UserRole.MEMBER));
         assertThatThrownBy(() -> service.generate(input(AiBookClassificationService.Source.UPLOAD, true), MEMBER))
-                .isInstanceOf(ApiException.class).hasMessageContaining("主人或管理员");
+                .isInstanceOf(ApiException.class).hasMessageContaining("站点所有者或管理员");
         verifyNoInteractions(uploads, ai, books, text);
 
         assertThatThrownBy(() -> service.generate(input(AiBookClassificationService.Source.BOOK, false), MEMBER))

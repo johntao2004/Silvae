@@ -42,7 +42,7 @@ function ArticleRoute({ path = "/articles/article-one" }: { path?: string }) {
       <button onClick={() => navigate("/articles/article-two")}>切换文章</button>
       <Routes>
         <Route path="/articles/:articleId" element={<ArticleReaderPage />} />
-        <Route path="/articles" element={<output data-testid="article-index">文钞馆</output>} />
+        <Route path="/articles" element={<output data-testid="article-index">文章</output>} />
       </Routes>
       <output data-testid="route-path">{path}</output>
     </>

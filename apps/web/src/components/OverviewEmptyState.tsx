@@ -23,8 +23,8 @@ export function OverviewEmptyState({
   return (
     <Stack
       sx={{
-        gap: `${tokens.spacing[3]}px`,
-        minHeight: `${tokens.spacing[20]}px`,
+        gap: `${tokens.spacing[2]}px`,
+        minHeight: `${tokens.spacing[16]}px`,
         alignItems: "center",
         textAlign: "center",
         justifyContent: "center",
@@ -32,14 +32,31 @@ export function OverviewEmptyState({
         mt: overviewContentSpacing,
       }}
     >
-      <EmptyStateIllustration compact />
-      <Box>
-        <Typography id={titleId} variant="h4">{statusTitle(title)}</Typography>
+      <Box sx={{ lineHeight: 0, ...(inverse ? { opacity: 0.88 } : {}) }}>
+        <EmptyStateIllustration compact />
+      </Box>
+      <Box sx={{ maxWidth: "22ch" }}>
+        <Typography
+          id={titleId}
+          variant="h4"
+          sx={{
+            fontSize: `${tokens.typography.fontSize.titleSm}px`,
+            lineHeight: tokens.typography.lineHeight.ui,
+            fontWeight: tokens.typography.fontWeight.medium,
+          }}
+        >
+          {statusTitle(title)}
+        </Typography>
         {description != null ? (
           <Typography
-            variant="body2"
+            variant="caption"
             color={inverse ? "inherit" : "text.secondary"}
-            sx={{ mt: `${tokens.spacing[1]}px`, ...(inverse ? { opacity: 0.68 } : {}) }}
+            sx={{
+              display: "block",
+              mt: `${tokens.spacing[1]}px`,
+              lineHeight: tokens.typography.lineHeight.caption,
+              ...(inverse ? { opacity: 0.76 } : {}),
+            }}
           >
             {description}
           </Typography>

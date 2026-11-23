@@ -61,4 +61,21 @@ describe("BookCardPresentation isolated collections", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "编辑文章" }));
     expect(edit).toHaveBeenCalledOnce();
   });
+
+  it("exposes semantic catalog card classes for book and article variants", () => {
+    const { container, rerender } = render(<TestProviders><BookCardPresentation
+      book={{ id: "book-cls", title: "分类书", author: "作者" }}
+    /></TestProviders>);
+    expect(container.querySelector(".bk-catalog-card.bk-catalog-card--book")).toBeInTheDocument();
+    expect(container.querySelector(".bk-catalog-card__cover")).toBeInTheDocument();
+    expect(container.querySelector(".bk-catalog-card__body")).toBeInTheDocument();
+    expect(container.querySelector(".bk-catalog-card__meta")).toBeInTheDocument();
+    expect(container.querySelector(".bk-catalog-card__menu")).toBeInTheDocument();
+
+    rerender(<TestProviders><BookCardPresentation
+      variant="article"
+      book={{ id: "article-cls", title: "分类文章", author: "作者" }}
+    /></TestProviders>);
+    expect(container.querySelector(".bk-catalog-card.bk-catalog-card--article")).toBeInTheDocument();
+  });
 });

@@ -22,7 +22,7 @@ public class PrivateContentStore {
         articles = location(articlePath, root.resolve("articles"));
         vault = location(vaultPath, root.resolve("vault"));
         if (articles.startsWith(vault) || vault.startsWith(articles))
-            throw new IllegalArgumentException("文章书库与禁书区目录不能相同或互相包含");
+            throw new IllegalArgumentException("文章书库与加密书库目录不能相同或互相包含");
     }
     private static Path location(String configured, Path fallback) {
         if (configured == null || configured.isBlank()) return fallback;

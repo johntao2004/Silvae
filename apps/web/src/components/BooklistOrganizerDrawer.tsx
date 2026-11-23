@@ -1,5 +1,5 @@
 import { BookCover } from "./BookCover";
-// 书目成员管理抽屉协调加入、移除和排序，使用服务器返回的修订状态。
+// 书单成员管理抽屉协调加入、移除和排序，使用服务器返回的修订状态。
 // Booklist membership drawer coordinates add/remove/reorder using server-returned revisions.
 import { EmptyState } from "../ui/empty-state";
 import { DeleteOutlineRounded } from "@/ui/icons";
@@ -19,7 +19,7 @@ import { TextField } from "@/ui/forms";
 import { Tooltip } from "@/ui/feedback";
 import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ChangeEvent, type DragEvent } from "react";
 import { api } from "../api/client";
 import type { BooklistDetail, BrowseBook } from "../domain/types";
 import { tokens } from "../theme/tokens";
@@ -80,7 +80,7 @@ export function BooklistOrganizerDrawer({ open, booklist, onClose, onChanged }: 
     setError("");
     try {
       const result = await api.reorderBooklistBooks(booklist.id, next.map((book) => book.id), booklist.revision);
-      onChanged(result, "书目顺序已保存");
+      onChanged(result, "书单顺序已保存");
       await refresh();
     } catch (reason) {
       setOrdered(previous);
@@ -105,7 +105,7 @@ export function BooklistOrganizerDrawer({ open, booklist, onClose, onChanged }: 
     setError("");
     try {
       const result = await api.addBooklistBooks(booklist.id, [bookId], booklist.revision);
-      onChanged(result, `已将《${title}》加入书目`);
+      onChanged(result, `已将《${title}》加入书单`);
       await refresh();
     } catch (reason) {
       setError(errorMessage(reason));
@@ -119,7 +119,7 @@ export function BooklistOrganizerDrawer({ open, booklist, onClose, onChanged }: 
     setError("");
     try {
       const result = await api.removeBooklistBook(booklist.id, book.id, booklist.revision);
-      onChanged(result, `已将《${book.title}》移出书目；原书未删除`);
+      onChanged(result, `已将《${book.title}》移出书单；原书未删除`);
       setOrdered((current) => current.filter((candidate) => candidate.id !== book.id));
       await refresh();
     } catch (reason) {
@@ -130,10 +130,10 @@ export function BooklistOrganizerDrawer({ open, booklist, onClose, onChanged }: 
   };
 
   return (
-    <Drawer anchor="right" title={`整理书目 · ${booklist.title}`} closeLabel="关闭整理书目" open={open} onClose={busyId ? undefined : onClose} slotProps={{ paper: { sx: { width: { xs: "100%", md: 960 }, maxWidth: "100vw" } } }}>
+    <Drawer anchor="right" title={`整理书单 · ${booklist.title}`} closeLabel="关闭整理书单" open={open} onClose={busyId ? undefined : onClose} slotProps={{ paper: { sx: { width: { xs: "100%", md: 960 }, maxWidth: "100vw" } } }}>
       <Stack sx={{ minHeight: "100%", p: { xs: `${tokens.spacing[4]}px`, sm: `${tokens.spacing[6]}px` }, gap: `${tokens.spacing[5]}px` }}>
         {error ? <Alert severity="error">{error}</Alert> : null}
-        {booklist.visibility === "PUBLIC" ? <Alert severity="info">这个书目已公开，只能加入公共书目池中的书籍。</Alert> : null}
+        {booklist.visibility === "PUBLIC" ? <Alert severity="info">这个书单已公开，只能加入公共书目池中的书籍。</Alert> : null}
         <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "minmax(0, .9fr) minmax(0, 1.1fr)" }, gap: `${tokens.spacing[8]}px`, alignItems: "start" }}>
           <Box component="section" aria-labelledby="current-booklist-heading">
             <Stack direction="row" sx={{ alignItems: "center", minHeight: tokens.layout.touchTarget, mb: `${tokens.spacing[3]}px` }}><Typography id="current-booklist-heading" variant="h5">当前顺序</Typography></Stack>
@@ -145,28 +145,28 @@ export function BooklistOrganizerDrawer({ open, booklist, onClose, onChanged }: 
                     role="listitem"
                     divider={index < ordered.length - 1}
                     draggable={!busyId}
-                    onDragStart={(event: any) => event.dataTransfer.setData("text/booklist-book", book.id)}
-                    onDragOver={(event: any) => event.preventDefault()}
-                    onDrop={(event: any) => { event.preventDefault(); drop(event.dataTransfer.getData("text/booklist-book"), index); }}
+                    onDragStart={(event: DragEvent<HTMLDivElement>) => event.dataTransfer.setData("text/booklist-book", book.id)}
+                    onDragOver={(event: DragEvent<HTMLDivElement>) => event.preventDefault()}
+                    onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); drop(event.dataTransfer.getData("text/booklist-book"), index); }}
                     sx={{ gap: `${tokens.spacing[2]}px`, px: `${tokens.spacing[3]}px`, "& > .bk-list-item-content": { display: { xs: "grid", sm: "flex" }, gridTemplateColumns: "auto auto minmax(0, 1fr)", gap: `${tokens.spacing[2]}px` } }}
                   >
                     <ListItemIcon sx={{ minWidth: tokens.spacing[8], color: "text.disabled", cursor: "grab" }}><DragIndicatorRounded aria-hidden /></ListItemIcon>
                     <BookCover src={book.coverUrl} alt="" sx={{ width: `${tokens.spacing[10]}px` }} />
                     <ListItemText primary={book.title} secondary={book.author} sx={{ minWidth: 0 }} />
                     <Stack direction="row" spacing={0} sx={{ gridColumn: { xs: "1 / -1", sm: "auto" }, justifySelf: "end", flexShrink: 0 }}>
-                      <Tooltip title="移出书目"><span><IconButton size="small" color="error" disabled={Boolean(busyId)} onClick={() => void remove(book)} aria-label={`移出 ${book.title}`}><DeleteOutlineRounded fontSize="small" /></IconButton></span></Tooltip>
+                      <Tooltip title="移出书单"><span><IconButton size="small" color="error" disabled={Boolean(busyId)} onClick={() => void remove(book)} aria-label={`移出 ${book.title}`}><DeleteOutlineRounded fontSize="small" /></IconButton></span></Tooltip>
                     </Stack>
                   </ListItem>
                 ))}
               </List>
-            ) : <EmptyState compact title="书目中暂无书籍" />}
+            ) : <EmptyState compact title="书单中暂无书籍" />}
           </Box>
           <Stack component="aside" sx={{ gap: `${tokens.spacing[3]}px`, position: { md: "sticky" }, top: `${tokens.spacing[6]}px` }}>
             <Stack sx={{ gap: `${tokens.spacing[3]}px` }}>
               <Stack direction="row" sx={{ alignItems: "center", minHeight: tokens.layout.touchTarget }}>
                 <Typography variant="h5">加入藏书</Typography>
               </Stack>
-              <TextField fullWidth aria-label="搜索书名或作者" placeholder="搜索书名或作者" value={query} onChange={(event: any) => setQuery(event.target.value)} />
+              <TextField fullWidth aria-label="搜索书名或作者" placeholder="搜索书名或作者" value={query} onChange={(event: ChangeEvent<HTMLInputElement>) => setQuery(event.target.value)} />
             </Stack>
             {sourceQuery.isPending ? <Stack sx={{ alignItems: "center", py: `${tokens.spacing[8]}px` }}><CircularProgress size={24} /></Stack> : candidates.length ? (
               <List sx={{ p: 0, maxHeight: { md: "62vh" }, overflowY: "auto", border: 1, borderColor: "divider", borderRadius: `${tokens.radius.lg}px` }}>

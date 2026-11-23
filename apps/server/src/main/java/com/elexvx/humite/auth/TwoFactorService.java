@@ -45,16 +45,16 @@ public class TwoFactorService {
     }
     @Transactional public Policy savePolicy(boolean enabled, long revision, Principal principal) {
         var actor=permissions.actor(principal);
-        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅主人可配置禁书区。");
+        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅站点所有者可配置加密书库。");
         if(enabled && !crypto.configured()) throw ApiException.conflict("TWO_FACTOR_UNCONFIGURED","请先配置服务器身份验证器加密密钥。");
         if(db.execute("update vault_policy set enabled=?,revision=revision+1 where id=1 and revision=?",enabled,revision)!=1)
-            throw ApiException.conflict("VAULT_POLICY_CONFLICT","禁书区设置已更新，请刷新后重试。");
+            throw ApiException.conflict("VAULT_POLICY_CONFLICT","加密书库设置已更新，请刷新后重试。");
         audit(actor.id(),"VAULT_POLICY_CHANGED","SUCCEEDED"); return policy();
     }
     private HumiteUser actor(Principal principal) { permissions.require(principal,"vault.use"); return permissions.actor(principal); }
     private Policy available() {
         var policy=policy();
-        if(!policy.enabled()) throw ApiException.forbidden("VAULT_DISABLED","主人尚未启用禁书区。");
+        if(!policy.enabled()) throw ApiException.forbidden("VAULT_DISABLED","站点所有者尚未启用加密书库。");
         if(!policy.configured()) throw ApiException.conflict("TWO_FACTOR_UNCONFIGURED","身份验证器服务尚未配置。");
         return policy;
     }
@@ -77,17 +77,17 @@ public class TwoFactorService {
     }
     public void requireVaultAccess(Principal principal, HttpSession session) {
         var state=status(principal,session);
-        if(!state.enabled()) throw ApiException.forbidden("VAULT_DISABLED","主人尚未启用禁书区。");
+        if(!state.enabled()) throw ApiException.forbidden("VAULT_DISABLED","站点所有者尚未启用加密书库。");
         if(!state.configured()) throw ApiException.conflict("TWO_FACTOR_UNCONFIGURED","身份验证器服务尚未配置。");
         if(!state.bound()) throw ApiException.forbidden("TWO_FACTOR_SETUP_REQUIRED","请先绑定身份验证器。");
-        if(!state.verified()) throw ApiException.forbidden("TWO_FACTOR_REQUIRED","请验证身份验证器动态码后进入禁书区。");
+        if(!state.verified()) throw ApiException.forbidden("TWO_FACTOR_REQUIRED","请验证身份验证器动态验证码后进入加密书库。");
     }
     public void lock(HttpSession session) { if(session!=null) session.removeAttribute(GRANT); }
     public Status renew(Principal principal, HttpSession session) {
         // A heartbeat can extend a verified visit, never create or resurrect one.
         requireVaultAccess(principal,session);
         Object value=session.getAttribute(GRANT);
-        if(!(value instanceof String existing)) throw ApiException.forbidden("TWO_FACTOR_REQUIRED","请重新验证身份验证器动态码。");
+        if(!(value instanceof String existing)) throw ApiException.forbidden("TWO_FACTOR_REQUIRED","请重新验证身份验证器动态验证码。");
         // Preserve the versions that were verified; racing a rebind/policy change must not upgrade a grant.
         session.setAttribute(GRANT,existing.substring(0,existing.lastIndexOf('|')+1)+(clock.millis()+300_000));
         return status(principal,session);
@@ -122,7 +122,7 @@ public class TwoFactorService {
         if(row.get("secret_ciphertext")!=null || !Objects.equals(enrollmentId,row.get("pending_id")) || row.get("pending_ciphertext")==null || !row.get("pending_expires_at",OffsetDateTime.class).toInstant().isAfter(clock.instant()))
             throw ApiException.conflict("TWO_FACTOR_ENROLLMENT_EXPIRED","绑定已过期，请重新获取二维码。");
         long step=Totp.match(crypto.decrypt(actor.id(),row.get("pending_ciphertext",String.class)),code,clock.millis(),-1);
-        if(step<0) { audit(actor.id(),"TWO_FACTOR_BIND","FAILED"); throw ApiException.badRequest("TWO_FACTOR_INVALID","动态码不正确或已过期。"); }
+        if(step<0) { audit(actor.id(),"TWO_FACTOR_BIND","FAILED"); throw ApiException.badRequest("TWO_FACTOR_INVALID","动态验证码不正确或已过期。"); }
         UUID version=UUID.randomUUID();
         db.execute("update two_factor_credentials set secret_ciphertext=pending_ciphertext,pending_ciphertext=null,pending_id=null,pending_expires_at=null,credential_version=?,last_step=?,attempts=0 where user_id=?",version,step,actor.id());
         db.execute("delete from two_factor_recovery_codes where user_id=?",actor.id());

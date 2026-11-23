@@ -131,6 +131,103 @@ class ArticleCaptureTest {
         assertThat(service.images).isEmpty();
     }
 
+    @Test void batchImportSavesValidArticlesAndReportsDuplicatesAndFailures() {
+        var web = mock(PublicWebFetcher.class);
+        String urlOne = "https://example.test/one";
+        String urlOneShare = "https://example.test/one?utm_source=share";
+        String urlBad = "https://example.test/bad";
+        String urlTwo = "https://example.test/two";
+        String htmlOne = "<html><body><h1>第一篇</h1><article><p>正文一</p></article></body></html>";
+        String htmlTwo = "<html><body><article><p>正文二</p></article></body></html>";
+        when(web.get(urlOne, ArticleService.MAX_CAPTURE_HTML_BYTES))
+                .thenReturn(new PublicWebFetcher.Download(htmlOne.getBytes(StandardCharsets.UTF_8), "text/html; charset=UTF-8", urlOne));
+        when(web.get(urlBad, ArticleService.MAX_CAPTURE_HTML_BYTES))
+                .thenReturn(new PublicWebFetcher.Download("not html".getBytes(StandardCharsets.UTF_8), "application/pdf", urlBad));
+        when(web.get(urlTwo, ArticleService.MAX_CAPTURE_HTML_BYTES))
+                .thenReturn(new PublicWebFetcher.Download(htmlTwo.getBytes(StandardCharsets.UTF_8), "text/html; charset=UTF-8", urlTwo));
+
+        var savedDrafts = new ArrayList<ArticleService.Draft>();
+        var service = new ArticleService(emptyDatabase(), ownerRepository(), web, null, null, null) {
+            @Override
+            public java.util.Map<String, Object> save(UUID id, Draft input, Principal principal) {
+                savedDrafts.add(input);
+                return java.util.Map.of("id", UUID.randomUUID().toString(), "title", input.title());
+            }
+        };
+
+        var result = service.batchImport(
+                java.util.List.of(urlOne, urlOneShare, urlBad, urlTwo),
+                "PUBLIC",
+                "合集,精选",
+                OWNER);
+
+        assertThat(result.imported()).isEqualTo(2);
+        assertThat(result.duplicate()).isEqualTo(1);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.items()).hasSize(4);
+        assertThat(result.items().get(0).status()).isEqualTo("IMPORTED");
+        assertThat(result.items().get(0).title()).isEqualTo("第一篇");
+        assertThat(result.items().get(1).status()).isEqualTo("DUPLICATE");
+        assertThat(result.items().get(2).status()).isEqualTo("FAILED");
+        assertThat(result.items().get(3).status()).isEqualTo("IMPORTED");
+        assertThat(result.items().get(3).title()).isEqualTo("example.test");
+        assertThat(savedDrafts).hasSize(2);
+        assertThat(savedDrafts).allSatisfy(draft -> {
+            assertThat(draft.visibility()).isEqualTo("PUBLIC");
+            assertThat(draft.tags()).isEqualTo("合集,精选");
+        });
+    }
+
+    @Test void executeFetchEmitsStageTitleAndImageProgressEvents() throws Exception {
+        String url = "https://example.test/progress";
+        String html = "<html><body><h1>进度测试文章</h1><a id='js_name'>测试作者</a>"
+                + "<article><p>正文</p><img src='/a.png' alt='图1'><img src='/b.png' alt='图2'></article></body></html>";
+        var web = mock(PublicWebFetcher.class);
+        when(web.get(url, ArticleService.MAX_CAPTURE_HTML_BYTES))
+                .thenReturn(new PublicWebFetcher.Download(html.getBytes(StandardCharsets.UTF_8), "text/html; charset=UTF-8", url));
+        when(web.get("https://example.test/a.png", 5 * 1024 * 1024))
+                .thenReturn(new PublicWebFetcher.Download(png(), "image/png", "https://example.test/a.png"));
+        when(web.get("https://example.test/b.png", 5 * 1024 * 1024))
+                .thenReturn(new PublicWebFetcher.Download(png(), "image/png", "https://example.test/b.png"));
+
+        var service = new ImageCaptureService(web);
+        var events = new ArrayList<ArticleService.StreamEvent>();
+        String prepared = service.prepareFetch(url, OWNER);
+        var draft = service.executeFetch(prepared, OWNER, events::add);
+
+        assertThat(draft.title()).isEqualTo("进度测试文章");
+        assertThat(events).extracting(ArticleService.StreamEvent::stage)
+                .contains("FETCHING_PAGE", "PARSING", "CAPTURING_COVER", "CAPTURING_IMAGES");
+        assertThat(events).anySatisfy(event -> {
+            assertThat(event.stage()).isEqualTo("CAPTURING_IMAGES");
+            assertThat(event.title()).isEqualTo("进度测试文章");
+            assertThat(event.imageIndex()).isEqualTo(2);
+            assertThat(event.imageTotal()).isEqualTo(2);
+        });
+    }
+
+    @Test void fetchAllowsConsecutiveCallsWithinSlidingWindowAndRejectsOverLimit() {
+        var web = mock(PublicWebFetcher.class);
+        when(web.get(org.mockito.ArgumentMatchers.anyString(), eq(ArticleService.MAX_CAPTURE_HTML_BYTES)))
+                .thenAnswer(call -> {
+                    String currentUrl = call.getArgument(0);
+                    return new PublicWebFetcher.Download(
+                            "<html><body><h1>标题</h1><article><p>正文</p></article></body></html>".getBytes(StandardCharsets.UTF_8),
+                            "text/html; charset=UTF-8",
+                            currentUrl);
+                });
+
+        var service = new ArticleService(emptyDatabase(), ownerRepository(), web, null, null, null);
+        for (int i = 1; i <= 20; i++) {
+            var draft = service.fetch("https://example.test/item-" + i, OWNER);
+            assertThat(draft.sourceUrl()).isEqualTo("https://example.test/item-" + i);
+        }
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.fetch("https://example.test/item-21", OWNER))
+                .isInstanceOfSatisfying(com.elexvx.humite.common.ApiException.class,
+                        error -> assertThat(error.code()).isEqualTo("FETCH_RATE"));
+    }
+
     private static byte[] png() throws IOException {
         var out=new ByteArrayOutputStream();
         ImageIO.write(new BufferedImage(8,8,BufferedImage.TYPE_INT_RGB),"png",out);

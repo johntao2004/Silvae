@@ -27,3 +27,16 @@ it("omits terminal title punctuation while retaining internal punctuation and th
   expect(screen.getByRole("heading", {level: 1})).toHaveTextContent(/^权限未确认，请重试$/);
   expect(screen.getByRole("alert")).toHaveTextContent("原因：请求失败，请稍后再试。");
 });
+
+it.each([400, 500, 502])("orders prominent HTTP %s status before reason and diagnostic codes", status => {
+  render(<TestProviders><HttpErrorPage failure={{ status, code: "GATEWAY_ERROR", reason: "上游服务暂不可用。", traceId: "trace-502" }} /></TestProviders>);
+  const heading = screen.getByRole("heading", { level: 1, name: String(status) });
+  const reason = screen.getByText("原因：上游服务暂不可用。");
+  const code = screen.getByText("错误代码：GATEWAY_ERROR");
+  const trace = screen.getByText("请求标识：trace-502");
+
+  expect(heading).toHaveClass("http-error-status");
+  expect(heading.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(reason.compareDocumentPosition(code) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(code.compareDocumentPosition(trace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});

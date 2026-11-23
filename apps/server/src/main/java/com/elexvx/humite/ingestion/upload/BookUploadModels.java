@@ -12,8 +12,8 @@ public final class BookUploadModels {
     private BookUploadModels() {}
 
     public enum BookUploadStatus { RECEIVING, INSPECTING, ENRICHING, READY_FOR_REVIEW, COMMITTING, SUCCEEDED, DUPLICATE, FAILED, CANCELLED, EXPIRED }
-    public enum MetadataSource { FILE, FILENAME, OPEN_LIBRARY, GOOGLE_BOOKS, WIKIDATA, AI, MANUAL }
-    public enum CoverSource { EMBEDDED, PDF_FIRST_PAGE, OPEN_LIBRARY, GOOGLE_BOOKS, CUSTOM, GENERATED }
+    public enum MetadataSource { FILE, FILENAME, OPEN_LIBRARY, WIKIDATA, AI, MANUAL }
+    public enum CoverSource { EMBEDDED, PDF_FIRST_PAGE, OPEN_LIBRARY, CUSTOM, GENERATED }
 
     public record MetadataDraft(
             String title, String subtitle, List<String> authors, List<String> translators, String language,

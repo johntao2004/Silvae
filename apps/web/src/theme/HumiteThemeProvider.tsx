@@ -6,29 +6,51 @@ import { FeedbackProvider } from "../ui/notifications";
 import { ConfirmationProvider } from "../ui/confirmations";
 import { ConfigProvider } from "../ui/antd";
 import { CssBaseline, UiThemeProvider } from "../ui/primitives";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from "react";
-import { useAuth } from "../auth/AuthContext";
-import { readReaderSettings, type ReaderTheme } from "../components/readers/reader-fonts";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type PropsWithChildren } from "react";
+import type { ReaderTheme } from "../components/readers/reader-fonts";
 import { humiteThemeOptions, createAntdTheme, createHumiteTheme } from "./theme";
-import { readLocalPreference, saveLocalPreference } from "../utils/local-preferences";
+import { readLocalPreference, removeLocalPreference, saveLocalPreference } from "../utils/local-preferences";
 
-const humiteThemeStorageKey = "humite-site-theme";
+export const themePreferenceKey = "humite-theme-preference";
+const darkScheme = "(prefers-color-scheme: dark)";
 const hiddenLoadingIndicator = <span aria-hidden="true" />;
 
 interface HumiteThemeContextValue {
   mode: ReaderTheme;
+  isAuto: boolean;
   setMode: (mode: ReaderTheme) => void;
+  followSystem: () => void;
 }
 
-const HumiteThemeContext = createContext<HumiteThemeContextValue>({ mode: "PAPER", setMode: () => undefined });
+const HumiteThemeContext = createContext<HumiteThemeContextValue>({
+  mode: "PAPER",
+  isAuto: true,
+  setMode: () => undefined,
+  followSystem: () => undefined,
+});
 
 function isReaderTheme(value: string | undefined): value is ReaderTheme {
   return value === "PAPER" || value === "WHITE" || value === "NIGHT";
 }
 
-function readStoredTheme(readerSettingsKey: string): ReaderTheme {
-  const stored = readLocalPreference(humiteThemeStorageKey);
-  return isReaderTheme(stored) ? stored : readReaderSettings(readerSettingsKey).theme;
+function readSystemPrefersDark() {
+  return window.matchMedia?.(darkScheme).matches ?? false;
+}
+
+function subscribeToSystemTheme(onChange: () => void) {
+  const media = window.matchMedia?.(darkScheme);
+  if (media?.addEventListener) {
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }
+  media?.addListener?.(onChange);
+  return () => media?.removeListener?.(onChange);
+}
+
+function readManualTheme(): ReaderTheme | null {
+  // The old key also saved automatic startup colors, so it cannot indicate an explicit choice.
+  const stored = readLocalPreference(themePreferenceKey);
+  return isReaderTheme(stored) ? stored : null;
 }
 
 function applyColorVariables(mode: ReaderTheme) {
@@ -40,31 +62,42 @@ function applyColorVariables(mode: ReaderTheme) {
   });
   root.dataset.humiteTheme = mode.toLowerCase();
   root.style.colorScheme = mode === "NIGHT" ? "dark" : "light";
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach(meta => {
+    meta.content = colors.canvas;
+  });
 }
 
 export function HumiteThemeProvider({ children }: PropsWithChildren) {
-  const { user } = useAuth();
-  const readerSettingsKey = `humite-reader-settings:${user?.id ?? "anonymous"}`;
-  const [mode, setModeState] = useState<ReaderTheme>(() => readStoredTheme(readerSettingsKey));
-
-  useEffect(() => {
-    setModeState(readStoredTheme(readerSettingsKey));
-  }, [readerSettingsKey]);
+  const [manualTheme, setManualTheme] = useState(readManualTheme);
+  const systemPrefersDark = useSyncExternalStore(subscribeToSystemTheme, readSystemPrefersDark);
+  const isAuto = manualTheme === null;
+  const mode = manualTheme ?? (systemPrefersDark ? "NIGHT" : "PAPER");
 
   const setMode = useCallback((nextMode: ReaderTheme) => {
-    setModeState(nextMode);
-    const readerSettings = readReaderSettings(readerSettingsKey);
-    saveLocalPreference(readerSettingsKey, JSON.stringify({ ...readerSettings, theme: nextMode }));
-  }, [readerSettingsKey]);
+    setManualTheme(nextMode);
+    saveLocalPreference(themePreferenceKey, nextMode);
+  }, []);
 
-  useEffect(() => {
-    saveLocalPreference(humiteThemeStorageKey, mode);
+  const followSystem = useCallback(() => {
+    setManualTheme(null);
+    removeLocalPreference(themePreferenceKey);
+  }, []);
+
+  useLayoutEffect(() => {
     applyColorVariables(mode);
   }, [mode]);
 
+  useEffect(() => {
+    const syncPreference = (event: StorageEvent) => {
+      if (event.key === themePreferenceKey || event.key === null) setManualTheme(readManualTheme());
+    };
+    window.addEventListener("storage", syncPreference);
+    return () => window.removeEventListener("storage", syncPreference);
+  }, []);
+
   const uiTheme = useMemo(() => createHumiteTheme(mode), [mode]);
   const antdTheme = useMemo(() => createAntdTheme(mode), [mode]);
-  const value = useMemo<HumiteThemeContextValue>(() => ({ mode, setMode }), [mode, setMode]);
+  const value = useMemo<HumiteThemeContextValue>(() => ({ mode, isAuto, setMode, followSystem }), [mode, isAuto, setMode, followSystem]);
 
   return (
     <HumiteThemeContext.Provider value={value}>

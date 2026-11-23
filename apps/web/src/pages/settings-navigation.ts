@@ -2,7 +2,7 @@
 export const settingsGroups = [
   { key: "catalog", label: "馆藏与文件", sections: [
     { hash: "#catalog/library-roots", label: "书库目录", panel: "roots", permissionGroup: "书库目录", ownerOnly: false },
-    { hash: "#catalog/operations", label: "文件任务", panel: "operations", permissionGroup: "文件任务", ownerOnly: false },
+    { hash: "#catalog/operations", label: "文件操作记录", panel: "operations", permissionGroup: "文件任务", ownerOnly: false },
     { hash: "#catalog/recycle-bin", label: "回收站", panel: "recycle", permissionGroup: "回收站", ownerOnly: false },
   ] },
   { key: "users", label: "用户与权限", sections: [
@@ -11,7 +11,7 @@ export const settingsGroups = [
   ] },
   { key: "security", label: "登录与安全", sections: [
     { hash: "#users/security", label: "安全策略", panel: "security", permissionGroup: "安全设置", ownerOnly: false },
-    { hash: "#users/sessions", label: "在线会话", panel: "sessions", permissionGroup: "在线会话", ownerOnly: false },
+    { hash: "#users/sessions", label: "登录会话", panel: "sessions", permissionGroup: "在线会话", ownerOnly: false },
     { hash: "#users/logins", label: "登录日志", panel: "logins", permissionGroup: "登录日志", ownerOnly: false },
   ] },
   { key: "website", label: "网站与阅读", sections: [
@@ -20,7 +20,7 @@ export const settingsGroups = [
   ] },
   { key: "services", label: "外部服务", sections: [
     { hash: "#services/ai", label: "AI 服务", panel: "ai", permissionGroup: "AI 服务", ownerOnly: false },
-    { hash: "#services/metadata", label: "元数据来源", panel: "metadata", permissionGroup: "AI 服务", ownerOnly: false },
+    { hash: "#services/metadata", label: "书目信息来源", panel: "metadata", permissionGroup: "AI 服务", ownerOnly: false },
     { hash: "#services/mail", label: "邮件服务", panel: "mail", permissionGroup: "邮件服务", ownerOnly: true },
   ] },
 ] as const;

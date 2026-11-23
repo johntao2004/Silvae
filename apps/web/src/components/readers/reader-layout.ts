@@ -24,7 +24,11 @@ export interface ReaderPageLayout {
   articleWidth: number;
 }
 
-export function readerShellHeight(visibleHeight?: number | null) {
+export function readerShellHeight(visibleHeight?: number | null, includeGlobalHeader = true) {
+  if (!includeGlobalHeader) {
+    if (!visibleHeight || !Number.isFinite(visibleHeight)) return "100dvh";
+    return `${Math.max(0, visibleHeight)}px`;
+  }
   if (!visibleHeight || !Number.isFinite(visibleHeight)) return READER_SHELL_HEIGHT;
   return `${Math.max(0, visibleHeight - tokens.layout.navHeight)}px`;
 }

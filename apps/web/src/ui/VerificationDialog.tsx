@@ -18,7 +18,7 @@ export function VerificationDialog({ title, description, error, onCancel, childr
 }
 
 /** Native Ant OTP keeps paste, keyboard navigation and autofill in one shared control. */
-export function OneTimeCodeInput({ value, onInput, onComplete, disabled, invalid, label = "6 位动态码" }: {
+export function OneTimeCodeInput({ value, onInput, onComplete, disabled, invalid, label = "6 位动态验证码" }: {
   value: string; onInput: (value: string) => void; onComplete?: (value: string) => void;
   disabled?: boolean; invalid?: boolean; label?: string;
 }) {
@@ -31,7 +31,7 @@ export function RecoveryCodeInput({ value, onInput, disabled, invalid }: {
   value: string; onInput: (value: string) => void; disabled?: boolean; invalid?: boolean;
 }) {
   return <VerificationCodeInput value={value} onInput={onInput} disabled={disabled} invalid={invalid}
-    label="32 位备用码" length={32} inputMode="text" recovery formatter={text => text.replace(/[^0-9a-f]/gi, "").toUpperCase()} />;
+    label="32 位备用验证码" length={32} inputMode="text" recovery formatter={text => text.replace(/[^0-9a-f]/gi, "").toUpperCase()} />;
 }
 
 function VerificationCodeInput({ value, onInput, onComplete, disabled, invalid, label, length, inputMode, formatter, recovery }: {

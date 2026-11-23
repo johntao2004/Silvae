@@ -27,6 +27,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import javax.imageio.ImageIO;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.xmpbox.xml.DomXmpParser;
@@ -63,7 +64,11 @@ public class BookMetadataExtractor {
     private ExtractedBook epub(Path file, Path root, String cacheKey, String fallbackTitle) throws IOException {
         try (ZipFile zip = new ZipFile(file.toFile(), StandardCharsets.UTF_8)) {
             String opfPath = packagePath(zip);
-            Document document = parseLimited(zip.getInputStream(zip.getEntry(opfPath)));
+            ZipEntry opfEntry = opfPath == null || opfPath.isBlank() ? null : zip.getEntry(opfPath);
+            if (opfEntry == null || opfEntry.isDirectory()) {
+                throw new IOException("EPUB 缺少 OPF 文件");
+            }
+            Document document = parseLimited(zip.getInputStream(opfEntry));
             Element metadata = (Element) document.getElementsByTagNameNS("*", "metadata").item(0);
             CreatorGroups contributors = contributors(metadata);
             String title = firstNonBlank(meaningfulTitle(text(metadata, "title")), meaningfulTitle(fallbackTitle));
@@ -124,11 +129,15 @@ public class BookMetadataExtractor {
             }
             String cover = null;
             if (document.getNumberOfPages() > 0) {
-                BufferedImage image = new PDFRenderer(document).renderImageWithDPI(0, 120, ImageType.RGB);
-                Path target = coverPath(root, cacheKey, "jpg");
-                Files.createDirectories(target.getParent());
-                ImageIO.write(image, "JPEG", target.toFile());
-                cover = relative(root, target);
+                PDRectangle cropBox = document.getPage(0).getCropBox();
+                float dpi = safePdfCoverDpi(cropBox);
+                if (dpi > 0f) {
+                    BufferedImage image = new PDFRenderer(document).renderImageWithDPI(0, dpi, ImageType.RGB);
+                    Path target = coverPath(root, cacheKey, "jpg");
+                    Files.createDirectories(target.getParent());
+                    ImageIO.write(image, "JPEG", target.toFile());
+                    cover = relative(root, target);
+                }
             }
             return new ExtractedBook(firstNonBlank(title, meaningfulTitle(fallbackTitle)), null, authors, List.of(), description,
                     language, publisher, published, isbn, null, null, tags, cover, document.getNumberOfPages(), null,
@@ -138,6 +147,29 @@ public class BookMetadataExtractor {
         }
     }
 
+
+    static float safePdfCoverDpi(PDRectangle cropBox) {
+        if (cropBox == null) return 120f;
+        float widthPt = cropBox.getWidth();
+        float heightPt = cropBox.getHeight();
+        if (widthPt <= 0f || heightPt <= 0f) return 0f;
+        double scale = 120.0 / 72.0;
+        double widthPx = widthPt * scale;
+        double heightPx = heightPt * scale;
+        double pixels = widthPx * heightPx;
+        float dpi = 120f;
+        if (pixels > 80_000_000.0 || Math.max(widthPx, heightPx) > 12_000.0) {
+            double pixelScale = pixels > 80_000_000.0 ? Math.sqrt(80_000_000.0 / pixels) : 1.0;
+            double dimScale = Math.max(widthPx, heightPx) > 12_000.0 ? 12_000.0 / Math.max(widthPx, heightPx) : 1.0;
+            dpi = Math.nextDown((float) (120.0 * Math.min(pixelScale, dimScale)));
+        }
+        double renderedWidth = widthPt * (dpi / 72.0);
+        double renderedHeight = heightPt * (dpi / 72.0);
+        if (Math.round(renderedWidth) < 1 || Math.round(renderedHeight) < 1) {
+            return 0f;
+        }
+        return dpi;
+    }
 
     private CreatorGroups contributors(Element metadata) {
         if (metadata == null) return new CreatorGroups(List.of(), List.of());

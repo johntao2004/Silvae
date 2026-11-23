@@ -8,16 +8,23 @@ import { Box, Stack, Typography } from "@/ui/primitives";
 import type { ReactNode } from "react";
 import { tokens } from "../theme/tokens";
 import { pageWidthSx, PageTitle } from "./PageHeader";
+import { SiteThemeMenu } from "./SiteThemeMenu";
+import { useIsMobileViewport } from "../hooks/useIsMobileViewport";
 
 export function AuthFrame({ children, title, setupLocked = false }: { children: ReactNode; title: string; setupLocked?: boolean }) {
   const site = useSiteSettings();
+  const isMobile = useIsMobileViewport();
   const brandSx = {
     color: "inherit",
     textDecoration: "none",
     whiteSpace: "nowrap",
+    display: "inline-flex",
+    alignItems: "center",
+    height: "36px",
     fontFamily: tokens.typography.fontFamily.display,
     fontWeight: tokens.typography.fontWeight.regular,
-    fontSize: { xs: `${tokens.typography.fontSize.titleSm}px`, sm: `${tokens.typography.fontSize.title}px` },
+    fontSize: { xs: "20px", sm: "21px" },
+    lineHeight: 1,
   };
   return (
     <Box sx={{ minHeight: "100dvh", display: "grid", gridTemplateColumns: {
@@ -32,9 +39,10 @@ export function AuthFrame({ children, title, setupLocked = false }: { children: 
         </Box>
       </Box>
       <Box sx={{ ...pageWidthSx, display: "flex", flexDirection: "column", minHeight: "100dvh", minWidth: 0, bgcolor: "background.default" }}>
-        <Stack component="header" direction="row" sx={{ minHeight: tokens.layout.navHeight, alignItems: "center", justifyContent: "space-between", gap: `${tokens.spacing[3]}px` }}>
-          {setupLocked ? <Typography variant="h5" sx={{ ...brandSx, display: { xs: "block", md: "none" } }}>{site.name}</Typography> : <Typography component={Link} to="/library" variant="h5" sx={{ ...brandSx, display: { xs: "block", md: "none" } }}>{site.name}</Typography>}
-          {!setupLocked && <Button variant="text" component={Link} to="/library" startIcon={<ArrowBackRounded />} sx={{ px: 0 }}>返回首页</Button>}
+        <Stack component="header" className="bk-auth-header" direction="row" sx={{ minHeight: tokens.layout.navHeight, alignItems: "center", justifyContent: "space-between", gap: `${tokens.spacing[3]}px` }}>
+          {setupLocked ? <Typography variant="h5" sx={{ ...brandSx, display: { xs: "inline-flex", md: "none" } }}>{site.name}</Typography> : <Typography component={Link} to="/library" variant="h5" sx={{ ...brandSx, display: { xs: "inline-flex", md: "none" } }}>{site.name}</Typography>}
+          {!setupLocked && !isMobile && <Button variant="text" component={Link} to="/library" startIcon={<ArrowBackRounded />} sx={{ px: 0 }}>返回首页</Button>}
+          <Box sx={{ ml: "auto" }}><SiteThemeMenu /></Box>
         </Stack>
         <Box component="main" sx={{ flex: 1, display: "flex", alignItems: "center", minWidth: 0, py: `${tokens.spacing[8]}px` }}>
           <Box sx={{ width: "100%", minWidth: 0 }}>

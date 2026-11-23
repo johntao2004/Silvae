@@ -46,7 +46,7 @@ public class SiteSettingsService {
     @Transactional
     public Settings save(String username, Settings settings) {
         var actor=users.findByUsername(username).orElseThrow();
-        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅主人可修改个性化设置。");
+        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅站点所有者可修改个性化设置。");
         var clean=normalize(settings);
         db.execute("update site_settings set settings=?::jsonb,updated_at=now() where id=1",json.writeValueAsString(clean));
         audit.record(actor.id(),"SITE_SETTINGS_CHANGED","SITE","site-settings",null,null,null,null,"SUCCEEDED","{}");

@@ -36,7 +36,7 @@ public class VaultKeyCipher {
     }
 
     private void requireKey() {
-        if (key == null) throw ApiException.conflict("VAULT_KEY_UNAVAILABLE", "服务器加密密钥不可用，请联系主人检查配置。");
+        if (key == null) throw ApiException.conflict("VAULT_KEY_UNAVAILABLE", "服务器加密密钥不可用，请联系站点所有者检查配置。");
     }
 
     public String encrypt(UUID user, String envelope, byte[] master) {
@@ -59,7 +59,7 @@ public class VaultKeyCipher {
                 // Existing unversioned records derive their key and AAD from the released domain.
                 return decryptWith(legacyKey, LEGACY_DOMAIN, user, envelope, encrypted);
             } catch (GeneralSecurityException | IllegalArgumentException | IndexOutOfBoundsException e) {
-                throw ApiException.conflict("VAULT_KEY_UNAVAILABLE", "无法读取加密内容密钥，请联系主人检查服务器密钥；原有书籍未被改动。");
+                throw ApiException.conflict("VAULT_KEY_UNAVAILABLE", "无法读取加密内容密钥，请联系站点所有者检查服务器密钥；原有书籍未被改动。");
             }
         }
     }

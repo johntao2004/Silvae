@@ -16,13 +16,16 @@ class ReadingOverviewServiceTest {
         var books = mock(BookRepository.class);
         var user = UUID.randomUUID();
         var clock = Clock.fixed(Instant.parse("2026-11-01T12:00:00Z"), ZoneId.of("America/New_York"));
-        when(reading.weeklyStats(user, LocalDate.parse("2026-11-01"))).thenReturn(new ReadingRepository.WeeklyReadingStats(
-                LocalDate.parse("2026-10-26"), LocalDate.parse("2026-11-01"), 0, 0, List.of()));
+        var expectedStats = new ReadingRepository.WeeklyReadingStats(
+                LocalDate.parse("2026-10-26"), LocalDate.parse("2026-11-01"), 300, 120,
+                List.of(new ReadingRepository.DailyReadingTime(LocalDate.parse("2026-11-01"), 300)));
+        when(reading.weeklyStats(user, LocalDate.parse("2026-11-01"))).thenReturn(expectedStats);
         when(books.recentlyReadIds(user)).thenReturn(List.of());
         var result = new ReadingOverviewService(reading, books, clock).current(user);
         assertThat(result.today()).isEqualTo(LocalDate.parse("2026-11-01"));
         assertThat(result.featuredBook()).isNull();
         assertThat(result.recentReading()).isEmpty();
+        assertThat(result.stats()).isEqualTo(expectedStats);
         verify(books).newestAddedBetween(user, OffsetDateTime.parse("2026-10-26T00:00:00-04:00"), OffsetDateTime.parse("2026-11-02T00:00:00-05:00"));
     }
 

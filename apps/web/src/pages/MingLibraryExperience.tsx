@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { ApiRequestError } from '../api/errors';
 import { Button } from '../ui/buttons';
@@ -38,7 +39,27 @@ export function MingLibraryExperience() {
     refetchOnMount: 'always',
   });
   const books = useMemo(() => query.data?.pages.flatMap(page => page.items) ?? [], [query.data]);
-  const catalog = useMemo(() => mingLibraryCatalog(books, window.location.origin), [books]);
+  const annotationsQuery = useQuery({
+    queryKey: ['annotations', 'virtual-library', user?.id ?? 'anonymous'],
+    queryFn: () => api.listAnnotations().catch(() => []),
+    enabled: authReady && Boolean(user) && books.length > 0,
+    staleTime: 60_000,
+  });
+  const quotesByBook = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const item of annotationsQuery.data ?? []) {
+      const q = item.quote?.replace(/\s+/g, ' ').trim();
+      if (!q || q.length < 10 || q.length > 120) continue;
+      const list = map.get(item.bookId) ?? [];
+      if (!list.includes(q) && list.length < 12) list.push(q);
+      map.set(item.bookId, list);
+    }
+    return map;
+  }, [annotationsQuery.data]);
+  const catalog = useMemo(() => mingLibraryCatalog(books, window.location.origin).map(item => {
+    const quotes = quotesByBook.get(item.id);
+    return quotes?.length ? { ...item, quotes } : item;
+  }), [books, quotesByBook]);
   const currentCatalog = useRef(catalog);
   currentCatalog.current = catalog;
 
@@ -75,7 +96,7 @@ export function MingLibraryExperience() {
     onRetry={() => void query.refetch()} retrying={query.isFetching} recovery="正在自动重试同步真实书目。" />;
   if (!query.data) return <section className="ming-library-page ming-library-loading" aria-label="正在同步真实书目"><CircularProgress /></section>;
 
-  return <section className="ming-library-page" aria-label="书楼漫游">
+  return <section className="ming-library-page" aria-label="3D 书库">
     <iframe key={`${audience}:${attempt}`} ref={frame} title="明式藏书楼三维场景"
       className="ming-library-frame" src="/assets/ming-library/index.html"
       allow="fullscreen" allowFullScreen

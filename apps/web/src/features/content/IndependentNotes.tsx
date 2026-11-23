@@ -34,7 +34,7 @@ export function IndependentNotes({
     setNote("");
   };
   return (
-    <Card title="独立阅读札记">
+    <Card title="独立阅读笔记">
       <div className="bk-content-stack">
         <p>
           本区阅读时间：{Math.floor(state.seconds / 60)} 分{" "}
@@ -43,7 +43,7 @@ export function IndependentNotes({
         </p>
         {selection?.quote && <blockquote>{selection.quote}</blockquote>}
         <Input.TextArea
-          aria-label="阅读札记"
+          aria-label="阅读笔记"
           placeholder="记录笔记"
           value={note}
           onChange={(e) => setNote(e.target.value)}

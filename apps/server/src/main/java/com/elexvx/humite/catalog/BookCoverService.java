@@ -19,8 +19,11 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.Principal;
+import java.util.Iterator;
 import java.util.UUID;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -53,10 +56,11 @@ public class BookCoverService {
         LibraryRoot root = roots.findById(file.libraryRootId()).orElseThrow();
         if (root.status() != LibraryRoot.RootStatus.ONLINE || !root.canWrite()) throw ApiException.conflict("ROOT_READ_ONLY", "书库当前不可写。");
         byte[] jpeg = normalize(input);
+        Path temporary = null;
         try {
             Path rootPath = Path.of(root.canonicalPath() == null ? root.configuredPath() : root.canonicalPath()).toRealPath();
             Path directory = safeDirectories(rootPath, rootPath.resolve(".humite-assets/covers/" + bookId));
-            Path temporary = directory.resolve(".cover-" + UUID.randomUUID() + ".tmp");
+            temporary = directory.resolve(".cover-" + UUID.randomUUID() + ".tmp");
             try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                 channel.write(ByteBuffer.wrap(jpeg));
                 channel.force(true);
@@ -72,13 +76,20 @@ public class BookCoverService {
             } else {
                 Files.move(temporary, target);
             }
-            BufferedImage image = ImageIO.read(target.toFile());
             covers.activate(bookId, root.id(), rootPath.relativize(target).toString().replace('\\', '/'), fingerprint,
-                    image.getWidth(), image.getHeight(), actor);
+                    800, 1200, actor);
             audit.record(actor, "BOOK_COVER_CHANGED", "BOOK", bookId.toString(), null,
                     rootPath.relativize(target).toString(), null, fingerprint, "SUCCEEDED", "{}");
         } catch (Exception exception) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "COVER_SAVE_FAILED", message(exception));
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (Exception ignored) {
+                    // Best-effort temporary cleanup.
+                }
+            }
         }
     }
 
@@ -91,9 +102,29 @@ public class BookCoverService {
 
     private byte[] normalize(byte[] bytes) {
         if (bytes == null || bytes.length == 0 || bytes.length > properties.upload().maxCoverSize()) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "COVER_SIZE_LIMIT", "封面为空或超过大小限制。");
-        try {
-            BufferedImage source = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (source == null || source.getWidth() > 12_000 || source.getHeight() > 12_000 || (long) source.getWidth() * source.getHeight() > 80_000_000L) throw new IllegalArgumentException("封面格式不支持或像素过大");
+        try (ImageInputStream stream = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            Iterator<ImageReader> readers = stream == null ? java.util.Collections.emptyIterator() : ImageIO.getImageReaders(stream);
+            if (!readers.hasNext()) {
+                throw new IllegalArgumentException("封面格式不支持或像素过大");
+            }
+            ImageReader reader = readers.next();
+            BufferedImage source;
+            try {
+                reader.setInput(stream);
+                int sourceWidth = reader.getWidth(0);
+                int sourceHeight = reader.getHeight(0);
+                if (sourceWidth <= 0 || sourceHeight <= 0
+                        || sourceWidth > 12_000 || sourceHeight > 12_000
+                        || (long) sourceWidth * sourceHeight > 80_000_000L) {
+                    throw new IllegalArgumentException("封面格式不支持或像素过大");
+                }
+                source = reader.read(0);
+            } finally {
+                reader.dispose();
+            }
+            if (source == null) {
+                throw new IllegalArgumentException("封面格式不支持或像素过大");
+            }
             double ratio = 2.0 / 3.0;
             int width = source.getWidth(); int height = source.getHeight();
             if ((double) width / height > ratio) width = (int) Math.round(height * ratio); else height = (int) Math.round(width / ratio);

@@ -15,12 +15,14 @@ class ApiPermissionCoverageTest {
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/metadata-providers")).isEqualTo(Set.of("settings.metadata.view"));
         assertThat(ApiPermissionPolicy.required("PUT", "/api/v1/metadata-providers")).isEqualTo(Set.of("settings.metadata.edit"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/example/metadata")).isEqualTo(Set.of("library.details.view"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/example/bibliography-source")).isEqualTo(Set.of("library.details.view"));
         assertThat(ApiPermissionPolicy.required("PUT", "/api/v1/books/example/metadata")).isEqualTo(Set.of("library.edit"));
         assertThat(ApiPermissionPolicy.required("POST", "/api/v1/book-uploads/example/match")).contains("library.upload");
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/ai/providers")).isEqualTo(Set.of("settings.ai.view"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/ai/settings")).isEqualTo(Set.of("settings.ai.view"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/ai/status")).isEmpty();
         assertThat(ApiPermissionPolicy.required("POST", "/api/v1/ai/test")).isEqualTo(Set.of("settings.ai.edit"));
+        assertThat(ApiPermissionPolicy.required("POST", "/api/v1/ai/models")).isEqualTo(Set.of("settings.ai.edit"));
     }
     @Test void bookClassificationDefersExactSourceGrantToItsService() {
         assertThat(ApiPermissionPolicy.required("POST", "/api/v1/ai/book-classification"))
@@ -44,6 +46,12 @@ class ApiPermissionCoverageTest {
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/annotations/books")).isEqualTo(Set.of("notes.books.view"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/articles/notes")).isEqualTo(Set.of("notes.articles.view"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/reading-posts")).isEqualTo(Set.of("notes.posts.view"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/reading-posts", "kind=BOOK&sourceId=00000000-0000-0000-0000-000000000001")).isEqualTo(Set.of("notes.posts.view"));
+        assertThat(ApiPermissionPolicy.required("POST", "/api/v1/reading-posts")).isEqualTo(Set.of("notes.edit"));
+        assertThat(ApiPermissionPolicy.required("PUT", "/api/v1/reading-posts/BOOK/example")).isEqualTo(Set.of("notes.edit"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/reading-overview")).isEqualTo(Set.of("library.overview"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/reading-stats/weekly")).isEqualTo(Set.of("roles.manage"));
+        assertThat(ApiPermissionPolicy.required("PUT", "/api/v1/book-reviews/example")).isEqualTo(Set.of("roles.manage"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/annotations", "bookId=00000000-0000-0000-0000-000000000001")).isEqualTo(Set.of("reader.read"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/annotations", "bookId=")).isEqualTo(Set.of("notes.view"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/annotations", "bookId=invalid")).isEqualTo(Set.of("notes.view"));
@@ -65,11 +73,24 @@ class ApiPermissionCoverageTest {
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/articles/00000000-0000-0000-0000-000000000001/reading")).isEqualTo(Set.of("articles.read"));
         assertThat(ApiPermissionPolicy.required("PUT", "/api/v1/articles/00000000-0000-0000-0000-000000000001/reading")).isEqualTo(Set.of("articles.read"));
     }
+    @Test void fileTaskHistoryOwnsOperationsReadGrantWhileFileOperationMutationsAndSingleLookupKeepActionGrants() {
+        var operationGrants = Set.of("library.files", "library.trash", "settings.recycle.restore", "settings.recycle.purge");
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/file-task-history")).isEqualTo(Set.of("settings.operations.view"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/file-operations")).isEqualTo(operationGrants);
+        assertThat(ApiPermissionPolicy.required("POST", "/api/v1/file-operations/preview")).isEqualTo(operationGrants);
+        assertThat(ApiPermissionPolicy.required("POST", "/api/v1/file-operations")).isEqualTo(operationGrants);
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/file-operations/example")).isEqualTo(operationGrants);
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/file-operations/book-files/example/versions")).isEqualTo(operationGrants);
+        assertThat(ApiPermissionPolicy.required("POST", "/api/v1/file-operations/versions/example/restore/preview")).isEqualTo(operationGrants);
+        assertThat(ApiPermissionPolicy.required("POST", "/api/v1/file-operations/versions/example/restore")).isEqualTo(operationGrants);
+    }
     @Test void libraryAccessQueryAndDownloadAreIndependentAndPublicDiscoveryStillUsesQueryForSignedInUsers() {
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books")).isEqualTo(Set.of("library.query"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/revision")).isEqualTo(Set.of("library.query"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/example")).isEqualTo(Set.of("library.details.view"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/example/content")).isEqualTo(Set.of("reader.read"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/example/excerpt")).isEqualTo(Set.of("reader.read"));
+        assertThat(ApiPermissionPolicy.required("GET", "/api/v1/display-books/example/excerpt")).isEqualTo(Set.of("reader.read"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/books/example/download")).isEqualTo(Set.of("library.download"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/display-books")).isEqualTo(Set.of("library.query"));
         assertThat(ApiPermissionPolicy.required("GET", "/api/v1/display-books/example")).isEqualTo(Set.of("library.details.view"));

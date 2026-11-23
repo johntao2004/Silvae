@@ -50,7 +50,7 @@ export function routePermission(path: string, hash = ""): string | undefined {
   if (path.startsWith("/library") || path.startsWith("/categories")) return "library.view";
   if (path.startsWith("/reader/")) return "reader.read";
   if (/^\/article-collections\/[^/]+\/?$/.test(path)) return "articles.collections.details.view";
-  if (path === "/article-collections") return "articles.collections.view";
+  if (/^\/article-collections\/?$/.test(path)) return "articles.collections.view";
   if (/^\/articles\/[^/]+\/?$/.test(path)) return "articles.read";
   if (path.startsWith("/articles")) return "articles.view";
   if (/^\/annotations\/books\/?$/.test(path)) return "notes.books.view";
@@ -72,9 +72,13 @@ export function usePermissions() {
   const grants = user ? (api.isDemo ? (user.role === "OWNER" ? defaultGrants("OWNER") : demo?.grants[user.role] ?? []) : query.isError ? [] : query.data?.grants ?? []) : [];
   const can = (code: string) => Boolean(user && grants.includes(code));
   const canVisit = (path: string, hash = "") => {
-    const permission = routePermission(path, hash);
-    if (!user) return ["/library", "/search", "/categories", "/booklists", "/reader", "/virtual-library"].some(p => path === p || path.startsWith(`${p}/`));
-    if (path === "/settings" && !hash) return Object.values(settingsPermissions).some(can);
+    const pathname = path.split("?")[0];
+    if (pathname === "/discover" || pathname.startsWith("/discover/")) {
+      return !user || can("booklists.view") || can("articles.collections.view");
+    }
+    const permission = routePermission(pathname, hash);
+    if (!user) return ["/library", "/search", "/categories", "/booklists", "/reader", "/virtual-library"].some(p => pathname === p || pathname.startsWith(`${p}/`));
+    if (pathname === "/settings" && !hash) return Object.values(settingsPermissions).some(can);
     return !permission || can(permission);
   };
   return { can, canVisit, grants, role: query.data?.role ?? user?.role, ready: authReady && (!user || api.isDemo || query.isSuccess), error: query.isError,

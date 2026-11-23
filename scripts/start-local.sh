@@ -8,7 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_DIR="$REPO_ROOT/apps/server"
 RUN_DIR="$REPO_ROOT/.local/run"
 LOG_DIR="$REPO_ROOT/.local/logs"
-SOURCE_JAR="$SERVER_DIR/target/humite-0.1.0-SNAPSHOT.jar"
+SOURCE_JAR="$SERVER_DIR/target/humite-1.0.0.jar"
 API_PORT="${HUMITE_API_PORT:-8080}"
 API_HEALTH_URL="http://127.0.0.1:${API_PORT}/actuator/health"
 

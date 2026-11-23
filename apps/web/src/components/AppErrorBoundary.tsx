@@ -35,6 +35,7 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { failu
   render() {
     if (!this.state.failure) return this.props.children;
     return <HttpErrorPage fullHeight failure={this.state.failure} title="页面暂时无法显示"
+      onReturnToLogin={() => this.setState({ failure: null })}
       actions={<Button variant="contained" onClick={() => window.location.reload()}>重新加载</Button>} />;
   }
 }

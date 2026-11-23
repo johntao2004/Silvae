@@ -1,4 +1,5 @@
-import { lazy } from 'react';
+import { lazy, Suspense } from 'react';
+import { AppLoading } from '../components/AppLoading';
 import { PageBackAction, PageContainer, PageHeader } from '../components/PageHeader';
 import { useSiteSettingsQuery } from '../site/site-settings';
 import { Skeleton } from '../ui/antd';
@@ -13,14 +14,13 @@ export function VirtualLibraryRoute() {
   // 每次进入都确认开关；Revalidate on entry, including when cached or offline.
   const verified = query.isSuccess && query.isFetchedAfterMount;
 
-  if (query.isError) return <PageContainer><PageBackAction to="/library">返回藏书库</PageBackAction><Stack spacing={2}>
-    <Alert severity="error">无法确认书楼漫游是否已启用，请稍后重试。</Alert>
+  if (query.isError) return <PageContainer><PageBackAction to="/library">返回藏书楼</PageBackAction><Stack spacing={2}>
+    <Alert severity="error">暂时无法确认 3D 书库是否已开启。</Alert>
     <Button onClick={() => void query.refetch()}>重试</Button>
   </Stack></PageContainer>;
-  if (!verified || !query.data) return <PageContainer><PageBackAction to="/library">返回藏书库</PageBackAction><div role="status" aria-label="正在读取书楼漫游设置"><Skeleton active /></div></PageContainer>;
+  if (!verified || !query.data) return <PageContainer><PageBackAction to="/library">返回藏书楼</PageBackAction><div role="status" aria-label="正在检查 3D 书库状态"><Skeleton active /></div></PageContainer>;
   if (!query.data.virtualLibraryEnabled) return <PageContainer>
-    <PageBackAction to="/library">返回藏书库</PageBackAction>
-    <PageHeader eyebrow="VIRTUAL LIBRARY" title="书楼漫游未启用" />
+    <PageHeader back={<PageBackAction inline to="/library">返回藏书楼</PageBackAction>} title="3D 书库未启用" />
   </PageContainer>;
-  return <Experience />;
+  return <Suspense fallback={<AppLoading label="正在进入 3D 书库…" />}><Experience /></Suspense>;
 }

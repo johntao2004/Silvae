@@ -13,7 +13,7 @@ import { DeleteOutlineRounded } from "@/ui/icons";
 import { InsertDriveFileOutlined } from "@/ui/icons";
 import { WarningAmberRounded } from "@/ui/icons";
 import { Alert } from "@/ui/feedback";
-import { Box } from "@/ui/primitives";
+import { Box, Stack, Typography } from "@/ui/primitives";
 import { Button } from "@/ui/buttons";
 import { Chip } from "@/ui/feedback";
 import { CircularProgress } from "@/ui/feedback";
@@ -23,13 +23,12 @@ import { DialogContent } from "@/ui/overlays";
 import { DialogTitle } from "@/ui/overlays";
 import { IconButton } from "@/ui/buttons";
 import { LinearProgress } from "@/ui/feedback";
-import { Stack } from "@/ui/primitives";
-import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import type { BookMetadataDraft, BookUpload, LibraryRoot, MetadataCandidate } from "../domain/types";
+import { useIsMobileViewport } from "../hooks/useIsMobileViewport";
 import { tokens } from "../theme/tokens";
 import { usePermissions } from "../auth/permissions";
 import { useBookUploadMetadataAutosave } from "./useBookUploadMetadataAutosave";
@@ -50,6 +49,7 @@ export function BookUploadDialog({ open, initialRootId, onClose }: {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const isMobile = useIsMobileViewport();
   const fileInput = useRef<HTMLInputElement>(null);
   const uploading = useRef(false);
   const hashAbort = useRef(new AbortController());
@@ -141,6 +141,8 @@ export function BookUploadDialog({ open, initialRootId, onClose }: {
     navigate(`/library/uploads/${editIds[0]}?${new URLSearchParams({ next: editIds.slice(1).join(",")})}`, { state: { freshUploadIds: completedIds.filter(id => freshUploadIds.includes(id)) } });
     setFreshUploadIds([]);
   };
+  const uploadPromptLabel = isMobile ? "点击选择 EPUB 或 PDF 文件" : "点击或拖入 EPUB 或 PDF";
+  const footerActionSx = isMobile ? { minHeight: tokens.layout.touchTarget } : undefined;
   return <Dialog open={open} onClose={busy ? undefined : () => { setFreshUploadIds([]); onClose(); }} fullWidth maxWidth="sm">
     <DialogTitle>上传书籍</DialogTitle>
     <DialogContent>
@@ -148,9 +150,61 @@ export function BookUploadDialog({ open, initialRootId, onClose }: {
         {rootId && <Typography color="text.secondary">书籍书库 · 可用 {formatBytes(writableRoots.find(root => root.id === rootId)?.freeBytes)}</Typography>}
         {rootsQuery.isError && <Alert severity="error">无法加载书库，请关闭后重试。</Alert>}
         {!rootsQuery.isPending && writableRoots.length === 0 && <Alert severity="warning">没有可上传的书库。</Alert>}
-        <Box role="button" aria-label="点击或拖入 EPUB 或 PDF" aria-disabled={busy || !rootId} tabIndex={busy || !rootId ? -1 : 0} onClick={() => { if (!busy && rootId) fileInput.current?.click(); }} onKeyDown={(event: any) => { if ((event.key === "Enter" || event.key === " ") && !busy && rootId) { event.preventDefault(); fileInput.current?.click(); } }} onDragOver={(event: any) => event.preventDefault()} onDrop={(event: DragEvent<HTMLDivElement>) => { event.preventDefault(); addFiles(event.dataTransfer.files); }} sx={{ bgcolor: "background.default", p: 2, textAlign: "center", cursor: busy || !rootId ? "default" : "pointer", "&:focus-visible": { outline: "none", boxShadow: tokens.shadow.focus } }}>
-          <CloudUploadOutlined color="primary" sx={{ fontSize: 42 }} /><Typography variant="h5">点击或拖入 EPUB 或 PDF</Typography><Typography color="text.secondary">单次最多20本</Typography>
-          <input ref={fileInput} onClick={event => event.stopPropagation()} hidden multiple type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" onChange={(event: any) => { if (event.target.files) addFiles(event.target.files); event.target.value = ""; }} />
+        <Box
+          role="button"
+          aria-label={uploadPromptLabel}
+          aria-disabled={busy || !rootId}
+          tabIndex={busy || !rootId ? -1 : 0}
+          onClick={() => {
+            if (!busy && rootId) fileInput.current?.click();
+          }}
+          onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+            if ((event.key === "Enter" || event.key === " ") && !busy && rootId) {
+              event.preventDefault();
+              fileInput.current?.click();
+            }
+          }}
+          onDragOver={(event: DragEvent<HTMLDivElement>) => event.preventDefault()}
+          onDrop={(event: DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            addFiles(event.dataTransfer.files);
+          }}
+          sx={{
+            bgcolor: "background.default",
+            p: 2,
+            textAlign: "center",
+            cursor: busy || !rootId ? "default" : "pointer",
+            ...(isMobile
+              ? {
+                  border: "1.5px dashed",
+                  borderColor: "divider",
+                  borderRadius: 2,
+                  minHeight: 136,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 0.5,
+                }
+              : {}),
+            "&:focus-visible": { outline: "none", boxShadow: tokens.shadow.focus },
+          }}
+        >
+          <CloudUploadOutlined color="primary" sx={{ fontSize: 42 }} />
+          <Typography variant="h5">{uploadPromptLabel}</Typography>
+          <Typography color="text.secondary">单次最多20本</Typography>
+          <input
+            ref={fileInput}
+            onClick={(event) => event.stopPropagation()}
+            hidden
+            multiple
+            type="file"
+            accept=".epub,.pdf,application/epub+zip,application/pdf"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              if (event.target.files) addFiles(event.target.files);
+              event.target.value = "";
+            }}
+          />
         </Box>
         {local.length > 0 && <LocalQueue items={local} onRemove={id => setLocal(current => current.filter(item => item.id !== id))} />}
         {!busy && editIds.length > 0 && <Alert severity="success">已上传。你可以更改书籍信息，点击“编辑信息”继续。</Alert>}
@@ -158,7 +212,7 @@ export function BookUploadDialog({ open, initialRootId, onClose }: {
       </Stack>
     </DialogContent>
     <DialogActions>
-      {!busy && editIds.length > 0 ? <Button variant="contained" onClick={edit}>编辑信息</Button> : <Button variant="contained" disabled={busy || !rootId} startIcon={busy ? <CircularProgress size={18} /> : undefined} onClick={() => { const failed = local.filter(item => item.state === "FAILED"); if (failed.length) void start(failed); else fileInput.current?.click(); }}>{busy ? "正在上传…" : "开始上传"}</Button>}
+      {!busy && editIds.length > 0 ? <Button variant="contained" fullWidth={isMobile} sx={footerActionSx} onClick={edit}>编辑信息</Button> : <Button variant="contained" fullWidth={isMobile} sx={footerActionSx} disabled={busy || !rootId} startIcon={busy ? <CircularProgress size={18} /> : undefined} onClick={() => { const failed = local.filter(item => item.state === "FAILED"); if (failed.length) void start(failed); else fileInput.current?.click(); }}>{busy ? "正在上传…" : "开始上传"}</Button>}
     </DialogActions>
   </Dialog>;
 }
@@ -424,7 +478,7 @@ export function UploadReview({ upload, onChanged, onCommitted, onCancel, cancell
         <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}><Chip label={upload.format} variant="outlined" /><Chip label={formatBytes(upload.declaredSizeBytes)} variant="outlined" />{(draft.pageCount || draft.wordCount) && <Chip label={draft.pageCount ? `${draft.pageCount} 页` : `${draft.wordCount!.toLocaleString("zh-CN")} 字`} variant="outlined" />}</Stack>
     } coverActions={<>
         <Button variant="outlined" disabled={!editable || busy} onClick={() => coverInput.current?.click()}>更换封面</Button>
-        <input ref={coverInput} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={!editable || busy} onChange={(event: any) => { const file = event.target.files?.[0]; if (file) void coverChanged(file); event.target.value = ""; }} />
+        <input ref={coverInput} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={!editable || busy} onChange={(event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (file) void coverChanged(file); event.target.value = ""; }} />
     </>} />
     {error && <Alert severity="error">{error}</Alert>}
     {selectionMessage && <Typography variant="body2" color="text.secondary" role="status">{selectionMessage}</Typography>}

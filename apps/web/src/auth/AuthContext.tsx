@@ -1,6 +1,6 @@
 import { prepareSessionExit, setPersistenceUser } from "./session-save";
 import { Button } from "@/ui/buttons";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PropsWithChildren } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -9,22 +9,11 @@ import { AccessDeniedPage } from "../pages/AccessDeniedPage";
 import { HttpErrorPage, pageFailure, type PageFailure } from "../pages/HttpErrorPage";
 import { AppLoading } from "../components/AppLoading";
 import { setupStatusQueryKey } from "./setup-status";
+import { AuthContext, useAuth, type AuthContextValue } from "./use-auth";
 
-interface AuthContextValue {
-  user: SessionUser | null;
-  ready: boolean;
-  sessionError: string | null;
-  sessionFailure?: PageFailure | null;
-  retrySession: () => void;
-  login: (username: string, password: string) => Promise<SessionUser>;
-  setupOwner: (input: { username: string; displayName: string; password: string }) => Promise<SessionUser>;
-  logout: () => Promise<void>;
-  updateProfile: (input: {username: string; displayName: string; currentPassword: string}) => Promise<void>;
-  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-}
+export { useAuth } from "./use-auth";
 
 const storageKey = "humite-demo-session";
-const AuthContext = createContext<AuthContextValue | null>(null);
 
 function readStoredUser(): SessionUser | null {
   try {
@@ -119,11 +108,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
       try { await api.logout(); } catch { /* 过期或离线仍退出本地会话。 */ /* Expired/offline sessions still leave the local session. */ } finally { if(!stopped) { authRevision.current+=1; persist(null); setReady(true); } }
     };
     const check = async () => {
+      const revision = authRevision.current;
       try {
         const state=await api.sessionStatus();
         const current=await api.getSession();
-        if (!stopped && current && current.role !== user.role) persist(current);
-        if(stopped || exiting) return;
+        if (stopped || exiting || revision !== authRevision.current) return;
+        if (current && (current.role !== user.role || current.mustChangePassword !== user.mustChangePassword
+          || current.canChangePasswordWithoutCurrent !== user.canChangePasswordWithoutCurrent)) {
+          persist(current);
+        }
         window.clearTimeout(timer);
         const remaining=state.expiresAt-state.serverTime;
         timer=window.setTimeout(()=>void exit(),state.revocationRequested?0:Math.max(0,Math.min(remaining-10000,2_147_483_647)));
@@ -163,8 +156,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setReady(true);
     },
     updateProfile: async (input) => { persist(await api.updateProfile(input)); },
-    changePassword: async (currentPassword, newPassword) => {
-      const next = await api.changePassword(currentPassword, newPassword);
+    changePassword: async (input) => {
+      const revision = authRevision.current;
+      const next = await api.changePassword(input);
+      if (revision !== authRevision.current) return;
+      authRevision.current += 1;
       persist(next);
     },
   }), [persist, ready, sessionError, sessionFailure, user]);
@@ -172,15 +168,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  const value = useContext(AuthContext);
-  if (!value) throw new Error("useAuth must be used within AuthProvider");
-  return value;
-}
-
 // 先确认会话再挂载受保护内容；前端角色检查不能替代服务端授权。
 // Confirm the session before mounting protected content; client role checks do not replace server authorization.
-export function RequireAuth({ children, roles }: PropsWithChildren<{ roles?: UserRole[] }>) {
+export function RequireAuth({ children, roles, passwordChangeOnly = false }: PropsWithChildren<{
+  roles?: UserRole[];
+  passwordChangeOnly?: boolean;
+}>) {
   const { user, ready, sessionError, sessionFailure, retrySession } = useAuth();
   const location = useLocation();
   if (!ready) return <AppLoading label="正在确认登录状态…" />;
@@ -188,7 +181,8 @@ export function RequireAuth({ children, roles }: PropsWithChildren<{ roles?: Use
     actions={<Button onClick={retrySession}>重试</Button>} />;
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
   if (!user) return <AccessDeniedPage reason="AUTHENTICATION_REQUIRED" returnTo={returnTo} />;
-  if (user.mustChangePassword && location.pathname !== "/change-password") return <Navigate to="/change-password" replace />;
+  if (user.mustChangePassword && !passwordChangeOnly) return <Navigate to="/change-password" replace />;
+  if (!user.mustChangePassword && passwordChangeOnly) return <Navigate to="/library" replace />;
   if (roles && !roles.includes(user.role)) return <AccessDeniedPage reason="INSUFFICIENT_ROLE" returnTo={returnTo} />;
   return children;
 }

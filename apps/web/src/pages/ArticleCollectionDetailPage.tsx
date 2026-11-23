@@ -10,7 +10,6 @@ import { Alert, Chip, CircularProgress } from "@/ui/feedback";
 import { Box, Breadcrumbs, Link as UiLink, Snackbar, Stack, Typography } from "@/ui/primitives";
 import { Button } from "@/ui/buttons";
 import { LockOutlined, PeopleAltOutlined } from "@/ui/icons";
-import { TextField } from "@/ui/forms";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDeferredValue, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -60,8 +59,8 @@ export function ArticleCollectionDetailPage() {
   };
 
   if (!user || !can("articles.collections.details.view")) return null;
-  if (detailQuery.isPending) return <PageContainer><PageBackAction to={returnTo}>返回选集列表</PageBackAction><Stack role="status" aria-label="正在加载选集" sx={{ alignItems: "center", py: `${tokens.spacing[20]}px` }}><CircularProgress /></Stack></PageContainer>;
-  if (detailQuery.isError || !detailQuery.data) return <RequestErrorPage error={detailQuery.error} retrying={detailQuery.isFetching} onRetry={() => void detailQuery.refetch()} back={<PageBackAction to={returnTo}>返回选集列表</PageBackAction>} />;
+  if (detailQuery.isPending) return <PageContainer><PageBackAction to={returnTo}>返回合集列表</PageBackAction><Stack role="status" aria-label="正在加载合集" sx={{ alignItems: "center", py: `${tokens.spacing[20]}px` }}><CircularProgress /></Stack></PageContainer>;
+  if (detailQuery.isError || !detailQuery.data) return <RequestErrorPage error={detailQuery.error} retrying={detailQuery.isFetching} onRetry={() => void detailQuery.refetch()} back={<PageBackAction to={returnTo}>返回合集列表</PageBackAction>} />;
 
   const collection = detailQuery.data;
   const mayEdit = collection.editable && can("articles.collections.edit");
@@ -75,40 +74,42 @@ export function ArticleCollectionDetailPage() {
   const hasPrivateArticles = collection.articles.some((article) => article.visibility === "PRIVATE");
 
   return <PageContainer>
-    <PageBackAction to={returnTo}>返回选集列表</PageBackAction>
-    <Breadcrumbs sx={{ mb: `${tokens.spacing[5]}px` }}>
-      <UiLink component={Link} to={returnTo} underline="hover" color="inherit">选集</UiLink>
-      <Typography color="text.primary" sx={{ overflowWrap: "anywhere" }}>{collection.title}</Typography>
-    </Breadcrumbs>
-    <Box component="header" sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", md: "minmax(0, .7fr) minmax(0, 1.3fr)" }, alignItems: "center", gap: { xs: `${tokens.spacing[5]}px`, md: `${tokens.spacing[10]}px` }, mb: `${tokens.spacing[10]}px` }}>
-      <ArticleCollectionPreview articles={collection.articles.filter((article) => collection.ownedByViewer || collection.visibility !== "MEMBERS" || article.visibility !== "PRIVATE")} title={collection.title} emptyLabel="加入几篇文章，让选集慢慢成形。" />
+    <Stack direction="row" sx={{ alignItems: "center", gap: "12px", mb: `${tokens.spacing[5]}px`, minWidth: 0 }}>
+      <PageBackAction inline to={returnTo}>返回合集列表</PageBackAction>
+      <Breadcrumbs sx={{ mb: 0, minWidth: 0 }}>
+        <UiLink component={Link} to={returnTo} underline="hover" color="inherit">合集</UiLink>
+        <Typography color="text.primary" sx={{ overflowWrap: "anywhere" }}>{collection.title}</Typography>
+      </Breadcrumbs>
+    </Stack>
+    <Box component="header" sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: `minmax(${tokens.layout.bookCardMinWidth}px, ${tokens.spacing[24] * 3}px) minmax(0, 1fr)` }, alignItems: "center", gap: { xs: `${tokens.spacing[5]}px`, md: `${tokens.spacing[10]}px` }, mb: `${tokens.spacing[10]}px` }}>
+      <ArticleCollectionPreview articles={collection.articles.filter((article) => collection.ownedByViewer || collection.visibility !== "MEMBERS" || article.visibility !== "PRIVATE")} title={collection.title} emptyLabel="合集里还没有文章" />
       <Stack sx={{ minWidth: 0, gap: `${tokens.spacing[4]}px` }}>
         <Stack direction="row" sx={{ alignItems: "center", flexWrap: "wrap", gap: `${tokens.spacing[2]}px` }}>
           <Typography variant="overline" color="primary.main">ARTICLE COLLECTION</Typography>
-          <Chip size="small" variant="outlined" icon={collection.visibility === "PRIVATE" ? <LockOutlined /> : <PeopleAltOutlined />} label={collection.visibility === "PRIVATE" ? "仅自己" : "书库共享"} />
+          <Chip size="small" variant="outlined" icon={collection.visibility === "PRIVATE" ? <LockOutlined /> : <PeopleAltOutlined />} label={collection.visibility === "PRIVATE" ? "仅自己可见" : "书库成员可见"} />
         </Stack>
         <PageTitle>{collection.title}</PageTitle>
-        <Typography color="text.secondary" sx={{ maxWidth: tokens.layout.readingMax, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{collection.description || "创建者还没有写下这份选集的说明。"}</Typography>
-        <Typography variant="body2" color="text.secondary">{collection.ownerDisplayName ? `由 ${collection.ownerDisplayName} 创建` : "选集"} · {collection.articleCount} 篇文章</Typography>
+        <Typography color="text.secondary" sx={{ maxWidth: tokens.layout.readingMax, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{collection.description || "暂无合集说明。"}</Typography>
+        <Typography variant="body2" color="text.secondary">{collection.ownerDisplayName ? `由 ${collection.ownerDisplayName} 创建` : "合集"} · {collection.articleCount} 篇文章</Typography>
         {mayEdit && <Stack direction={{ xs: "column", sm: "row" }} sx={{ gap: `${tokens.spacing[3]}px`, mt: `${tokens.spacing[2]}px`, alignItems: { xs: "stretch", sm: "center" } }}>
-          <Button variant="contained" onClick={() => setOrganizerOpen(true)}>整理文章</Button>
-          <Button variant="outlined" onClick={() => setEditOpen(true)}>编辑选集</Button>
+          <Button variant="contained" onClick={() => setOrganizerOpen(true)}>管理文章</Button>
+          <Button variant="outlined" onClick={() => setEditOpen(true)}>编辑合集</Button>
         </Stack>}
       </Stack>
     </Box>
-    {hiddenPrivateCount > 0 && <Alert severity="warning" sx={{ mb: `${tokens.spacing[6]}px` }}>共享选集含有 {hiddenPrivateCount} 篇仅自己可见的文章，这些文章不会展示给其他成员。请整理选集或改为仅自己可见。</Alert>}
-    {mayEdit && collection.visibility === "MEMBERS" && hasPrivateArticles && <Alert severity="warning" sx={{ mb: `${tokens.spacing[6]}px` }}>这个共享选集包含仅自己可见的文章；移除这些文章后才能继续共享。</Alert>}
-    <CatalogSection title="选集文章" tools={<TextField aria-label="搜索选集中的文章" placeholder="搜索标题、作者或来源" value={query} onChange={(event: any) => updateQuery(event.target.value)} fullWidth />}>
-      {matching.length ? <Box component="section" aria-label="选集文章列表" sx={articleGridSx}>
+    {hiddenPrivateCount > 0 && <Alert severity="warning" sx={{ mb: `${tokens.spacing[6]}px` }}>这个合集里有 {hiddenPrivateCount} 篇私密文章，其他成员看不到。你可以移出这些文章，或将合集设为私密。</Alert>}
+    {mayEdit && collection.visibility === "MEMBERS" && hasPrivateArticles && <Alert severity="warning" sx={{ mb: `${tokens.spacing[6]}px` }}>请先移出私密文章，再保存为共享合集。</Alert>}
+    <CatalogSection title="合集文章">
+      {matching.length ? <Box component="section" aria-label="合集文章列表" sx={articleGridSx}>
         {matching.map((article) => <BookCardPresentation
           key={article.id}
           variant="article"
           href={`/articles/${encodeURIComponent(article.id)}`}
           book={{ id: article.id, title: article.title, author: article.author || "未知作者", coverUrl: article.cover_url || undefined }}
           description={article.excerpt}
-          status={article.visibility === "PUBLIC" ? "公开文章" : "仅自己"}
+          status={article.visibility === "PUBLIC" ? "书库成员可见" : "私密文章"}
         />)}
-      </Box> : <BookCatalogEmptyState title={query ? "没有找到匹配的文章" : "这个选集还没有文章"} action={mayEdit && !query ? <Button variant="contained" onClick={() => setOrganizerOpen(true)}>添加文章</Button> : undefined} />}
+      </Box> : <BookCatalogEmptyState title={query ? "没有找到匹配的文章" : "合集里还没有文章"} action={mayEdit && !query ? <Button variant="contained" onClick={() => setOrganizerOpen(true)}>添加文章</Button> : query ? <Button onClick={() => updateQuery("")}>清除搜索</Button> : undefined} />}
     </CatalogSection>
     {mayEdit && <ArticleCollectionOrganizerDrawer open={organizerOpen} collection={collection} onClose={() => setOrganizerOpen(false)} onChanged={(next, message) => { void updateDetail(next, message); }} />}
     {mayEdit && <ArticleCollectionFormDialog open={editOpen} initial={collection} hasPrivateArticles={hasPrivateArticles} onClose={() => setEditOpen(false)} onConflictLatest={(latest) => { queryClient.setQueryData(detailKey, latest); }} onSaved={(next, message) => { setEditOpen(false); void updateDetail(next, message); }} onDeleted={(message) => {
@@ -125,6 +126,6 @@ export function ArticleCollectionDetailPage() {
 }
 
 function safeReturnTo(value: string | null | undefined) {
-  if (value === "/article-collections" || value?.startsWith("/article-collections?")) return value;
-  return "/article-collections";
+  if (value === "/discover" || value?.startsWith("/discover?")) return value;
+  return "/discover?tab=collections";
 }

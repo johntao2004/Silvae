@@ -4,7 +4,7 @@ import AntDrawer from "antd/es/drawer";
 import AntModal from "antd/es/modal";
 import { NoCompactStyle } from "antd/es/space/Compact";
 import type { CSSProperties, ReactNode } from "react";
-import { createContext, useContext, useId } from "react";
+import { createContext, useContext, useId, useLayoutEffect, useRef } from "react";
 import { Box, flattenSx, mergeClassNames, Stack, Typography, useTheme, sxClassName, type BoxProps, type SxProps } from "./primitives";
 
 type OverlayProps = Record<string, any> & { open?: boolean; onClose?: () => void; children?: ReactNode; sx?: SxProps; };
@@ -29,16 +29,58 @@ export function Drawer({ open, onClose, anchor = "left", children, slotProps, ti
 }
 
 const DialogContext = createContext<{ titleId: string }>({ titleId: "" });
+
+function observeDialogAttribute(dialog: Element, attribute: string, expectedValue: string) {
+  if (dialog.getAttribute(attribute) !== expectedValue) {
+    dialog.setAttribute(attribute, expectedValue);
+  }
+  if (typeof MutationObserver === "undefined") {
+    return () => {
+      if (dialog.getAttribute(attribute) === expectedValue) dialog.removeAttribute(attribute);
+    };
+  }
+  const observer = new MutationObserver(() => {
+    if (dialog.getAttribute(attribute) !== expectedValue) {
+      dialog.setAttribute(attribute, expectedValue);
+    }
+  });
+  observer.observe(dialog, { attributes: true, attributeFilter: [attribute] });
+  return () => {
+    observer.disconnect();
+    if (dialog.getAttribute(attribute) === expectedValue) dialog.removeAttribute(attribute);
+  };
+}
+
+function DialogA11yBridge({ titleId, ariaLabel, ariaLabelledBy, children }: { titleId: string; ariaLabel?: string; ariaLabelledBy?: string; children: ReactNode }) {
+  const surfaceRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const surface = surfaceRef.current;
+    const dialog = surface?.closest('[role="dialog"]');
+    if (!surface || !dialog) return;
+    const hasTitle = Boolean(surface.querySelector("[data-bk-dialog-title]"));
+    const resolvedLabelledBy = ariaLabelledBy ?? (hasTitle ? titleId : undefined);
+    const cleanups: Array<() => void> = [];
+    if (resolvedLabelledBy) cleanups.push(observeDialogAttribute(dialog, "aria-labelledby", resolvedLabelledBy));
+    if (ariaLabel) cleanups.push(observeDialogAttribute(dialog, "aria-label", ariaLabel));
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  });
+  return <div ref={surfaceRef} style={{ display: "contents" }}>{children}</div>;
+}
+
 export function Dialog({ open, onClose, children, fullWidth, maxWidth = "sm", fullScreen, slotProps, sx, ...props }: { open?: boolean; onClose?: () => void; children?: ReactNode; fullWidth?: boolean; maxWidth?: "xs" | "sm" | "md" | "lg" | "xl" | false; fullScreen?: boolean; slotProps?: { paper?: { sx?: SxProps } }; sx?: SxProps } & Record<string, unknown>) {
   const titleId = useId();
   const theme = useTheme();
+  const ariaLabel = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined;
+  const ariaLabelledBy = typeof props["aria-labelledby"] === "string" ? props["aria-labelledby"] : undefined;
   const width = fullScreen ? "100vw" : maxWidth === "xs" ? 360 : maxWidth === "sm" ? 560 : maxWidth === "md" ? 760 : maxWidth === "lg" ? 1040 : 1280;
-  return <DialogContext.Provider value={{ titleId }}><AntModal {...(props as any)} open={open} onCancel={onClose} destroyOnHidden role="presentation" footer={null} className="bk-dialog" width={fullWidth ? width : undefined} centered={!fullScreen} transitionName="" maskTransitionName="" modalRender={(node) => <NoCompactStyle><div role="dialog" aria-modal="true" aria-labelledby={titleId}>{node}</div></NoCompactStyle>} classNames={{ container: sxClassName({ bgcolor: "var(--color-surface)", ...flattenSx(sx, theme), ...flattenSx(slotProps?.paper?.sx, theme) }, theme) }} styles={{ container: { padding: 0, borderRadius: "var(--radius-xl)" }, body: { overflow: "auto", padding: 0 } } as Record<string, CSSProperties>}>{children}</AntModal></DialogContext.Provider>;
+  return <DialogContext.Provider value={{ titleId }}><AntModal {...(props as any)} open={open} onCancel={onClose} destroyOnHidden footer={null} className="bk-dialog" width={fullWidth ? width : undefined} centered={!fullScreen} transitionName="" maskTransitionName="" modalRender={(node) => <NoCompactStyle><DialogA11yBridge titleId={titleId} ariaLabel={ariaLabel} ariaLabelledBy={ariaLabelledBy}>{node}</DialogA11yBridge></NoCompactStyle>} classNames={{ container: sxClassName({ bgcolor: "var(--color-surface)", ...flattenSx(sx, theme), ...flattenSx(slotProps?.paper?.sx, theme) }, theme) }} styles={{ container: { padding: 0, borderRadius: "var(--radius-xl)" }, body: { overflow: "auto", padding: 0 } } as Record<string, CSSProperties>}>{children}</AntModal></DialogContext.Provider>;
 }
 
 export function DialogTitle({ sx, className, children, ...props }: BoxProps) {
   const { titleId } = useContext(DialogContext);
-  return <Typography component="h2" id={titleId} variant="h5" sx={sx} className={mergeClassNames("bk-dialog-title", className)} {...props}>{children}</Typography>;
+  return <Typography component="h2" id={titleId} data-bk-dialog-title="true" variant="h5" sx={sx} className={mergeClassNames("bk-dialog-title", className)} {...props}>{children}</Typography>;
 }
 
 export function DialogContent({ sx, className, children, dividers, ...props }: BoxProps & { dividers?: boolean }) {

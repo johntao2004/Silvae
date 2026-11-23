@@ -35,7 +35,7 @@ class TwoFactorNativePersistenceTest {
         var source=new DriverManagerDataSource(url+(url.contains("?")?"&":"?")+"currentSchema="+schema,user,password);
         db=DSL.using(new TransactionAwareDataSourceProxy(source),SQLDialect.POSTGRES);
         var users=new UserRepository(db);var audit=new AuditService(db);var permissions=new RolePermissionService(db,users,audit);
-        users.create("owner","主人","password",UserRole.OWNER,false);users.create("admin","管理员","password",UserRole.ADMIN,false);
+        users.create("owner","站点所有者","password",UserRole.OWNER,false);users.create("admin","管理员","password",UserRole.ADMIN,false);
         memberId=users.create("member","成员","password",UserRole.MEMBER,false).id();
         PasswordEncoder encoder=new PasswordEncoder() { public String encode(CharSequence raw){return raw.toString();} public boolean matches(CharSequence raw,String encoded){return raw.toString().equals(encoded);} };
         var target=new TwoFactorService(db,users,permissions,encoder,new TwoFactorCrypto("native-test-key"),audit,clock);

@@ -49,6 +49,18 @@ public class AiController {
 
     public record ConnectionResult(String provider, String model, long elapsedMs) {}
 
+    @PostMapping("/models")
+    AiMetadataService.ModelListResult models(@Valid @RequestBody FetchModelsRequest input) {
+        return ai.listModels(new AiMetadataService.FetchModelsInput(
+                input.id(), input.type(), input.baseUrl(), input.apiKey()));
+    }
+
+    public record FetchModelsRequest(
+            @NotBlank @Size(max = 80) String id,
+            @NotBlank @Size(max = 32) String type,
+            @Size(max = 500) String baseUrl,
+            @Size(max = 500) String apiKey) {}
+
     @PutMapping("/settings")
     AiSettingsService.AiSettingsView update(@Valid @RequestBody UpdateAiSettingsRequest input, Principal principal) {
         return settings.update(new AiSettingsService.AiSettingsInput(input.enabled(), input.autoMatch(), input.maxCandidates(),

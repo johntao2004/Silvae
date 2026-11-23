@@ -1,4 +1,4 @@
-// 覆盖来源 URL 校验、主人权限与默认禁止索引，拒绝在配置校验中触发跳转或抓取。
+// 覆盖来源 URL 校验、站点所有者权限与默认禁止索引，拒绝在配置校验中触发跳转或抓取。
 // Covers origin validation, owner rights and default indexing denial without turning validation into redirects or fetching.
 package com.elexvx.humite.users;
 

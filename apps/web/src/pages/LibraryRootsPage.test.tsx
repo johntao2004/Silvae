@@ -23,15 +23,20 @@ describe("library registration", () => {
  it("shows separate managed article and encrypted vault storage without mixing them into book directories", async () => {
   sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "admin", username: "admin", displayName: "管理员", role: "ADMIN", mustChangePassword: false }));
   render(<TestProviders><LibraryRootsPage /></TestProviders>);
-  expect(await screen.findByRole("heading", {name:"文章书库"})).toBeVisible();
-  expect(await screen.findByRole("heading", {name:"禁书区书库"})).toBeVisible();
+  expect(await screen.findByRole("heading", {name:"文章存储"})).toBeVisible();
+  expect(await screen.findByRole("heading", {name:"加密书库"})).toBeVisible();
   expect(api.listLiveLibraryRoots).toHaveBeenCalled();
   expect(screen.queryByText(/\/private\/books|\/content\//)).not.toBeInTheDocument();
   expect(screen.queryByText(/独立保存|文章素材|加密存储/)).not.toBeInTheDocument();
-  const cards = ["书籍书库", "文章书库", "禁书区书库"].map(name => screen.getByRole("heading", {name}).closest(".bk-card") as HTMLElement);
+  const cards = ["书籍书库", "文章存储", "加密书库"].map(name => screen.getByRole("heading", {name}).closest(".bk-card") as HTMLElement);
   for (const card of cards) {
-   expect(within(card).getByText(/可用空间/)).toBeVisible();
-   expect(within(card).getByText(/上次扫描/)).toBeVisible();
+   const header = within(card).getByTestId("storage-card-header");
+   const meta = within(card).getByTestId("storage-card-meta");
+   expect(getComputedStyle(header).flexDirection).toBe("row");
+   expect(getComputedStyle(meta).flexDirection).toBe("row");
+   expect(within(header).getByText("可读可写")).toBeVisible();
+   expect(within(meta).getByText(/可用空间/)).toBeVisible();
+   expect(within(meta).getByText(/上次扫描/)).toBeVisible();
    expect(card.querySelector("svg")).toBeNull();
   }
   expect(within(cards[0]).getByText("3.0 GB")).toBeVisible();

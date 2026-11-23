@@ -11,7 +11,7 @@ vi.mock('./ChangePasswordPage', () => ({ChangePasswordPage: () => <p>密码区�
 it('saves account fields separately and clears the confirmation password', async () => {
  render(<TestProviders><ProfilePage /></TestProviders>);
  fireEvent.change(screen.getByLabelText(/^用户名/), {target:{value:'renamed'}});
- fireEvent.change(screen.getByLabelText(/^账户名字/), {target:{value:'新名字'}});
+ fireEvent.change(screen.getByLabelText(/^显示名称/), {target:{value:'新名字'}});
  fireEvent.change(screen.getByLabelText(/^当前密码/), {target:{value:'confirmation'}});
  fireEvent.click(screen.getByRole('button',{name:'保存'}));
  await waitFor(()=>expect(updateProfile).toHaveBeenCalledWith({username:'renamed',displayName:'新名字',currentPassword:'confirmation'}));

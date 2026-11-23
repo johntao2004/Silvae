@@ -1,7 +1,6 @@
 // 阅读翻页装饰层，视觉反馈不负责改变定位或写入阅读进度。
 // Decorative page-turn layer; visual feedback does not own navigation locators or progress persistence.
-import { Box } from "@/ui/primitives";
-import { alpha } from "@/ui/primitives";
+import { Box, alpha, type UiTheme } from "@/ui/primitives";
 
 export function PageTurnShade() {
   return (
@@ -31,7 +30,7 @@ export function PageTurnShade() {
           zIndex: 2,
           pointerEvents: "none",
           opacity: 0,
-          background: (theme: any) => `linear-gradient(90deg,
+          background: (theme: UiTheme) => `linear-gradient(90deg,
             transparent 24%,
             ${alpha(theme.palette.text.primary, 0.04)} 38%,
             ${alpha(theme.palette.text.primary, 0.22)} 48%,

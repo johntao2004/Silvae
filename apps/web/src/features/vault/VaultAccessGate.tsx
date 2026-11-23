@@ -97,26 +97,26 @@ export function VaultAccessGate({ children }: { children: ReactNode }) {
   const verificationDialog = data?.enabled && data.configured && data.bound && !codes.length;
   if (query.isFetchedAfterMount && data?.enabled && data.configured && data.verified && !closed && !codes.length && !reset && !query.isError) return children;
   return <PageContainer>
-    <PageHeader eyebrow="PRIVATE VAULT" title="秘阁" />
+    <PageHeader title="加密书库" />
     <div className="bk-content-stack">
       {error && !verificationDialog && <Alert type="error" title={error} closable onClose={() => setError("")} />}
-      {query.isPending ? <Skeleton active /> : query.isError ? <Alert type="error" title="无法确认秘阁访问权限。" action={<Button onClick={() => void query.refetch()}>重试</Button>} />
-        : !data?.enabled ? <Alert type="info" title="秘阁尚未启用" description="请联系主人在管理设置的安全设置中启用。" />
-        : !data.configured ? <Alert type="warning" title="身份验证器服务尚未配置，请联系主人。" />
-        : codes.length ? <Card title="保存 2FA 备用码">
+      {query.isPending ? <Skeleton active /> : query.isError ? <Alert type="error" title="无法确认加密书库访问权限。" action={<Button onClick={() => void query.refetch()}>重试</Button>} />
+        : !data?.enabled ? <Alert type="info" title="加密书库尚未启用" description="请联系站点所有者，在「管理设置 → 登录与安全 → 安全策略」中开启。" />
+        : !data.configured ? <Alert type="warning" title="身份验证器服务尚未配置，请联系站点所有者。" />
+        : codes.length ? <Card title="保存备用验证码">
           <div className="bk-content-stack">
-            <p>这些备用码仅显示一次，每个只能使用一次。请保存在安全位置；它们用于身份验证，不替代书籍的加密恢复密钥。</p>
-            <Input.TextArea aria-label="2FA 备用码" readOnly value={codes.join("\n")} autoSize={{ minRows: 10 }} />
+            <p>无法使用身份验证器时，可以用备用验证码进入加密书库。每个码只能用一次，只在此处显示，请妥善保存。</p>
+            <Input.TextArea aria-label="备用验证码" readOnly value={codes.join("\n")} autoSize={{ minRows: 10 }} />
             <div><Button onClick={() => {
-              const url = URL.createObjectURL(new Blob([`Humite 2FA 备用码\n每个仅可使用一次。\n${codes.join("\n")}\n与书籍加密恢复密钥分别保存。`], { type: "text/plain" }));
+              const url = URL.createObjectURL(new Blob([`Humite 备用验证码\n每个仅可使用一次。\n${codes.join("\n")}\n与书籍加密恢复密钥分别保存。`], { type: "text/plain" }));
               const anchor = document.createElement("a"); anchor.href = url; anchor.download = "humite-2fa-backup-codes.txt"; anchor.click(); URL.revokeObjectURL(url); setSaved(true);
-            }}>下载备用码</Button></div>
+            }}>下载备用验证码</Button></div>
             <Button type="primary" disabled={!saved} loading={busy} onClick={() => void run(async () => { setCodes([]); setSaved(false); await refresh(); })}>已保存，继续进入</Button>
           </div>
         </Card>
         : !data.bound ? <Card title="绑定身份验证器">
           <div className="bk-content-stack">
-            <p>进入秘阁前需要绑定支持 TOTP 的身份验证器。绑定成功后，每次重新进入均需验证动态码。</p>
+            <p>首次进入前，请绑定能生成 6 位动态验证码的身份验证器。之后每次重新进入书库，都要验证身份。</p>
             {!enrollment ? <Form layout="vertical" onFinish={() => void run(async active => { const value = await vaultAccessApi.begin(password); if (!active()) return; setEnrollment(value); setPassword(""); setCode(""); })}>
               <Form.Item label="当前登录密码"><Input.Password aria-label="当前登录密码" value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} /></Form.Item>
               <Button type="primary" htmlType="submit" disabled={!password} loading={busy}>获取绑定二维码</Button>
@@ -125,14 +125,14 @@ export function VaultAccessGate({ children }: { children: ReactNode }) {
               <p>用身份验证器扫描二维码，或手动输入下方密钥。二维码 10 分钟内有效，请勿分享。</p>
               <Input aria-label="身份验证器绑定密钥" readOnly value={enrollment.secret} />
               <Form layout="vertical" onFinish={() => void run(async active => { const value = await vaultAccessApi.confirm(enrollment.id, code); if (!active()) return; setEnrollment(null); setCode(""); setCodes(value.recoveryCodes); setSaved(false); })}>
-                <Form.Item label="6 位动态码"><OneTimeCodeInput value={code} onInput={setCode} disabled={busy} invalid={Boolean(error)} /></Form.Item>
+                <Form.Item label="6 位动态验证码"><OneTimeCodeInput value={code} onInput={setCode} disabled={busy} invalid={Boolean(error)} /></Form.Item>
                 <Button type="primary" htmlType="submit" disabled={!/^\d{6}$/.test(code)} loading={busy}>确认绑定</Button>
                 <Button disabled={busy} onClick={() => { setEnrollment(null); setCode(""); }}>重新获取二维码</Button>
               </Form>
             </>}
           </div>
         </Card> : <VerificationDialog title={reset ? "重新绑定身份验证器" : "验证身份"}
-          description={reset ? "使用登录密码和动态码或备用码验证后重新绑定，已加密内容保持不变。" : recovery ? "请输入已保存的 32 位备用码，可整段粘贴" : "请输入身份验证器中的 6 位动态码"}
+          description={reset ? "请输入登录密码，并用动态验证码或备用验证码确认身份。" : recovery ? "请输入已保存的 32 位备用验证码，可整段粘贴" : "请输入身份验证器中的 6 位动态验证码"}
           error={error} onCancel={() => { close(); navigate("/library", { replace: true }); }}>
           <Form layout="vertical" onFinish={() => submitVerification()}>
             {reset && <Form.Item label="当前登录密码"><Input.Password aria-label="当前登录密码" value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} /></Form.Item>}
@@ -143,7 +143,7 @@ export function VaultAccessGate({ children }: { children: ReactNode }) {
             {!reset && !recovery && busy && <p className="bk-verification-status" role="status">正在验证…</p>}
             <div className="bk-verification-actions">
               {(reset || recovery) && <Button type="primary" block intent={reset ? "danger" : "normal"} htmlType="submit" disabled={!(recovery ? /^[0-9A-F]{32}$/.test(code) : /^\d{6}$/.test(code)) || (reset && !password)} loading={busy}>{reset ? "验证并重新绑定" : "验证并进入"}</Button>}
-              <Button type="default" intent={recovery ? "normal" : "warning"} block disabled={busy} onClick={() => { setRecovery(!recovery); setCode(""); setError(""); }}>{recovery ? "使用动态码" : "设备丢失，使用备用码"}</Button>
+              <Button type="default" intent={recovery ? "normal" : "warning"} block disabled={busy} onClick={() => { setRecovery(!recovery); setCode(""); setError(""); }}>{recovery ? "使用动态验证码" : "改用备用验证码"}</Button>
               <Button type="default" block disabled={busy} onClick={() => { setReset(!reset); setPassword(""); setCode(""); setError(""); }}>{reset ? "返回验证" : "重新绑定身份验证器"}</Button>
             </div>
           </Form>

@@ -11,6 +11,20 @@ import type { WeeklyReadingStats } from "../domain/types";
 import { tokens } from "../theme/tokens";
 import { OverviewCardHeader } from "./OverviewCardHeader";
 
+const metricLabelSx = {
+  display: "block",
+  fontSize: `${tokens.typography.fontSize.captionUppercase}px`,
+  lineHeight: tokens.typography.lineHeight.caption,
+};
+
+const metricValueSx = {
+  fontSize: `${tokens.typography.fontSize.titleSm}px`,
+  fontWeight: tokens.typography.fontWeight.semibold,
+  lineHeight: tokens.typography.lineHeight.ui,
+  mt: "2px",
+  overflowWrap: "anywhere",
+};
+
 export function ReadingStatsPanel({ stats, loading, error, today: serverToday }: {
   stats?: WeeklyReadingStats;
   today?: string;
@@ -26,7 +40,7 @@ export function ReadingStatsPanel({ stats, loading, error, today: serverToday }:
       }}
     >
       <OverviewCardHeader id="reading-time-title" icon={<AccessTimeRounded />}>本周阅读时长</OverviewCardHeader>
-      <Box role="status" aria-label="正在加载阅读时长" sx={{ mt: overviewContentSpacing }}><Skeleton active paragraph={{ rows: 4 }} /></Box>
+      <Box role="status" aria-label="正在加载阅读时长" sx={{ mt: overviewContentSpacing }}><Skeleton active paragraph={{ rows: 3 }} /></Box>
     </Box>
   );
   if (error) return <Box component="section" aria-labelledby="reading-time-title" sx={{ ...overviewCardSx, height: "100%" }}>
@@ -48,36 +62,36 @@ export function ReadingStatsPanel({ stats, loading, error, today: serverToday }:
       }}
     >
       <OverviewCardHeader id="reading-time-title" icon={<AccessTimeRounded />}>本周阅读时长</OverviewCardHeader>
-      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1.2fr) repeat(2, minmax(0, 1fr))", gap: `${tokens.spacing[3]}px`, mt: overviewContentSpacing, alignItems: "start" }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: "minmax(0, 1.25fr) repeat(2, minmax(0, 1fr))", gap: `${tokens.spacing[2]}px`, mt: overviewContentSpacing, alignItems: "start" }}>
         <Box aria-label="本周累计时长" sx={{ minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary">累计时长</Typography>
-          <Typography component="div" sx={{ fontSize: `${tokens.typography.fontSize.title}px`, lineHeight: tokens.typography.lineHeight.ui, mt: `${tokens.spacing[1]}px`, overflowWrap: "anywhere" }}>{formatDuration(stats?.totalSeconds ?? 0)}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={metricLabelSx}>累计时长</Typography>
+          <Typography component="div" sx={metricValueSx}>{formatDuration(stats?.totalSeconds ?? 0)}</Typography>
         </Box>
         <Box aria-label="今日阅读时长" sx={{ minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary">今日阅读</Typography>
-          <Typography sx={{ mt: `${tokens.spacing[1]}px` }}>{formatDuration(todaySeconds)}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={metricLabelSx}>今日阅读</Typography>
+          <Typography component="div" sx={metricValueSx}>{formatDuration(todaySeconds)}</Typography>
         </Box>
         <Box aria-label="本周阅读天数" sx={{ minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary">阅读天数</Typography>
-          <Typography sx={{ mt: `${tokens.spacing[1]}px` }}>{activeDays} 天</Typography>
+          <Typography variant="caption" color="text.secondary" sx={metricLabelSx}>阅读天数</Typography>
+          <Typography component="div" sx={metricValueSx}>{activeDays} 天</Typography>
         </Box>
       </Box>
-      <Box component="figure" aria-label="本周每日阅读" sx={{ m: 0, mt: overviewContentSpacing, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: `${tokens.spacing[2]}px` }}>
+      <Box component="figure" aria-label="本周每日阅读" sx={{ m: 0, mt: `${tokens.spacing[3]}px`, flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: `${tokens.spacing[1]}px` }}>
         <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: `${tokens.spacing[1]}px` }}>
-          <Typography variant="caption" color="text.secondary">{formatWeeklyComparison(stats?.totalSeconds ?? 0, stats?.previousWeekSeconds ?? 0)}</Typography>
-          {stats && <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>{formatDateRange(stats.weekStart, stats.weekEnd)}</Typography>}
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: `${tokens.typography.fontSize.captionUppercase}px` }}>{formatWeeklyComparison(stats?.totalSeconds ?? 0, stats?.previousWeekSeconds ?? 0)}</Typography>
+          {stats && <Typography variant="caption" color="text.secondary" sx={{ fontSize: `${tokens.typography.fontSize.captionUppercase}px`, whiteSpace: "nowrap" }}>{formatDateRange(stats.weekStart, stats.weekEnd)}</Typography>}
         </Stack>
-        <Box sx={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+        <Box sx={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", columnGap: `${tokens.spacing[1]}px` }}>
           {days.map(day => (
-            <Box key={day.date} title={`${day.date} · ${formatDuration(day.seconds)}`} sx={{ minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", rowGap: `${tokens.spacing[1]}px`, textAlign: "center" }}>
-              <Typography variant="caption" color="text.secondary" noWrap>{day.seconds ? formatCompactDuration(day.seconds) : "0"}</Typography>
+            <Box key={day.date} title={`${day.date} · ${formatDuration(day.seconds)}`} sx={{ minWidth: 0, minHeight: 0, display: "grid", gridTemplateRows: "auto minmax(20px, 1fr) auto", rowGap: "3px", textAlign: "center" }}>
+              <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: `${tokens.typography.fontSize.captionUppercase}px`, lineHeight: 1.2, opacity: day.seconds ? 0.9 : 0.55 }}>{day.seconds ? formatCompactDuration(day.seconds) : "0"}</Typography>
               <Box sx={{ minHeight: 0, display: "flex", alignItems: "flex-end", justifyContent: "center", borderBottom: "1px solid", borderColor: "divider" }}>
                 {day.seconds > 0 && <Box data-reading-bar={day.date} sx={{
-                  width: `${tokens.spacing[4]}px`, maxWidth: "100%", height: `${day.seconds / maximum * 100}%`, minHeight: `${tokens.spacing[1] / 2}px`,
+                  width: `${tokens.spacing[3]}px`, maxWidth: "100%", height: `${day.seconds / maximum * 100}%`, minHeight: `${tokens.spacing[1] / 2}px`,
                   bgcolor: day.date === today ? "primary.main" : "secondary.main", borderRadius: `${tokens.radius.sm}px ${tokens.radius.sm}px 0 0`,
                 }} />}
               </Box>
-              <Typography variant="caption" color={day.date === today ? "primary.main" : "text.secondary"} sx={{ fontWeight: day.date === today ? tokens.typography.fontWeight.semibold : tokens.typography.fontWeight.regular }}>{weekday(day.date)}</Typography>
+              <Typography variant="caption" color={day.date === today ? "primary.main" : "text.secondary"} sx={{ fontSize: `${tokens.typography.fontSize.captionUppercase}px`, lineHeight: 1.25, pt: "2px", fontWeight: day.date === today ? tokens.typography.fontWeight.semibold : tokens.typography.fontWeight.regular }}>{weekday(day.date)}</Typography>
             </Box>
           ))}
         </Box>

@@ -13,7 +13,7 @@ export function RecoveryPage() {
   const policy=usePasswordPolicy();
   const location=useLocation(); const params=new URLSearchParams(location.hash.slice(1));
   const token=params.get("bind") ?? params.get("reset") ?? "";
-  const binding=params.has("bind"); const requesting=location.pathname==="/forgot-password";
+  const binding=params.has("bind"); const requesting=location.pathname==="/forgot-password" && !params.has("bind") && !params.has("reset");
   const [email,setEmail]=useState(""); const [password,setPassword]=useState(""); const [confirm,setConfirm]=useState("");
   const [busy,setBusy]=useState(false); const [done,setDone]=useState(false); const [error,setError]=useState("");
   const submit=async (e: FormEvent) => {
@@ -30,9 +30,9 @@ export function RecoveryPage() {
   };
   return <AuthFrame title={requesting?"忘记密码":binding?"验证找回邮箱":"重置密码"}>
     <Stack component="form" noValidate={!requesting} spacing={2} onSubmit={submit}>
-      {done ? <Alert severity="success">{requesting?"如果此邮箱已绑定可用账户，重置链接将发送至收件箱，请同时检查垃圾邮件。":binding?"找回邮箱已验证。":"密码已重置，请使用新密码重新登录。"}</Alert> : <>
+      {done ? <Alert severity="success">{requesting?"如果该邮箱已绑定有效账号，你会收到密码重置邮件。请检查收件箱和垃圾邮件。":binding?"找回邮箱已验证。":"密码已重置，请使用新密码重新登录。"}</Alert> : <>
         {requesting ? <TextField label="找回邮箱" type="email" required value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setEmail(e.target.value)} /> : !binding && <>
-          <TextField label="新密码" type="password" required autoComplete="new-password" slotProps={{htmlInput:{maxLength:200}}} value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setPassword(e.target.value)} />
+          <TextField label="新密码" type="password" required autoComplete="new-password" value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setPassword(e.target.value)} />
           <PasswordRequirements policy={policy} value={password} />
           <TextField label="确认新密码" type="password" required autoComplete="new-password" value={confirm} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setConfirm(e.target.value)} />
         </>}

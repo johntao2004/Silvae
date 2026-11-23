@@ -422,9 +422,21 @@ export function MenuItem({ value, selected, dense: _dense, sx, className, childr
 
 
 export function FormControlLabel({ control, label, sx, className, ...props }: { control: ReactElement; label: ReactNode; sx?: SxProps; className?: string } & Record<string, unknown>) {
-  const labelId = useId();
-  const labelledControl = cloneElement(control as ReactElement<Record<string, unknown>>, { "aria-labelledby": labelId });
-  return <span {...props} className={mergeClassNames("bk-form-control-label", sxClassName(sx, useTheme()), className)}>{labelledControl}<span id={labelId}>{label}</span></span>;
+  const generatedId = useId();
+  const controlProps = control.props as Record<string, unknown>;
+  const controlId = typeof controlProps.id === "string" && controlProps.id ? controlProps.id : generatedId;
+  const labelId = `${generatedId}-label`;
+  const existingLabelledBy = typeof controlProps["aria-labelledby"] === "string" && controlProps["aria-labelledby"] ? controlProps["aria-labelledby"] : undefined;
+  const labelledControl = cloneElement(control as ReactElement<Record<string, unknown>>, {
+    id: controlId,
+    "aria-labelledby": existingLabelledBy ?? labelId,
+  });
+  return (
+    <span {...props} className={mergeClassNames("bk-form-control-label", sxClassName(sx, useTheme()), className)}>
+      {labelledControl}
+      <label htmlFor={controlId} id={labelId} style={{ minWidth: 0, cursor: "inherit" }}>{label}</label>
+    </span>
+  );
 }
 
 export function List({ sx, className, children, ...props }: BoxProps) {

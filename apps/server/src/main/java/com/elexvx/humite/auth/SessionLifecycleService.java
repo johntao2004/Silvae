@@ -25,7 +25,7 @@ public class SessionLifecycleService {
     @Transactional
     public int savePolicy(String username, int minutes) {
         var actor=users.findByUsername(username).orElseThrow();
-        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅主人可修改会话时长。");
+        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅站点所有者可修改会话时长。");
         if(minutes<5 || minutes>43200) throw ApiException.conflict("INVALID_SESSION_DURATION","会话时长需为 5–43200 分钟。");
         db.execute("update security_settings set session_max_minutes=?,updated_at=now() where id=1",minutes);
         audit.record(actor.id(),"SESSION_POLICY_CHANGED","SECURITY","sessions",null,null,null,null,"SUCCEEDED","{}");

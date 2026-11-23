@@ -17,6 +17,12 @@ class ApiDiagnosticsTest {
         @GetMapping("/test/input") String input(@RequestParam("value") String value) { return value; }
         @GetMapping("/test/uuid") String uuid(@RequestParam("value") java.util.UUID value) { return value.toString(); }
         @GetMapping("/test/missing") String missing() { throw ApiException.notFound("BOOK_NOT_FOUND", "书籍不存在。"); }
+        @GetMapping("/test/list-title") String duplicateTitle() {
+            throw new org.jooq.exception.DataAccessException("database error", new java.sql.SQLException("duplicate title", "HU001"));
+        }
+        @GetMapping("/test/collection-title") String duplicateCollectionTitle() {
+            throw new org.jooq.exception.DataAccessException("database error", new java.sql.SQLException("duplicate title", "HU002"));
+        }
         @GetMapping("/test/denied") String denied() { throw new org.springframework.security.access.AccessDeniedException("private"); }
         @GetMapping("/test/unavailable") String unavailable() { throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "private"); }
     }
@@ -42,5 +48,14 @@ class ApiDiagnosticsTest {
             .andExpect(jsonPath("$.code").value("BOOK_NOT_FOUND")).andExpect(jsonPath("$.traceId").isString());
         mvc.perform(get("/test/denied")).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("HTTP_403"));
         mvc.perform(get("/test/unavailable")).andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.code").value("HTTP_503"));
+    }
+
+    @Test void duplicateListTitleReturnsAnActionableConflict() throws Exception {
+        mvc.perform(get("/test/list-title")).andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("LIST_TITLE_EXISTS"))
+            .andExpect(jsonPath("$.detail").value("已有同名书单，请换一个名称。"));
+        mvc.perform(get("/test/collection-title")).andExpect(status().isConflict())
+            .andExpect(jsonPath("$.code").value("LIST_TITLE_EXISTS"))
+            .andExpect(jsonPath("$.detail").value("已有同名合集，请换一个名称。"));
     }
 }

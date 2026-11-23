@@ -29,6 +29,7 @@ export interface PostDraft {
 export interface PostPage { items: ReadingPost[]; nextCursor: string | null }
 export const readingPosts = {
   list: (kind: PostFilter, cursor?: string) => request<PostPage>(`/reading-posts?${new URLSearchParams({ kind, ...(cursor ? { cursor } : {}) })}`),
+  listBySource: (kind: PostKind, sourceId: string) => request<PostPage>(`/reading-posts?${new URLSearchParams({ kind, sourceId })}`),
   get: (kind: PostKind, id: string) => request<ReadingPost>(`/reading-posts/${kind}/${encodeURIComponent(id)}`),
   create: (draft: PostDraft) => request<ReadingPost>("/reading-posts", { method: "POST", body: JSON.stringify(draft) }),
   update: (post: ReadingPost, draft: PostDraft) => request<ReadingPost>(`/reading-posts/${post.kind}/${encodeURIComponent(post.id)}`, {

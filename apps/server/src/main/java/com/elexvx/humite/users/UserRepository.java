@@ -14,6 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 // User-module query/command gateway; returns domain objects and keeps SQL record mapping internal.
 @Repository
 public class UserRepository {
+    private static final String UPDATE_PASSWORD = """
+            update app_users set password_hash = ?, must_change_password = false,
+              password_changed_at = now(), updated_at = now() where id = ?
+            """;
     private final DSLContext dsl;
 
     public UserRepository(DSLContext dsl) {
@@ -67,7 +71,7 @@ public class UserRepository {
 
     @Transactional
     public Optional<HumiteUser> createOwnerIfEmpty(String username, String displayName, String hash) {
-        // 事务级锁把“检查空库”和“创建主人”串行化，避免并发初始化。
+        // 事务级锁把“检查空库”和“创建站点所有者”串行化，避免并发初始化。
         // A transaction-scoped lock serializes the empty-user check and owner creation across concurrent setup requests.
         dsl.execute("select pg_advisory_xact_lock(hashtext('humite-owner-initialization'))");
         if (count() > 0) return Optional.empty();
@@ -79,10 +83,11 @@ public class UserRepository {
     }
 
     public void updatePassword(UUID id, String hash) {
-        dsl.execute("""
-                update app_users set password_hash = ?, must_change_password = false,
-                  password_changed_at = now(), updated_at = now() where id = ?
-                """, hash, id);
+        dsl.execute(UPDATE_PASSWORD, hash, id);
+    }
+
+    public boolean updatePasswordIfCurrent(UUID id, String expectedHash, String hash) {
+        return dsl.execute(UPDATE_PASSWORD + "and password_hash = ? and status = 'ACTIVE'", hash, id, expectedHash) == 1;
     }
 
     @Transactional
@@ -113,7 +118,7 @@ public class UserRepository {
     }
 
     public HumiteUser changeRole(UUID id, UserRole expected, UserRole role) {
-        if (role == UserRole.OWNER || expected == UserRole.OWNER) throw com.elexvx.humite.common.ApiException.forbidden("OWNER_ROLE_FIXED", "主人角色不能更改。");
+        if (role == UserRole.OWNER || expected == UserRole.OWNER) throw com.elexvx.humite.common.ApiException.forbidden("OWNER_ROLE_FIXED", "站点所有者角色不能更改。");
         if (dsl.execute("update app_users set role = ?, updated_at = now() where id = ? and role = ? and role <> 'OWNER'", role.name(), id, expected.name()) != 1)
             throw com.elexvx.humite.common.ApiException.conflict("USER_ROLE_CONFLICT", "用户角色已变化，请刷新后重试。");
         return findById(id).orElseThrow();

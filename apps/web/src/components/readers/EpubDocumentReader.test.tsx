@@ -91,7 +91,7 @@ describe("EpubDocumentReader flow", () => {
 
   afterEach(() => {
     setPersistenceUser(null);
-    localStorage.removeItem("humite-site-theme");
+    localStorage.removeItem("humite-theme-preference");
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });

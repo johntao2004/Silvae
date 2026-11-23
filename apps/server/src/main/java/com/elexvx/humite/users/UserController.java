@@ -50,9 +50,9 @@ public class UserController {
     @PostMapping
     CreatedUser create(@Valid @RequestBody CreateUser input, Principal principal) {
         var actor = actor(principal);
-        if (input.role() == UserRole.OWNER) throw ApiException.forbidden("OWNER_CREATION_FORBIDDEN", "系统只能有一个主人账户。");
+        if (input.role() == UserRole.OWNER) throw ApiException.forbidden("OWNER_CREATION_FORBIDDEN", "系统只能有一个站点所有者账户。");
         if (input.role() == UserRole.ADMIN && actor.role() != UserRole.OWNER) {
-            throw ApiException.forbidden("OWNER_REQUIRED", "只有主人可以创建管理员。");
+            throw ApiException.forbidden("OWNER_REQUIRED", "只有站点所有者可以创建管理员。");
         }
         if (users.findByUsername(input.username()).isPresent()) throw ApiException.conflict("USERNAME_EXISTS", "用户名已存在。");
         String temporaryPassword = temporaryPassword();
@@ -66,7 +66,7 @@ public class UserController {
         var actor = actor(principal);
         var target = users.findById(id).orElseThrow(() -> ApiException.notFound("USER_NOT_FOUND", "用户不存在。"));
         ensureCanManage(actor, target);
-        if (target.role() == UserRole.OWNER) throw ApiException.forbidden("OWNER_DISABLE_FORBIDDEN", "主人账户不能停用。");
+        if (target.role() == UserRole.OWNER) throw ApiException.forbidden("OWNER_DISABLE_FORBIDDEN", "站点所有者账户不能停用。");
         if (target.id().equals(actor.id())) throw ApiException.conflict("SELF_DISABLE_FORBIDDEN", "不能停用当前登录账户。");
         var updated = users.toggleStatus(id);
         audit.record(actor.id(), "USER_STATUS_CHANGED", "USER", target.id().toString(), null, null, null, null,

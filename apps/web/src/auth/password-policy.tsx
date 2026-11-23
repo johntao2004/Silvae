@@ -4,9 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type PasswordPolicy } from "../api/client";
 import { Stack, Typography } from "../ui/primitives";
 import { Button } from "../ui/buttons";
+export const MAX_PASSWORD_LENGTH = 64;
+
 export function passwordRequirements(policy: PasswordPolicy, value: string) {
  return [
-  {label:`长度为 ${policy.minLength}–200 个字符`,met:value.length>=policy.minLength && value.length<=200},
+  {label:`长度为 ${policy.minLength}–${MAX_PASSWORD_LENGTH} 个字符`,met:value.length>=policy.minLength && value.length<=MAX_PASSWORD_LENGTH},
   {label:"不能仅使用空白字符",met:value.trim().length>0},
   ...(policy.requireUppercase?[{label:"包含大写字母 A–Z",met:/[A-Z]/.test(value)}]:[]),
   ...(policy.requireLowercase?[{label:"包含小写字母 a–z",met:/[a-z]/.test(value)}]:[]),

@@ -311,7 +311,7 @@ public class BooklistRepository {
     private RawBooklist lockAndCheck(UUID id, long expectedRevision) {
         RawBooklist raw = dsl.fetchOptional("""
                 select bl.*, u.display_name as owner_display_name from booklists bl
-                  join app_users u on u.id = bl.owner_id where bl.id = ? for update
+                  join app_users u on u.id = bl.owner_id where bl.id = ? for update of bl
                 """, id).map(this::raw)
                 .orElseThrow(() -> ApiException.notFound("BOOKLIST_NOT_FOUND", "未找到这个书单。"));
         if (raw.revision() != expectedRevision) {

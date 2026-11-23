@@ -9,7 +9,13 @@ import { PostEditor, ReadingPosts } from "../features/notes/ReadingPosts";
 import { postHref, type PostFilter } from "../features/notes/posts-api";
 import { Tabs } from "../ui/antd";
 import { Button } from "../ui/buttons";
-import { BookNotesContent } from "./AnnotationsPage";
+import { BookNotesContent } from "../features/notes/BookNotesContent";
+
+const pageTitles: Record<PostFilter, string> = {
+  ALL: "阅读笔记",
+  BOOK: "书籍笔记",
+  ARTICLE: "文章笔记",
+};
 
 export function ReadingNotesPage({ kind }: { kind: PostFilter }) {
   const { user } = useAuth();
@@ -41,12 +47,18 @@ export function ReadingNotesPage({ kind }: { kind: PostFilter }) {
     : <NotesFeed key={kind} kind={kind} />;
   const closeEditor = () => { setWriting(false); if (params.has("write")) setParams(previous => { const next = new URLSearchParams(previous); next.delete("write"); return next; }, { replace: true }); };
   return <PageContainer>
-    {selectedBookId && <PageBackAction onClick={clearBookSelection}>返回笔记</PageBackAction>}
-    {selectedArticleId && <PageBackAction onClick={() => openArticle()}>返回阅文札记</PageBackAction>}
-    <PageHeader eyebrow="READING NOTES" title="读书录" action={canWritePosts ? <Button variant="contained" onClick={() => setWriting(true)}>写随笔</Button> : undefined} />
+    <PageHeader
+      back={selectedBookId
+        ? <PageBackAction inline onClick={clearBookSelection}>返回书籍笔记</PageBackAction>
+        : selectedArticleId
+          ? <PageBackAction inline onClick={() => openArticle()}>返回文章笔记</PageBackAction>
+          : undefined}
+      title={pageTitles[kind]}
+      action={canWritePosts ? <Button variant="contained" onClick={() => setWriting(true)}>写随笔</Button> : undefined}
+    />
     {kind === "ALL" ? selectedNotes : <Tabs activeKey={tab} onChange={changeTab} items={[
-      { key: "notes", label: "札记", children: tab === "notes" ? selectedNotes : null },
-      ...(canViewPosts ? [{ key: "posts", label: "随笔", children: tab === "posts" ? <ReadingPosts kind={kind} /> : null }] : []),
+      { key: "notes", label: "笔记与摘录", children: tab === "notes" ? selectedNotes : null },
+      ...(canViewPosts ? [{ key: "posts", label: "阅读随笔", children: tab === "posts" ? <ReadingPosts kind={kind} /> : null }] : []),
     ]} />}
     {writing && canWritePosts && <PostEditor initialKind={kind === "ALL" ? articleId ? "ARTICLE" : "BOOK" : kind} allowKindChange={kind === "ALL" && !bookId && !articleId} initialSourceId={params.get("sourceId") || bookId || articleId || undefined} onClose={closeEditor} onSaved={post => { closeEditor(); navigate(postHref(post)); }} />}
   </PageContainer>;

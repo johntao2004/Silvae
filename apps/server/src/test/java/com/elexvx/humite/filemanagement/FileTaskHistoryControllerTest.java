@@ -1,14 +1,18 @@
 package com.elexvx.humite.filemanagement;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.elexvx.humite.common.ApiException;
 import com.elexvx.humite.filemanagement.FileTaskHistoryModels.Entry;
+import com.elexvx.humite.filemanagement.FileTaskHistoryModels.Page;
 import com.elexvx.humite.ingestion.upload.BookUploadModels.BookUploadStatus;
 import com.elexvx.humite.ingestion.upload.BookUploadTaskHistoryModels.UploadSummary;
 import com.elexvx.humite.ingestion.upload.BookUploadTaskHistoryGateway;
@@ -16,6 +20,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class FileTaskHistoryControllerTest {
     @Test void mergesChronologicallyAcrossSourcesAndPagesWithExactTotal() {
@@ -135,5 +141,35 @@ class FileTaskHistoryControllerTest {
                 .map(java.lang.reflect.RecordComponent::getName).toList();
         assertThat(uploadNames).contains("id", "status", "title", "originalFilename", "createdAt", "updatedAt")
                 .doesNotContain("stagingPath", "targetPath", "draftMetadata", "detectedMetadata", "errorDetail");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-1", "wrong", "2147483648", "1.5", ""})
+    void controllerRejectsInvalidPagesBeforeTouchingTheService(String page) {
+        var service = mock(FileTaskHistoryService.class);
+        var controller = new FileTaskHistoryController(service);
+        var error = assertThrows(ApiException.class, () -> controller.list(page, "10"));
+        assertThat(error.status().value()).isEqualTo(400);
+        assertThat(error.code()).isEqualTo("INVALID_PAGE");
+        verifyNoInteractions(service);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "101", "wrong"})
+    void controllerRejectsInvalidPageSizesBeforeTouchingTheService(String size) {
+        var service = mock(FileTaskHistoryService.class);
+        var controller = new FileTaskHistoryController(service);
+        var error = assertThrows(ApiException.class, () -> controller.list("0", size));
+        assertThat(error.status().value()).isEqualTo(400);
+        assertThat(error.code()).isEqualTo("INVALID_PAGE");
+        verifyNoInteractions(service);
+    }
+
+    @Test void controllerDelegatesValidPaginationAndPreservesExactTotal() {
+        var service = mock(FileTaskHistoryService.class);
+        when(service.page(12, 10)).thenReturn(new Page(List.of(), 121L));
+        var controller = new FileTaskHistoryController(service);
+        assertThat(controller.list("12", "10").total()).isEqualTo(121L);
+        verify(service).page(12, 10);
     }
 }

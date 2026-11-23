@@ -1,4 +1,4 @@
-// 仅在服务端明确未初始化后显示创建表单；状态未知或失败时不尝试创建主人。
+// 仅在服务端明确未初始化后显示创建表单；状态未知或失败时不尝试创建站点所有者。
 // Shows owner creation only after explicit uninitialized status; unknown or failed checks do not trigger setup.
 import { usePasswordPolicy, passwordRequirements } from "../auth/password-policy";
 import { Alert } from "@/ui/feedback";
@@ -94,7 +94,7 @@ export function SetupPage() {
         </Form.Item>
         <Stack spacing={2}>
           {error && <Alert severity="error">{error}</Alert>}
-          <Button type="submit" variant="contained" size="large" disabled={loading} sx={{ width: { xs: "100%", sm: "auto" } }}>{loading ? "正在初始化…" : "创建主人账户"}</Button>
+          <Button type="submit" variant="contained" size="large" disabled={loading} sx={{ width: { xs: "100%", sm: "auto" } }}>{loading ? "正在初始化…" : "创建站点所有者账户"}</Button>
         </Stack>
       </Form>
     </AuthFrame>

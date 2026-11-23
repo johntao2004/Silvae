@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.elexvx.humite.auth.*;
 import com.elexvx.humite.users.HumiteUser;
 import com.elexvx.humite.users.UserRepository;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -59,17 +60,28 @@ class ReadingOverviewAuthenticationTest {
     @Autowired ReadingOverviewService overview;
     @Autowired UserRepository users;
 
-    @Test void anonymousRequestsCannotReadAnyOverviewData() throws Exception {
+    @Test void anonymousRequestsCannotReadAnyOverviewDataAndLegacyStatsRouteIsGone() throws Exception {
         reset(overview);
         var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         mvc.perform(get("/api/v1/reading-overview")).andExpect(status().isUnauthorized());
         mvc.perform(head("/api/v1/reading-overview")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/reading-stats/weekly")).andExpect(status().isUnauthorized());
+        var owner = mock(HumiteUser.class);
+        when(owner.id()).thenReturn(UUID.randomUUID());
+        when(owner.role()).thenReturn(com.elexvx.humite.users.UserRole.OWNER);
+        when(owner.status()).thenReturn(com.elexvx.humite.users.UserStatus.ACTIVE);
+        when(users.findByUsername("owner")).thenReturn(Optional.of(owner));
+        mvc.perform(get("/api/v1/reading-stats/weekly").with(user("owner").roles("OWNER"))).andExpect(status().isNotFound());
         verifyNoInteractions(overview);
     }
 
-    @Test void everyRoleSeesOnlyItsOwnReadingEvenWhenAnotherUserIdIsSupplied() throws Exception {
+    @Test void everyRoleSeesOnlyItsOwnReadingAndWeeklyStatsEvenWhenAnotherUserIdIsSupplied() throws Exception {
         reset(overview);
         var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        var today = LocalDate.parse("2026-11-22");
+        var stats = new ReadingRepository.WeeklyReadingStats(
+                LocalDate.parse("2026-11-16"), today, 420, 180,
+                List.of(new ReadingRepository.DailyReadingTime(today, 420)));
         for (var role : List.of("MEMBER", "ADMIN", "OWNER")) {
             var id = UUID.randomUUID();
             var actor = mock(HumiteUser.class);
@@ -77,9 +89,13 @@ class ReadingOverviewAuthenticationTest {
             when(actor.role()).thenReturn(com.elexvx.humite.users.UserRole.valueOf(role));
             when(actor.status()).thenReturn(com.elexvx.humite.users.UserStatus.ACTIVE);
             when(users.findByUsername(role)).thenReturn(Optional.of(actor));
-            when(overview.current(id)).thenReturn(new ReadingOverviewService.Overview(null, null, List.of(), null));
+            when(overview.current(id)).thenReturn(new ReadingOverviewService.Overview(today, null, List.of(), stats));
             mvc.perform(get("/api/v1/reading-overview").param("userId", UUID.randomUUID().toString()).with(user(role).roles(role)))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.recentReading").isEmpty());
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.recentReading").isEmpty())
+                    .andExpect(jsonPath("$.stats.totalSeconds").value(420))
+                    .andExpect(jsonPath("$.stats.previousWeekSeconds").value(180))
+                    .andExpect(jsonPath("$.stats.days[0].seconds").value(420));
             verify(overview).current(id);
         }
         verifyNoMoreInteractions(overview);

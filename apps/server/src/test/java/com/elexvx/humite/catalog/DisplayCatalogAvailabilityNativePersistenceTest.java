@@ -118,7 +118,7 @@ class DisplayCatalogAvailabilityNativePersistenceTest {
 
     private static void insertUser(org.jooq.DSLContext db, UUID id) {
         db.execute("insert into app_users(id,username,display_name,password_hash,role) values (?,?,?,'native-test','OWNER')",
-                id, "display-owner-" + id, "展示目录测试主人");
+                id, "display-owner-" + id, "展示目录测试站点所有者");
     }
 
     private static UUID insertBook(org.jooq.DSLContext db, UUID root, String title, String format, String status) {

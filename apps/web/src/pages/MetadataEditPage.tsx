@@ -21,9 +21,8 @@ export function MetadataEditPage() {
   const returnTo = fromDetail ? `/library/books/${bookId}` : catalogReturnTo;
   const onReturn = () => navigate(returnTo, { state: { bookReturnTo: location.state?.bookReturnTo } });
   return <PageContainer>
-    <PageBackAction onClick={onReturn}>{fromDetail ? "返回详情" : "返回书库"}</PageBackAction>
     <Stack spacing={3}>
-      <PageHeader eyebrow="EDIT BOOK INFO" title="编辑书籍信息" />
+      <PageHeader back={<PageBackAction inline onClick={onReturn}>{fromDetail ? "返回详情" : "返回书库"}</PageBackAction>} eyebrow="EDIT BOOK INFO" title="编辑书籍信息" />
       {uploadId ? <UploadMetadataEditor key={uploadId} returnTo={catalogReturnTo} /> : <SavedBookEditor key={bookId} bookId={bookId} onSaved={() => navigate(`/library/books/${encodeURIComponent(bookId)}`, { replace: true, state: { bookReturnTo: catalogReturnTo } })} />}
     </Stack>
   </PageContainer>;

@@ -61,8 +61,8 @@ export function LibraryRootsPage() {
       )}
       <Stack spacing={2} sx={{ mt: `${tokens.spacing[4]}px` }}>
         {contentQuery.isPending ? <CircularProgress /> : contentQuery.isError
-          ? <Alert severity="error">无法读取文章及禁书区存储位置。<Button onClick={() => void contentQuery.refetch()}>重试</Button></Alert>
-          : contentQuery.data?.map(area => <StorageCard key={area.kind} name={area.kind === "VAULT" ? "禁书区书库" : "文章书库"} canRead={area.canRead} canWrite={area.canWrite} freeBytes={area.freeBytes} lastScanAt={area.lastScanAt} />)}
+          ? <Alert severity="error">无法读取文章和加密书库的存储位置。<Button onClick={() => void contentQuery.refetch()}>重试</Button></Alert>
+          : contentQuery.data?.map(area => <StorageCard key={area.kind} name={area.kind === "VAULT" ? "加密书库" : "文章存储"} canRead={area.canRead} canWrite={area.canWrite} freeBytes={area.freeBytes} lastScanAt={area.lastScanAt} />)}
       </Stack>
     </PageContainer>
   );
@@ -74,13 +74,39 @@ function StorageCard({ name, canRead, canWrite, freeBytes, lastScanAt, offline =
   const unavailable = offline || !canRead;
   const writable = !unavailable && canWrite;
   return <Card>
-    <Stack direction={{ xs: "column", sm: "row" }} sx={{ p: `${tokens.spacing[4]}px`, alignItems: { sm: "center" }, justifyContent: "space-between", gap: 1 }}>
-      <Typography variant="h5">{name}</Typography>
-      <Chip size="small" color={unavailable ? "error" : writable ? "success" : "warning"}
-        label={offline ? "离线" : unavailable ? "不可读" : writable ? "可读可写" : "只读"} />
+    <Stack
+      direction="row"
+      data-testid="storage-card-header"
+      sx={{
+        px: `${tokens.spacing[4]}px`,
+        py: `${tokens.spacing[3]}px`,
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 1.5,
+      }}
+    >
+      <Typography variant="h5" sx={{ minWidth: 0 }}>{name}</Typography>
+      <Chip
+        size="small"
+        color={unavailable ? "error" : writable ? "success" : "warning"}
+        label={offline ? "离线" : unavailable ? "不可读" : writable ? "可读可写" : "只读"}
+        sx={{ flexShrink: 0 }}
+      />
     </Stack>
     <Divider sx={{ m: 0 }} />
-    <Stack direction={{ xs: "column", sm: "row" }} sx={{ px: `${tokens.spacing[4]}px`, py: `${tokens.spacing[3]}px`, justifyContent: "space-between", gap: 1.5, color: "text.secondary" }}>
+    <Stack
+      direction="row"
+      data-testid="storage-card-meta"
+      sx={{
+        px: `${tokens.spacing[4]}px`,
+        py: "10px",
+        flexWrap: "wrap",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "4px 12px",
+        color: "text.secondary",
+      }}
+    >
       <Typography variant="body2">可用空间 <Box component="span" sx={{ color: "text.primary", fontWeight: 700 }}>{formatBytes(freeBytes)}</Box></Typography>
       <Typography variant="body2">上次扫描 {formatDate(lastScanAt)}</Typography>
     </Stack>

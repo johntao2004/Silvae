@@ -7,7 +7,7 @@ export const overviewCardSx: SxObject = {
   minHeight: 0,
   display: "flex",
   flexDirection: "column",
-  p: { xs: `${tokens.spacing[6]}px`, lg: `${tokens.spacing[8]}px` },
+  p: { xs: `${tokens.spacing[4]}px`, lg: `${tokens.spacing[5]}px` },
   bgcolor: "background.paper",
   border: 1,
   borderColor: "divider",
@@ -15,4 +15,4 @@ export const overviewCardSx: SxObject = {
   overflow: "hidden",
 };
 
-export const overviewContentSpacing = `${tokens.spacing[4]}px`;
+export const overviewContentSpacing = `${tokens.spacing[3]}px`;

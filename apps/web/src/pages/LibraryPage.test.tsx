@@ -34,7 +34,6 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 it("keeps the catalog independent of overview data and removes the visibility switch", async () => {
   vi.spyOn(api, "listBooks").mockResolvedValue({ items: [] });
-  const stats = vi.spyOn(api, "getWeeklyReadingStats");
   const annotations = vi.spyOn(api, "listAnnotations");
   render(<TestProviders initialPath="/library"><LibraryPage /></TestProviders>);
   expect(await screen.findByRole("heading", { name: "藏书楼", level: 1 })).toBeInTheDocument();
@@ -42,7 +41,6 @@ it("keeps the catalog independent of overview data and removes the visibility sw
   expect(screen.getByRole("button", { name: "上传书籍" })).toBeInTheDocument();
   expect(screen.queryByRole("region", { name: "书库概览" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /[显隐][示藏]概览/ })).not.toBeInTheDocument();
-  expect(stats).not.toHaveBeenCalled();
   expect(annotations).not.toHaveBeenCalled();
 });
 
@@ -159,7 +157,6 @@ it("opens a draft review route with the current catalog filters in return state"
 
 it("does not mix unclassified upload drafts into a custom category filter", async () => {
   vi.spyOn(api, "listBooks").mockResolvedValue({ items: [] });
-  vi.spyOn(api, "listCategories").mockResolvedValue({ items: [] } as any);
   vi.spyOn(api, "listBookUploads").mockResolvedValue([makeUpload()]);
   render(<TestProviders initialPath="/library?category=category-literature"><LibraryPage /></TestProviders>);
 

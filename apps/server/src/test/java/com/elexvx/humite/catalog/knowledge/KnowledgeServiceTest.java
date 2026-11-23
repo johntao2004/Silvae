@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import com.elexvx.humite.ai.AiMetadataService;
 import com.elexvx.humite.catalog.*;
+import com.elexvx.humite.common.ApiException;
 import com.elexvx.humite.filemanagement.infrastructure.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -42,5 +43,32 @@ class KnowledgeServiceTest {
         when(ai.extractKnowledge(any())).thenReturn(new AiMetadataService.KnowledgeResult("local", points));
         service.generate(id);
         verify(store).complete(id, operation, "local", 1, 100, points);
+    }
+
+    @Test void restoresInterruptFlagWhenSamplingIsInterrupted() throws Exception {
+        prepare();
+        when(text.sample(file)).thenThrow(new InterruptedException("cancelled"));
+        try {
+            var error = assertThrows(ApiException.class, () -> service.generate(id));
+            assertEquals("KNOWLEDGE_GENERATION_INTERRUPTED", error.code());
+            assertTrue(Thread.currentThread().isInterrupted());
+            verify(store).fail(id, operation);
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test void missingFileOnRecheckThrowsTypedNotFoundApiException() throws Exception {
+        when(ai.hasAvailableProvider(null)).thenReturn(true);
+        when(books.findPreferredFile(id)).thenReturn(Optional.of(file), Optional.empty());
+        when(store.claim(file)).thenReturn(operation);
+        var passages = List.of(new BookTextSampler.Passage("page:1", "正文证据说明认知偏差会影响人们决策。"));
+        when(text.sample(file)).thenReturn(new BookTextSampler.Sample(passages, 100));
+        when(ai.extractKnowledge(any())).thenReturn(new AiMetadataService.KnowledgeResult("local", List.of()));
+
+        var error = assertThrows(ApiException.class, () -> service.generate(id));
+        assertEquals(404, error.status().value());
+        assertEquals("BOOK_FILE_NOT_FOUND", error.code());
+        verify(store).fail(id, operation);
     }
 }

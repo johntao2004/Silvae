@@ -1,7 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, vi } from "vitest";
-import { api } from "../api/client";
+import { api, ApiRequestError } from "../api/client";
+import { LoginPage } from "../pages/LoginPage";
 import { TestProviders } from "../test/TestProviders";
 import { SetupGate } from "./SetupGate";
 import { setupStatusQueryOptions } from "./setup-status";
@@ -12,6 +13,7 @@ function LocationProbe() {
 }
 
 describe("SetupGate", () => {
+  beforeEach(() => sessionStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
   it("uses a short cache without automatic retries or focus refetches", () => {
@@ -42,6 +44,38 @@ describe("SetupGate", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText("business page")).toBeInTheDocument();
     expect(getSetupStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers a temporary-password 428 through sign-out and the login form", async () => {
+    const account = { id: "member", username: "member", displayName: "成员", role: "MEMBER" as const, mustChangePassword: true };
+    sessionStorage.setItem("humite-demo-session", JSON.stringify(account));
+    let signedOut = false;
+    vi.spyOn(api, "getSetupStatus").mockImplementation(async () => {
+      if (!signedOut) throw new ApiRequestError("临时密码只能用于首次登录。", 428, "PASSWORD_CHANGE_REQUIRED");
+      return { initialized: true };
+    });
+    const logout = vi.spyOn(api, "logout").mockRejectedValueOnce(new Error("退出请求失败")).mockImplementation(async () => {
+      signedOut = true;
+    });
+    vi.spyOn(api, "login").mockResolvedValue({ ...account, mustChangePassword: false });
+    render(<TestProviders initialPath="/settings#users/roles"><LocationProbe /><SetupGate><Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/settings" element={<div>settings page</div>} />
+    </Routes></SetupGate></TestProviders>);
+
+    expect(await screen.findByRole("heading", { name: "428" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "返回登录" }));
+    expect(await screen.findByText("退出请求失败")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "返回登录" }));
+
+    expect(await screen.findByLabelText("用户名")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/login");
+    expect(logout).toHaveBeenCalledTimes(2);
+    expect(sessionStorage.getItem("humite-demo-session")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+    expect(await screen.findByText("settings page")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("/settings#users/roles");
   });
 
   it("keeps the requested route while initialization status is pending", async () => {

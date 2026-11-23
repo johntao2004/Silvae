@@ -20,7 +20,7 @@ describe("RecycleBinPage", () => {
     render(<TestProviders initialPath="/recycle-bin"><Routes><Route path="/recycle-bin" element={<RecycleBinPage />} /></Routes></TestProviders>);
 
     expect(await screen.findByRole("heading", { name: "回收站" })).toBeInTheDocument();
-    expect(screen.getByText("条目会在这里保留 30 天。恢复时不会覆盖同路径的新文件；到期后自动清理，只有主人可以提前永久清理。")).toBeInTheDocument();
+    expect(screen.getByText("条目会在这里保留 30 天。恢复时不会覆盖同路径的新文件；到期后自动清理，只有站点所有者可以提前永久清理。")).toBeInTheDocument();
     const table = await screen.findByRole("table", { name: "回收站列表" });
     expect(await within(table).findByText("声之来信")).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: "剩余" })).toBeInTheDocument();
@@ -70,5 +70,12 @@ describe("RecycleBinPage", () => {
     expect(screen.getByText(demoRecycleBin[0].trashPath)).toBeInTheDocument();
     expect(within(screen.getByRole("dialog", { name: "确认恢复这本书" })).getByRole("button", { name: "恢复" })).toBeEnabled();
     await waitFor(() => expect(api.previewRecycleOperation).toHaveBeenCalledWith(demoRecycleBin[0], "RESTORE"));
+  });
+
+  it("renders uniform sections when the recycle bin is empty", async () => {
+    vi.mocked(api.listRecycleBin).mockResolvedValueOnce([]);
+    render(<TestProviders initialPath="/recycle-bin"><Routes><Route path="/recycle-bin" element={<RecycleBinPage />} /></Routes></TestProviders>);
+    expect(await screen.findByText("回收站为空")).toBeInTheDocument();
+    expect(screen.getByText("0 本待处理")).toBeInTheDocument();
   });
 });

@@ -83,3 +83,17 @@ it('ignores demo identity in storage during a real session check', async () => {
   await screen.findByRole("heading", {level: 1, name: "401"});
   expect(screen.queryByText('私有书库')).not.toBeInTheDocument();
 });
+
+it('leaves the first-login password route when the session refresh reports a completed change', async () => {
+  const session = vi.mocked(api.getSession).mockResolvedValue({ ...user, mustChangePassword: true });
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={['/change-password']}><AuthProvider><Routes>
+    <Route path="/change-password" element={<RequireAuth passwordChangeOnly><p>首次改密</p></RequireAuth>} />
+    <Route path="/library" element={<p>已进入书库</p>} />
+  </Routes></AuthProvider></MemoryRouter></QueryClientProvider>);
+
+  expect(await screen.findByText('首次改密')).toBeInTheDocument();
+  session.mockResolvedValue(user);
+  fireEvent(window, new Event('focus'));
+  expect(await screen.findByText('已进入书库')).toBeInTheDocument();
+  expect(screen.queryByText('首次改密')).not.toBeInTheDocument();
+});

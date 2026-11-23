@@ -4,6 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.elexvx.humite.common.ApiException;
+import com.elexvx.humite.catalog.BookRepository;
+import com.elexvx.humite.catalog.BooklistKind;
+import com.elexvx.humite.catalog.BooklistRepository;
+import com.elexvx.humite.catalog.BooklistService;
+import com.elexvx.humite.catalog.BooklistVisibility;
 import com.elexvx.humite.users.UserRepository;
 import java.security.Principal;
 import java.sql.Connection;
@@ -13,6 +18,7 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
+import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -48,7 +54,7 @@ class ArticleCollectionNativePersistenceTest {
                     Principal bob = () -> "bob";
                     Principal administrator = () -> "admin";
 
-                    var created = service.create("我的选集", "说明", "PRIVATE", alice);
+                    var created = service.create("我的合集", "说明", "PRIVATE", alice);
                     UUID privateCollection = created.id();
                     var withPrivate = service.addArticles(privateCollection.toString(), List.of(publicOne, privateAlice), 1, alice);
                     assertThat(withPrivate.articleCount()).isEqualTo(2);
@@ -57,12 +63,12 @@ class ArticleCollectionNativePersistenceTest {
                     assertApi("COLLECTION_NOT_FOUND", () -> service.get(privateCollection.toString(), administrator));
                     assertApi("ARTICLE_NOT_FOUND", () -> service.addArticles(privateCollection.toString(), List.of(privateBob), 2, alice));
 
-                    assertApi("COLLECTION_PRIVATE_ARTICLES", () -> service.update(privateCollection.toString(), "我的选集", "说明", "MEMBERS", 2, alice));
+                    assertApi("COLLECTION_PRIVATE_ARTICLES", () -> service.update(privateCollection.toString(), "我的合集", "说明", "MEMBERS", 2, alice));
                     assertThat(db.fetchOne("select visibility from article_collections where id=?", privateCollection).get("visibility", String.class)).isEqualTo("PRIVATE");
                     assertThat(db.fetchOne("select revision from article_collections where id=?", privateCollection).get("revision", Long.class)).isEqualTo(2L);
                     var noPrivate = service.removeArticle(privateCollection.toString(), privateAlice.toString(), 2, alice);
                     assertThat(noPrivate.revision()).isEqualTo(3);
-                    var shared = service.update(privateCollection.toString(), "成员选集", "说明", "MEMBERS", 3, alice);
+                    var shared = service.update(privateCollection.toString(), "成员合集", "说明", "MEMBERS", 3, alice);
                     assertThat(shared.revision()).isEqualTo(4);
 
                     assertApi("COLLECTION_ARTICLE_NOT_PUBLIC", () -> service.addArticles(privateCollection.toString(), List.of(publicTwo, privateAlice), 4, alice));
@@ -103,16 +109,72 @@ class ArticleCollectionNativePersistenceTest {
                     assertThat(count(db, "select count(*) from articles where id=?", publicOne)).isEqualTo(1);
                     assertThat(count(db, "select count(*) from article_reading where article_id=? and user_id=?", publicOne, bobId)).isEqualTo(1);
 
-                    var cascadeCollection = service.create("级联选集", "", "PRIVATE", alice);
+                    var cascadeCollection = service.create("级联合集", "", "PRIVATE", alice);
                     service.addArticles(cascadeCollection.id().toString(), List.of(publicOne), 1, alice);
                     db.execute("delete from articles where id=?", publicOne);
                     assertThat(count(db, "select count(*) from article_collection_articles where collection_id=?", cascadeCollection.id())).isZero();
                     assertThat(count(db, "select count(*) from article_collections where id=?", cascadeCollection.id())).isEqualTo(1);
+
+                    verifyUniqueTitles(connection, db, service, alice, bob);
                     connection.commit();
                 }
             } finally {
                 statement.execute("drop schema " + schema + " cascade");
             }
+        }
+    }
+
+    private static void verifyUniqueTitles(Connection connection, DSLContext db, ArticleCollectionService collections,
+                                           Principal alice, Principal bob) throws Exception {
+        var booklists = new BooklistService(new BooklistRepository(db), new BookRepository(db), new UserRepository(db));
+        var booklist = booklists.create(BooklistKind.PERSONAL, BooklistVisibility.PRIVATE, "Weekend", null, alice);
+        var collection = collections.create("短篇", "", "MEMBERS", alice);
+
+        // Booklists and article collections maintain independent title namespaces for the same owner.
+        var sameTitleCollection = collections.create(" weekend ", "", "PRIVATE", alice);
+        var sameTitleBooklist = booklists.create(BooklistKind.PERSONAL, BooklistVisibility.MEMBERS, "短篇", null, alice);
+        assertThat(sameTitleCollection.title()).isEqualTo("weekend");
+        assertThat(sameTitleBooklist.title()).isEqualTo("短篇");
+
+        // Renaming across the other table's namespace is allowed, while duplicates within the same table are rejected.
+        var renamedBooklist = booklists.update(UUID.fromString(sameTitleBooklist.id()), "Renamed", null,
+                BooklistVisibility.MEMBERS, sameTitleBooklist.revision(), alice);
+        assertThat(renamedBooklist.title()).isEqualTo("Renamed");
+        var renamedCollection = collections.update(sameTitleCollection.id().toString(), "短篇二", "",
+                "PRIVATE", sameTitleCollection.revision(), alice);
+        assertThat(renamedCollection.title()).isEqualTo("短篇二");
+
+        assertTitleConflict(connection, "HU002", () -> collections.create("短篇", "", "PRIVATE", alice));
+        assertTitleConflict(connection, "HU002", () -> collections.update(renamedCollection.id().toString(), "短篇",
+                "", "PRIVATE", renamedCollection.revision(), alice));
+        assertTitleConflict(connection, "HU001", () -> booklists.create(BooklistKind.PERSONAL, BooklistVisibility.MEMBERS,
+                "Weekend", null, alice));
+        assertTitleConflict(connection, "HU001", () -> booklists.update(UUID.fromString(renamedBooklist.id()), " weekend ", null,
+                BooklistVisibility.MEMBERS, renamedBooklist.revision(), alice));
+
+        // Metadata-only updates, other owners, and reusing a deleted title within the same table all succeed.
+        var updated = booklists.update(UUID.fromString(booklist.id()), "Weekend", "新的说明",
+                BooklistVisibility.PRIVATE, booklist.revision(), alice);
+        assertThat(updated.description()).isEqualTo("新的说明");
+        var bobBooklist = booklists.create(BooklistKind.PERSONAL, BooklistVisibility.PRIVATE, "Weekend", null, bob);
+        assertThat(bobBooklist.title()).isEqualTo("Weekend");
+        assertThat(collections.create("短篇", "", "PRIVATE", bob).title()).isEqualTo("短篇");
+
+        booklists.delete(UUID.fromString(booklist.id()), updated.revision(), alice);
+        assertThat(booklists.create(BooklistKind.PERSONAL, BooklistVisibility.PRIVATE, "Weekend", null, alice).title())
+                .isEqualTo("Weekend");
+        collections.delete(collection.id().toString(), collection.revision(), alice);
+        assertThat(collections.create("短篇", "", "PRIVATE", alice).title()).isEqualTo("短篇");
+    }
+
+    private static void assertTitleConflict(Connection connection, String expectedSqlState, Runnable save) throws Exception {
+        var savepoint = connection.setSavepoint();
+        try {
+            assertThatThrownBy(save::run).isInstanceOfSatisfying(DataAccessException.class,
+                    error -> assertThat(error.sqlState()).isEqualTo(expectedSqlState));
+        } finally {
+            connection.rollback(savepoint);
+            connection.releaseSavepoint(savepoint);
         }
     }
 

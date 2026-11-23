@@ -22,7 +22,7 @@ function RouteProbe() {
 }
 
 beforeEach(() => {
-  sessionStorage.setItem("humite-demo-session", JSON.stringify({id: "review-owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false}));
+  sessionStorage.setItem("humite-demo-session", JSON.stringify({id: "review-owner", username: "owner", displayName: "站点所有者", role: "OWNER", mustChangePassword: false}));
   vi.spyOn(api, "listAnnotations").mockResolvedValue(recent);
 });
 afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });

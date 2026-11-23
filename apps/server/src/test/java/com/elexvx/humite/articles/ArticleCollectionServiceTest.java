@@ -146,7 +146,7 @@ class ArticleCollectionServiceTest {
 
         private static ArticleCollectionRepository.CollectionRow collection(UUID id, UUID owner, String visibility,
                         long revision) {
-                return new ArticleCollectionRepository.CollectionRow(id, owner, "选集", "说明", visibility, revision, NOW,
+                return new ArticleCollectionRepository.CollectionRow(id, owner, "合集", "说明", visibility, revision, NOW,
                                 NOW, "创建者");
         }
 

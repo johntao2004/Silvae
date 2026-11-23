@@ -45,7 +45,7 @@ function MutableBookMetadataEditor({ capture }: { capture: (updateBook: (book: B
 }
 
 describe("BookMetadataEditor", () => {
-  beforeEach(() => sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false })));
+  beforeEach(() => sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "站点所有者", role: "OWNER", mustChangePassword: false })));
   afterEach(() => vi.restoreAllMocks());
 
   it("uses the shared detail form with actions at the bottom of the form", async () => {
@@ -315,12 +315,12 @@ describe("BookMetadataEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "确认重命名" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "确认重命名" }));
 
-    await waitFor(() => expect(completed).toHaveBeenCalledWith("重命名任务已提交，可在文件任务页查看进度"));
+    await waitFor(() => expect(completed).toHaveBeenCalledWith("重命名任务已提交，可在「文件操作记录」中查看进度"));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["book", demoBooks[0].id] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["book-metadata", demoBooks[0].id] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["books"] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["display-books"] });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["file-operations"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["file-task-history"] });
   });
 
   it("reports failed rename tasks through the persistent error callback", async () => {
@@ -357,7 +357,7 @@ describe("BookMetadataEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "确认重命名" })).toBeEnabled(), { timeout: 5000 });
     fireEvent.click(screen.getByRole("button", { name: "确认重命名" }));
 
-    await waitFor(() => expect(failed).toHaveBeenCalledWith("重命名任务未完成，可在文件任务页查看结果"));
+    await waitFor(() => expect(failed).toHaveBeenCalledWith("重命名任务未完成，可在「文件操作记录」中查看结果"));
     expect(completed).not.toHaveBeenCalled();
   });
 

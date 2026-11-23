@@ -7,7 +7,7 @@ import { vi } from "vitest";
 import type { Annotation } from "../../domain/types";
 import { api } from "../../api/client";
 import { tokens } from "../../theme/tokens";
-import PdfDocumentReader, { PdfPagedText, PdfReadingClipFrame, groupPdfSourceBlocks, pdfSourcePositionAt, pdfSourceVirtualPageIndex, pdfTurnPositionAt, remapPdfSourceTarget } from "./PdfDocumentReader";
+import PdfDocumentReader, { PdfPagedText, PdfReadingClipFrame, groupPdfSourceBlocks, movePdfFootnotesToChapterEnd, pdfFootnoteTargetKey, pdfReferenceTargetKey, pdfSourcePositionAt, pdfSourceVirtualPageIndex, pdfTurnPositionAt, remapPdfSourceTarget } from "./PdfDocumentReader";
 
 vi.mock("pdfjs-dist", () => ({
   getDocument: vi.fn(),
@@ -101,6 +101,47 @@ describe("PdfReadingClipFrame", () => {
     ]));
   });
 
+  it("builds PDF navigation from printed contents when the outline has only placeholders", async () => {
+    const onNavigation = vi.fn();
+    const pageText = (lines: string[]) => ({
+      getTextContent: vi.fn().mockResolvedValue({
+        items: lines.map((str, index) => ({
+          str,
+          transform: [1, 0, 0, 12, 36, 720 - index * 24],
+          width: str.length * 12,
+          height: 12,
+          hasEOL: true,
+        })),
+      }),
+    });
+    const pages = [
+      pageText(["目录", "第一章 概述 .... 1", "第二章 方法 .... 2", "第三章 结果 .... 3"]),
+      pageText(["第一章 概述", "这是概述正文。"]),
+      pageText(["第二章 方法", "这是方法正文。"]),
+      pageText(["第三章 结果", "这是结果正文。"]),
+    ];
+    vi.mocked(getDocument).mockReturnValue({
+      promise: Promise.resolve({
+        numPages: pages.length,
+        getPage: vi.fn(async (pageNumber: number) => pages[pageNumber - 1]),
+        getOutline: vi.fn().mockResolvedValue([
+          { title: "未标题", dest: [0], items: [] },
+          { title: "空白页面", dest: [1], items: [] },
+        ]),
+        getPageIndex: vi.fn(async (ref: { num: number }) => ref.num - 1),
+      }),
+      destroy: vi.fn(),
+    } as unknown as ReturnType<typeof getDocument>);
+
+    render(<PdfDocumentReader bookId="pdf-printed-toc" annotations={[]} theme={{ background: "white", foreground: "black", muted: "gray" }} fontSize={19} fontFamily="serif" readOnly onNavigation={onNavigation} onSelect={vi.fn()} onPosition={vi.fn()} />);
+
+    await waitFor(() => expect(onNavigation).toHaveBeenCalledWith([
+      { href: "pdf:page=2", locator: "pdf:page=2", label: "第一章 概述", depth: 0 },
+      { href: "pdf:page=3", locator: "pdf:page=3", label: "第二章 方法", depth: 0 },
+      { href: "pdf:page=4", locator: "pdf:page=4", label: "第三章 结果", depth: 0 },
+    ]));
+  });
+
   it("uses the bottom navigation as the only generated PDF page label", async () => {
     vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
       matches: false,
@@ -152,6 +193,35 @@ describe("PdfReadingClipFrame", () => {
     selection?.removeAllRanges();
     expect(screen.getByRole("navigation", { name: "PDF 翻页" })).toHaveTextContent("第 1 页 · 共 8 页");
     expect(screen.queryByText(/^第 1 页$/u)).not.toBeInTheDocument();
+  });
+});
+
+describe("PDF footnote placement", () => {
+  it("moves each note to the end of its article and gives only matching references a target", () => {
+    const blocks = movePdfFootnotesToChapterEnd([
+      { pageNumber: 1, block: { kind: "paragraph", text: "第一篇正文引用[2]并参见[1]。" } },
+      { pageNumber: 1, block: { kind: "heading", text: "参考文献", bibliographySection: true } },
+      { pageNumber: 1, block: { kind: "footnote", marker: "[1]", text: "参考文献保留原位。" } },
+      { pageNumber: 2, block: { kind: "heading", text: "注释", notesSection: true } },
+      { pageNumber: 2, block: { kind: "footnote", marker: "[2]", text: "第一篇脚注。" } },
+      { pageNumber: 2, block: { kind: "footnote", marker: "[2]", text: "同标记的重复定义。" } },
+      { pageNumber: 3, block: { kind: "heading", text: "第二篇", chapterStart: true } },
+      { pageNumber: 3, block: { kind: "paragraph", text: "第二篇正文引用*。" } },
+      { pageNumber: 4, block: { kind: "footnote", marker: "*", text: "第二篇脚注。" } },
+    ]);
+
+    expect(blocks.map(({ block }) => block?.kind === "footnote" ? block.text : block?.text)).toEqual([
+      "第一篇正文引用[2]并参见[1]。", "参考文献", "参考文献保留原位。", "注释", "第一篇脚注。", "同标记的重复定义。", "第二篇", "第二篇正文引用*。", "注释", "第二篇脚注。",
+    ]);
+    const notes = blocks.filter(({ block }) => block?.kind === "footnote");
+    expect(notes.map(({ pageNumber }) => pageNumber)).toEqual([1, 1, 3]);
+    expect(notes.map(({ footnoteTargetKey }) => footnoteTargetKey)).toEqual([
+      pdfFootnoteTargetKey(0, "[2]"), undefined, pdfFootnoteTargetKey(1, "*"),
+    ]);
+    const references = blocks.filter(({ block }) => block?.kind === "reference");
+    expect(references).toHaveLength(1);
+    expect(references[0]?.referenceTargetKey).toBe(pdfReferenceTargetKey(0, "[1]"));
+    expect(blocks.filter(({ block }) => block?.kind === "footnote" && block.text === "第一篇脚注。")).toHaveLength(1);
   });
 });
 
@@ -368,6 +438,68 @@ it("flows short paragraphs from adjacent original PDF pages in one reading strea
   expect(article).toContainElement(screen.getByText("第2页短段。"));
   expect(article).toContainElement(screen.getByText("第3页短段。"));
   expect(article?.querySelectorAll("[data-pdf-source-marker]")).toHaveLength(3);
+});
+
+it("starts the next article on a new column after the preceding article's notes", async () => {
+  const textItem = (str: string, x: number, y: number, width: number, height: number) => ({
+    str, transform: [1, 0, 0, height, x, y], width, height, hasEOL: true,
+  });
+  const pages = [
+    [
+      textItem("上一篇的最后一句。", 90, 720, 160, 16),
+      textItem("注释", 122, 670, 48, 12),
+      textItem("[1]参看本书第四卷。", 122, 647, 160, 12),
+    ],
+    [
+      textItem("中国人民大团结万岁*", 180, 569, 241, 26),
+      textItem("全国同胞们：中国人民政治协商会议业已胜利地完成", 122, 482, 390, 16),
+      textItem("了自己的任务，接下来的正文属于新的一篇。", 90, 459, 423, 16),
+    ],
+  ];
+  vi.mocked(getDocument).mockReturnValue({
+    promise: Promise.resolve({
+      numPages: pages.length,
+      getPage: vi.fn(async (pageNumber: number) => ({ getTextContent: async () => ({ items: pages[pageNumber - 1] }) })),
+    }),
+    destroy: vi.fn(),
+  } as unknown as ReturnType<typeof getDocument>);
+
+  render(<PdfDocumentReader bookId="pdf-chapter-breaks" annotations={[]} theme={{ background: "white", foreground: "black", muted: "gray" }} fontSize={19} fontFamily="serif" readOnly onSelect={vi.fn()} onPosition={vi.fn()} />);
+  const title = await screen.findByText("中国人民大团结万岁");
+  expect(title.closest("h2")).toHaveAttribute("data-pdf-chapter-start");
+  expect(title.closest("h2")).toHaveStyle({ breakBefore: "column", breakAfter: "avoid-column" });
+  expect(title).toHaveAttribute("data-pdf-source-page", "2");
+  expect(title).toHaveAttribute("data-pdf-source-marker");
+  expect(screen.getByRole("heading", { name: "注释" })).toBeInTheDocument();
+  expect(screen.getByRole("note")).toHaveTextContent("参看本书第四卷。");
+  expect(screen.queryByRole("button", { name: "查看文中注释 *" })).not.toBeInTheDocument();
+});
+
+it("shows a PDF footnote once at the article end and lets its reference jump to it", async () => {
+  const page = {
+    getTextContent: vi.fn().mockResolvedValue({
+      items: [
+        { str: "这一句正文引用了注释*。", transform: [1, 0, 0, 16, 90, 720], width: 190, height: 16, hasEOL: true },
+        { str: "注释", transform: [1, 0, 0, 12, 122, 670], width: 48, height: 12, hasEOL: true },
+        { str: "* 这条脚注应该只在篇末显示一次。", transform: [1, 0, 0, 12, 122, 647], width: 210, height: 12, hasEOL: true },
+      ],
+    }),
+  };
+  vi.mocked(getDocument).mockReturnValue({
+    promise: Promise.resolve({ numPages: 1, getPage: vi.fn().mockResolvedValue(page) }),
+    destroy: vi.fn(),
+  } as unknown as ReturnType<typeof getDocument>);
+
+  const { container } = render(<PdfDocumentReader bookId="pdf-footnote-end" annotations={[]} theme={{ background: "white", foreground: "black", muted: "gray" }} fontSize={19} fontFamily="serif" readOnly onSelect={vi.fn()} onPosition={vi.fn()} />);
+  const reference = await screen.findByRole("button", { name: "查看文中注释 *" });
+  const note = await screen.findByRole("note");
+
+  expect(container.querySelectorAll("article aside")).toHaveLength(1);
+  expect(note).toHaveTextContent("这条脚注应该只在篇末显示一次。");
+  expect(container.querySelector("article")).toHaveTextContent("正文引用");
+
+  fireEvent.click(reference);
+  await waitFor(() => expect(note).toHaveFocus());
 });
 
 it("renders a continued paragraph as one node while retaining selectable source-page spans", async () => {

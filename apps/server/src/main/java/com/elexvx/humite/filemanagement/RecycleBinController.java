@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("api")
 @RequestMapping("/api/v1/recycle-bin")
 @PreAuthorize("hasAnyRole('OWNER','ADMIN')")
-// 恢复与永久清理复用预览和指纹流程，永久清理入口进一步限制为主人。
+// 恢复与永久清理复用预览和指纹流程，永久清理入口进一步限制为站点所有者。
 // Restore/purge reuse preview and fingerprint flows; purge additionally requires the owner role.
 public class RecycleBinController {
     private final RecycleBinRepository recycleBin;

@@ -59,7 +59,7 @@ public class MailService {
     }
     public void send(String recipient, String subject, String body) {
         var s = settings();
-        if (!s.enabled()) throw ApiException.badRequest("MAIL_DISABLED", "主人尚未启用邮件服务。");
+        if (!s.enabled()) throw ApiException.badRequest("MAIL_DISABLED", "站点所有者尚未启用邮件服务。");
         var mail = new JavaMailSenderImpl();
         mail.setHost(s.host()); mail.setPort(s.port()); mail.setUsername(s.username());
         var row = db.fetchOne("select password_ciphertext from mail_settings where id=1");

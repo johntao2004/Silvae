@@ -1,6 +1,7 @@
 package com.elexvx.humite.filemanagement;
 
 import com.elexvx.humite.catalog.BookMetadataRepository.BookMetadata;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -32,18 +33,32 @@ import org.w3c.dom.Element;
 // Produces an EPUB copy with updated metadata; the outer writeback service handles replacement and compensation.
 public class EpubMetadataWriter {
     private static final String DC = "http://purl.org/dc/elements/1.1/";
-    private static final long MAX_COVER_BYTES = 20L * 1024 * 1024;
+    private static final int MAX_COVER_BYTES = 20 * 1024 * 1024;
+    private static final int MAX_XML_BYTES = 5 * 1024 * 1024;
+    private static final int MAX_MIMETYPE_BYTES = 4096;
+    private static final int MAX_EPUB_ENTRIES = 20_000;
+    private static final long MAX_EPUB_UNCOMPRESSED_BYTES = 4L * 1024 * 1024 * 1024;
 
     public void write(Path source, Path target, BookMetadata metadata, Path libraryRoot) throws IOException {
+        long compressedSize = Math.max(1L, Files.size(source));
+        long ratioLimit = Math.max(256L * 1024 * 1024,
+                Math.min(MAX_EPUB_UNCOMPRESSED_BYTES, compressedSize > MAX_EPUB_UNCOMPRESSED_BYTES / 250
+                        ? MAX_EPUB_UNCOMPRESSED_BYTES : compressedSize * 250));
+        long maxTotalBytes = Math.min(ratioLimit, MAX_EPUB_UNCOMPRESSED_BYTES);
         try (ZipFile zip = new ZipFile(source.toFile(), StandardCharsets.UTF_8);
              ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(target), StandardCharsets.UTF_8)) {
             String opfPath = findPackagePath(zip);
             CoverReplacement cover = coverReplacement(zip, opfPath, metadata, libraryRoot);
-            writeMimetypeFirst(zip, output);
+            long totalBytes = writeMimetypeFirst(zip, output);
+            int entryCount = 1;
             var entries = zip.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry original = entries.nextElement();
                 if (original.getName().equals("mimetype")) continue;
+                entryCount++;
+                if (entryCount > MAX_EPUB_ENTRIES) {
+                    throw new IOException("EPUB 条目数量超过安全限制");
+                }
                 ZipEntry next = new ZipEntry(original.getName());
                 next.setTime(original.getTime());
                 if (original.isDirectory()) {
@@ -54,18 +69,30 @@ public class EpubMetadataWriter {
                 output.putNextEntry(next);
                 if (original.getName().equals(opfPath)) {
                     try (InputStream input = zip.getInputStream(original)) {
-                        output.write(updatePackage(input, metadata));
+                        byte[] opfBytes = FileInspector.readBounded(input, MAX_XML_BYTES, "EPUB OPF 超过安全限制");
+                        totalBytes = addAndCheckTotal(totalBytes, opfBytes.length, maxTotalBytes);
+                        output.write(updatePackage(new ByteArrayInputStream(opfBytes), metadata));
                     }
                 } else if (cover != null && original.getName().equals(cover.entryName())) {
+                    totalBytes = addAndCheckTotal(totalBytes, cover.bytes().length, maxTotalBytes);
                     output.write(cover.bytes());
                 } else {
                     try (InputStream input = zip.getInputStream(original)) {
-                        input.transferTo(output);
+                        totalBytes += FileInspector.copyBounded(
+                                input, output, maxTotalBytes - totalBytes, "EPUB 解压大小超过安全限制");
                     }
                 }
                 output.closeEntry();
             }
         }
+    }
+
+    private static long addAndCheckTotal(long current, long delta, long limit) throws IOException {
+        long next = Math.addExact(current, delta);
+        if (next > limit) {
+            throw new IOException("EPUB 解压大小超过安全限制");
+        }
+        return next;
     }
 
     private CoverReplacement coverReplacement(ZipFile zip, String opfPath, BookMetadata metadata, Path libraryRoot)
@@ -83,14 +110,19 @@ public class EpubMetadataWriter {
         if (!real.startsWith(canonicalRoot) || Files.size(real) > MAX_COVER_BYTES) {
             throw new IOException("EPUB 封面缓存越界或过大");
         }
-        return new CoverReplacement(entryName, Files.readAllBytes(real));
+        try (InputStream coverStream = Files.newInputStream(real)) {
+            return new CoverReplacement(entryName,
+                    FileInspector.readBounded(coverStream, MAX_COVER_BYTES, "EPUB 封面缓存超过安全限制"));
+        }
     }
 
     private String findCoverEntry(ZipFile zip, String opfPath) throws IOException {
         var opf = zip.getEntry(opfPath);
         if (opf == null) throw new IOException("EPUB 缺少 OPF 文件");
         try (InputStream input = zip.getInputStream(opf)) {
-            Document document = FileInspector.secureXmlFactory().newDocumentBuilder().parse(input);
+            byte[] bytes = FileInspector.readBounded(input, MAX_XML_BYTES, "EPUB OPF 超过安全限制");
+            Document document = FileInspector.secureXmlFactory().newDocumentBuilder()
+                    .parse(new ByteArrayInputStream(bytes));
             String coverId = null;
             var metadataNodes = document.getElementsByTagNameNS("*", "meta");
             for (int index = 0; index < metadataNodes.getLength(); index++) {
@@ -118,7 +150,9 @@ public class EpubMetadataWriter {
         var container = zip.getEntry("META-INF/container.xml");
         if (container == null) throw new IOException("EPUB 缺少 container.xml");
         try (InputStream input = zip.getInputStream(container)) {
-            Document document = FileInspector.secureXmlFactory().newDocumentBuilder().parse(input);
+            byte[] bytes = FileInspector.readBounded(input, MAX_XML_BYTES, "EPUB container.xml 超过安全限制");
+            Document document = FileInspector.secureXmlFactory().newDocumentBuilder()
+                    .parse(new ByteArrayInputStream(bytes));
             var rootfiles = document.getElementsByTagNameNS("*", "rootfile");
             if (rootfiles.getLength() == 0) throw new IOException("EPUB 未声明 OPF 文件");
             return ((Element) rootfiles.item(0)).getAttribute("full-path");
@@ -129,12 +163,12 @@ public class EpubMetadataWriter {
         }
     }
 
-    private void writeMimetypeFirst(ZipFile zip, ZipOutputStream output) throws IOException {
+    private long writeMimetypeFirst(ZipFile zip, ZipOutputStream output) throws IOException {
         var entry = zip.getEntry("mimetype");
         if (entry == null) throw new IOException("EPUB 缺少 mimetype");
         byte[] bytes;
         try (InputStream input = zip.getInputStream(entry)) {
-            bytes = input.readAllBytes();
+            bytes = FileInspector.readBounded(input, MAX_MIMETYPE_BYTES, "EPUB mimetype 超过安全限制");
         }
         CRC32 crc = new CRC32();
         crc.update(bytes);
@@ -146,6 +180,7 @@ public class EpubMetadataWriter {
         output.putNextEntry(stored);
         output.write(bytes);
         output.closeEntry();
+        return bytes.length;
     }
 
     private byte[] updatePackage(InputStream input, BookMetadata metadata) throws IOException {

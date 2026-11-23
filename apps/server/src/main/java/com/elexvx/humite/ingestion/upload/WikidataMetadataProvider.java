@@ -4,7 +4,6 @@ import static com.elexvx.humite.ingestion.upload.BookUploadModels.MetadataCandid
 import static com.elexvx.humite.ingestion.upload.BookUploadModels.MetadataDraft;
 import static com.elexvx.humite.ingestion.upload.BookUploadModels.MetadataSource;
 
-import com.elexvx.humite.ingestion.upload.BookUploadRepository;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;

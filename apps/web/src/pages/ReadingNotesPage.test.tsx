@@ -1,9 +1,9 @@
-// 覆盖按书分组、空态和 Word 导出入口，保留选中书籍的批注范围。
-// Covers per-book grouping, empty states and Word export while retaining selected-book scope.
+// 覆盖按书分组、空态和 Word 导出入口，保留选中书籍与文章的批注范围。
+// Covers per-book grouping, empty states and Word export while retaining selected-book/article scope.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { afterEach, beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { defaultGrants } from "../auth/permissions";
@@ -12,9 +12,8 @@ import type { Annotation } from "../domain/types";
 import { TestProviders } from "../test/TestProviders";
 import { articles } from "../features/content/api";
 import { articleNotesApi, type ArticleNoteGroup } from "../features/notes/api";
-import { AnnotationsPage } from "./AnnotationsPage";
-import { ReadingNotesPage } from "./ReadingNotesPage";
 import { readingPosts } from "../features/notes/posts-api";
+import { ReadingNotesPage } from "./ReadingNotesPage";
 
 const bookId = demoBooks[0].id;
 const entries: Annotation[] = [{
@@ -32,21 +31,48 @@ const entries: Annotation[] = [{
   updatedAt: "2026-08-21T03:00:00Z",
 }];
 
-describe("AnnotationsPage", () => {
+function NotesRoutes() {
+  return (
+    <Routes>
+      <Route path="/annotations/books" element={<ReadingNotesPage kind="BOOK" />} />
+      <Route path="/annotations/articles" element={<ReadingNotesPage kind="ARTICLE" />} />
+      <Route path="/annotations/all" element={<ReadingNotesPage kind="ALL" />} />
+    </Routes>
+  );
+}
+
+function SearchProbe() {
+  const location = useLocation();
+  return <output data-testid="route-search">{location.search}</output>;
+}
+
+function QueryKeyProbe({ onKeys }: { onKeys: (keys: unknown[][]) => void }) {
+  const client = useQueryClient();
+  useEffect(() => {
+    const publish = () => onKeys(client.getQueryCache().getAll().map((query) => [...query.queryKey]));
+    publish();
+    return client.getQueryCache().subscribe(publish);
+  }, [client, onKeys]);
+  return null;
+}
+
+describe("ReadingNotesPage", () => {
   beforeEach(() => {
     sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "user-owner", username: "owner", displayName: "林", role: "OWNER", mustChangePassword: false }));
-    vi.spyOn(api, "listAnnotationBooks").mockResolvedValue({ items: [{
-      bookId,
-      bookTitle: demoBooks[0].title,
-      bookAuthor: demoBooks[0].author,
-      coverUrl: demoBooks[0].coverUrl,
-      annotationCount: 1,
-      noteCount: 1,
-      highlightCount: 1,
-      underlineCount: 0,
-      boldCount: 0,
-      latestAt: "2026-08-21T03:00:00Z",
-    }] });
+    vi.spyOn(api, "listAnnotationBooks").mockResolvedValue({
+      items: [{
+        bookId,
+        bookTitle: demoBooks[0].title,
+        bookAuthor: demoBooks[0].author,
+        coverUrl: demoBooks[0].coverUrl,
+        annotationCount: 1,
+        noteCount: 1,
+        highlightCount: 1,
+        underlineCount: 0,
+        boldCount: 0,
+        latestAt: "2026-08-21T03:00:00Z",
+      }],
+    });
     vi.spyOn(api, "getBook").mockResolvedValue(demoBooks[0]);
     vi.spyOn(api, "listAnnotations").mockResolvedValue(entries);
     vi.spyOn(articleNotesApi, "list").mockResolvedValue([]);
@@ -59,11 +85,11 @@ describe("AnnotationsPage", () => {
   it("groups annotations by book and opens the selected book's notes", async () => {
     render(<TestProviders initialPath="/annotations/books?view=annotations"><SearchProbe /><NotesRoutes /></TestProviders>);
 
-    expect(await screen.findByRole("heading", { name: "读书录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "书籍笔记" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId("route-search")).toHaveTextContent("?view=annotations"));
     expect(screen.queryByText("PRIVATE NOTES")).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: `查看《${demoBooks[0].title}》的阅读札记` })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: `查看《${demoBooks[0].title}》的阅读札记` }));
+    expect(await screen.findByRole("button", { name: `查看《${demoBooks[0].title}》的阅读笔记` })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: `查看《${demoBooks[0].title}》的阅读笔记` }));
 
     expect(await screen.findByRole("heading", { name: demoBooks[0].title })).toBeInTheDocument();
     expect(screen.queryByText("BOOK NOTES")).not.toBeInTheDocument();
@@ -72,11 +98,11 @@ describe("AnnotationsPage", () => {
     expect(api.listAnnotations).toHaveBeenCalledWith(bookId);
   });
 
-  it.each(["/annotations/books?view=annotations", "/annotations?q=not-found"]) ("没有阅读札记书籍时显示统一空态（%s）", async (initialPath) => {
+  it.each(["/annotations/books?view=annotations", "/annotations/books?q=not-found&view=annotations"])("没有阅读笔记书籍时显示统一空态（%s）", async (initialPath) => {
     vi.mocked(api.listAnnotationBooks).mockResolvedValueOnce({ items: [] });
     render(<TestProviders initialPath={initialPath}><NotesRoutes /></TestProviders>);
 
-    expect(await screen.findByRole("heading", { name: "暂无阅读札记" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "暂无阅读笔记" })).toBeInTheDocument();
     expect(screen.queryByText("无书目")).not.toBeInTheDocument();
     expect(screen.queryByText("在阅读器中选择文字，即可划线并写下想法。")).not.toBeInTheDocument();
     expect(screen.queryByText("换一个书名或作者关键词试试。")).not.toBeInTheDocument();
@@ -84,17 +110,17 @@ describe("AnnotationsPage", () => {
 
   it("单本书没有笔记时保留书籍操作并显示统一空态", async () => {
     vi.mocked(api.listAnnotations).mockResolvedValueOnce([]);
-    render(<TestProviders initialPath={`/annotations?bookId=${bookId}&q=preserve`}><SearchProbe /><NotesRoutes /></TestProviders>);
+    render(<TestProviders initialPath={`/annotations/books?bookId=${bookId}&q=preserve&view=annotations`}><SearchProbe /><NotesRoutes /></TestProviders>);
 
-    expect(await screen.findByRole("heading", { name: "暂无阅读札记", level: 4 })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "暂无阅读笔记", level: 4 })).toBeInTheDocument();
     expect(screen.queryByText("无书目")).not.toBeInTheDocument();
-    expect(screen.queryByText("这本书还没有阅读札记或划线。")).not.toBeInTheDocument();
+    expect(screen.queryByText("这本书还没有阅读笔记或划线。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "返回原文" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "导出 Word" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "返回笔记" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回书籍笔记" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "返回笔记" }));
-    expect(await screen.findByRole("button", { name: `查看《${demoBooks[0].title}》的阅读札记` })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "返回书籍笔记" }));
+    expect(await screen.findByRole("button", { name: `查看《${demoBooks[0].title}》的阅读笔记` })).toBeInTheDocument();
     expect(screen.getByTestId("route-search")).toHaveTextContent("?q=preserve&view=annotations");
   });
 
@@ -102,19 +128,19 @@ describe("AnnotationsPage", () => {
     render(<TestProviders initialPath={`/annotations/all?bookId=${bookId}&articleId=article-1`}><NotesRoutes /></TestProviders>);
 
     expect(await screen.findByRole("heading", { name: demoBooks[0].title })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "返回笔记" })).toHaveLength(1);
-    expect(screen.queryByRole("button", { name: "返回阅文札记" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "返回书籍笔记" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "返回文章笔记" })).not.toBeInTheDocument();
     expect(articleNotesApi.list).not.toHaveBeenCalled();
   });
 
   it("exports the selected book's notes as Word", async () => {
-    vi.spyOn(api, "downloadAnnotationExport").mockResolvedValue("《山川与灯火》阅读札记.docx");
-    render(<TestProviders initialPath={`/annotations?bookId=${bookId}`}><NotesRoutes /></TestProviders>);
+    vi.spyOn(api, "downloadAnnotationExport").mockResolvedValue("《山川与灯火》阅读笔记.docx");
+    render(<TestProviders initialPath={`/annotations/books?bookId=${bookId}&view=annotations`}><NotesRoutes /></TestProviders>);
 
     fireEvent.click(await screen.findByRole("button", { name: "导出 Word" }));
 
     await waitFor(() => expect(api.downloadAnnotationExport).toHaveBeenCalledWith(bookId, "DOCX"));
-    expect(await screen.findByText("已导出 《山川与灯火》阅读札记.docx")).toBeInTheDocument();
+    expect(await screen.findByText("已导出 《山川与灯火》阅读笔记.docx")).toBeInTheDocument();
   });
 
   it("switches by URL, requests only the active source, and opens article notes at their exact locator", async () => {
@@ -133,9 +159,9 @@ describe("AnnotationsPage", () => {
     const captureKeys = (keys: unknown[][]) => { queryKeys = keys; };
     render(<TestProviders initialPath="/annotations/articles?view=annotations&filter=recent"><SearchProbe /><QueryKeyProbe onKeys={captureKeys} /><NotesRoutes /></TestProviders>);
 
-    expect(await screen.findByRole("heading", { name: "读书录" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "文章笔记" })).toBeInTheDocument();
     expect(api.listAnnotationBooks).not.toHaveBeenCalled();
-    fireEvent.click(await screen.findByRole("button", { name: "查看《潮汐之间》的阅文札记" }));
+    fireEvent.click(await screen.findByRole("button", { name: "查看《潮汐之间》的文章笔记" }));
 
     expect(screen.getByTestId("route-search")).toHaveTextContent("?view=annotations&filter=recent&articleId=article-1");
     expect(await screen.findByText("记住这一段。")).toBeInTheDocument();
@@ -144,56 +170,37 @@ describe("AnnotationsPage", () => {
     expect(api.getBook).not.toHaveBeenCalled();
     expect(api.listAnnotations).not.toHaveBeenCalled();
     await waitFor(() => expect(queryKeys).toContainEqual(["article-notes", "user-owner"]));
-    expect(screen.getAllByRole("button", { name: "返回阅文札记" })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "返回阅文札记" }));
-    expect(await screen.findByRole("button", { name: "查看《潮汐之间》的阅文札记" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "返回文章笔记" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "返回文章笔记" }));
+    expect(await screen.findByRole("button", { name: "查看《潮汐之间》的文章笔记" })).toBeInTheDocument();
     expect(screen.getByTestId("route-search")).toHaveTextContent("?view=annotations&filter=recent");
-
   });
 
   it("shows article-note loading, empty and failure states clearly", async () => {
     let resolveNotes!: (value: ArticleNoteGroup[]) => void;
     vi.mocked(articleNotesApi.list).mockReturnValueOnce(new Promise<ArticleNoteGroup[]>((resolve) => { resolveNotes = resolve; }));
-    const view = render(<TestProviders initialPath="/annotations?type=articles"><NotesRoutes /></TestProviders>);
-    expect(screen.getByRole("status", { name: "正在加载阅文札记" })).toBeInTheDocument();
+    const view = render(<TestProviders initialPath="/annotations/articles?view=annotations"><NotesRoutes /></TestProviders>);
+    expect(screen.getByRole("status", { name: "正在加载文章笔记" })).toBeInTheDocument();
     resolveNotes([]);
-    expect(await screen.findByRole("heading", { name: "暂无阅读札记" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "暂无阅读笔记" })).toBeInTheDocument();
     view.unmount();
 
     vi.mocked(articleNotesApi.list).mockRejectedValueOnce(new Error("offline"));
-    render(<TestProviders initialPath="/annotations?type=articles"><NotesRoutes /></TestProviders>);
-    expect(await screen.findByText("无法加载阅读札记")).toBeInTheDocument();
+    render(<TestProviders initialPath="/annotations/articles?view=annotations"><NotesRoutes /></TestProviders>);
+    expect(await screen.findByText("无法加载阅读笔记")).toBeInTheDocument();
   });
 
   it("hides the posts tab when its independent page permission is disabled", () => {
     const memberGrants = defaultGrants("MEMBER").filter(code => code !== "notes.posts.view");
     expect(memberGrants).toContain("notes.edit");
     sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "member", username: "member", displayName: "成员", role: "MEMBER", mustChangePassword: false }));
-    sessionStorage.setItem("humite-demo-role-permissions", JSON.stringify({ revision: 1, grants: {
-      OWNER: defaultGrants("OWNER"), ADMIN: defaultGrants("ADMIN"), MEMBER: memberGrants,
-    } }));
+    sessionStorage.setItem("humite-demo-role-permissions", JSON.stringify({
+      revision: 1,
+      grants: { OWNER: defaultGrants("OWNER"), ADMIN: defaultGrants("ADMIN"), MEMBER: memberGrants },
+    }));
     render(<TestProviders initialPath="/annotations/books?view=posts"><NotesRoutes /></TestProviders>);
-    expect(screen.getByRole("tab", { name: "札记" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "随笔" })).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "笔记与摘录" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "阅读随笔" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "写随笔" })).not.toBeInTheDocument();
   });
 });
-
-function NotesRoutes() {
-  return <Routes><Route path="/annotations" element={<AnnotationsPage />} /><Route path="/annotations/books" element={<ReadingNotesPage kind="BOOK" />} /><Route path="/annotations/articles" element={<ReadingNotesPage kind="ARTICLE" />} /><Route path="/annotations/all" element={<ReadingNotesPage kind="ALL" />} /></Routes>;
-}
-
-function SearchProbe() {
-  const location = useLocation();
-  return <output data-testid="route-search">{location.search}</output>;
-}
-
-function QueryKeyProbe({ onKeys }: { onKeys: (keys: unknown[][]) => void }) {
-  const client = useQueryClient();
-  useEffect(() => {
-    const publish = () => onKeys(client.getQueryCache().getAll().map((query) => [...query.queryKey]));
-    publish();
-    return client.getQueryCache().subscribe(publish);
-  }, [client, onKeys]);
-  return null;
-}

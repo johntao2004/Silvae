@@ -37,7 +37,7 @@ function independentSource(): IndependentReaderSource {
   return {
     id: "article-shared", title: "文章阅读", author: "作者", format: "EPUB", contentUrl: "blob:article",
     annotationPermission: "articles.annotate",
-    flow: "scrolled-doc", label: "文章", backLabel: "返回文钞馆", progress: 0.1, annotations: [], onBack: vi.fn(), onPosition: vi.fn(),
+    flow: "scrolled-doc", label: "文章", backLabel: "返回文章", progress: 0.1, annotations: [], onBack: vi.fn(), onPosition: vi.fn(),
     createAnnotation: vi.fn(async draft => ({ ...draft, id: "new-entry", bookId: "article-shared", createdAt: "2026-10-20T00:00:00Z" })),
     deleteAnnotation: vi.fn(async () => undefined),
   };
@@ -46,7 +46,7 @@ function independentSource(): IndependentReaderSource {
 describe("ReaderWorkspace independent source", () => {
   beforeEach(() => {
     localStorage.clear();
-    sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false }));
+    sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "站点所有者", role: "OWNER", mustChangePassword: false }));
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -82,7 +82,7 @@ describe("ReaderWorkspace independent source", () => {
     expect(screen.queryByRole("switch", { name: "启用翻页效果" })).not.toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByRole("navigation", { name: "阅读器顶部导航" }).closest("section")).toHaveAttribute("data-reader-format", "ARTICLE");
-    expect(screen.queryByText("独立阅读札记")).not.toBeInTheDocument();
+    expect(screen.queryByText("独立阅读笔记")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "翻到下一页" }));
     expect(source.onPosition).toHaveBeenCalledWith("epubcfi(/6/2!/4/2)", 0.5);
     expect(book).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe("ReaderWorkspace independent source", () => {
     render(<TestProviders><ReaderWorkspace source={source} /></TestProviders>);
     await screen.findByRole("region", { name: "共享正文" });
     fireEvent.click(screen.getByRole("button", { name: "更多阅读操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "阅文札记" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "本篇文章的笔记" }));
     expect(await screen.findByText("保留的私人笔记")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "删除批注" }));
     await waitFor(() => expect(source.deleteAnnotation).toHaveBeenCalledWith("saved-note"));
@@ -128,7 +128,7 @@ describe("ReaderWorkspace independent source", () => {
     ];
     render(<TestProviders><ReaderWorkspace source={source} /></TestProviders>);
     fireEvent.click(await screen.findByRole("button", { name: "点击正文批注 plain" }));
-    expect(screen.queryByRole("heading", { name: "阅文札记" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "本篇文章的笔记" })).not.toBeInTheDocument();
     expect(screen.getByRole("toolbar", { name: "批注工具" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "点击正文批注 plain" }));
     await waitFor(() => expect(screen.queryByRole("toolbar", { name: "批注工具" })).not.toBeInTheDocument());
@@ -136,7 +136,7 @@ describe("ReaderWorkspace independent source", () => {
     fireEvent.click(screen.getByRole("button", { name: "点击正文空白" }));
     await waitFor(() => expect(screen.queryByRole("toolbar", { name: "批注工具" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "点击正文批注 target" }));
-    expect(await screen.findByRole("heading", { name: "阅文札记" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "本篇文章的笔记" })).toBeInTheDocument();
     const current = screen.getByRole("group", { name: "当前笔记" });
     expect(current).toHaveAttribute("aria-current", "true");
     expect(current).toHaveTextContent("目标笔记");
@@ -144,7 +144,7 @@ describe("ReaderWorkspace independent source", () => {
     expect(source.createAnnotation).not.toHaveBeenCalled();
     expect(source.deleteAnnotation).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "点击正文批注 target" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "阅文札记" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "本篇文章的笔记" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "点击正文批注 first" }));
     await waitFor(() => expect(screen.getByRole("group", { name: "当前笔记" })).toHaveTextContent("第一条笔记"));
   });
@@ -160,7 +160,7 @@ describe("ReaderWorkspace independent source", () => {
     render(<TestProviders><ReaderWorkspace source={source} /></TestProviders>);
     expect(await screen.findByRole("region", { name: "共享正文" })).toHaveAttribute("data-annotation-count", "1");
     fireEvent.click(screen.getByRole("button", { name: "更多阅读操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "阅文札记" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "本篇文章的笔记" }));
     expect(screen.queryByText(/仅你可见/)).not.toBeInTheDocument();
     expect(screen.getAllByText("“只展示一次的原文”")).toHaveLength(1);
     expect(screen.getByText("高亮笔记")).toBeInTheDocument();
@@ -237,10 +237,10 @@ describe("ReaderWorkspace independent source", () => {
     render(<TestProviders><ReaderWorkspace source={source} /></TestProviders>);
     await screen.findByRole("region", { name: "共享正文" });
     fireEvent.click(screen.getByRole("button", { name: "更多阅读操作" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "阅文札记" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "本篇文章的笔记" }));
     expect(await screen.findByText("当前笔记")).toBeInTheDocument();
     expect(screen.queryByText("其它笔记")).not.toBeInTheDocument();
-    for (const label of ["保存记录", "写随笔", "加入选集"]) expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    for (const label of ["保存记录", "写随笔", "加入合集"]) expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "查看原始来源" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "编辑笔记" }));
     expect(await screen.findByRole("dialog", { name: "编辑笔记" })).toBeInTheDocument();
@@ -315,7 +315,7 @@ describe("ReaderWorkspace independent source", () => {
       saved = [...saved, annotation];
       return annotation;
     });
-    vi.spyOn(api, "getSession").mockResolvedValue({ id: "owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false });
+    vi.spyOn(api, "getSession").mockResolvedValue({ id: "owner", username: "owner", displayName: "站点所有者", role: "OWNER", mustChangePassword: false });
     vi.spyOn(api, "replayReadingProgress").mockResolvedValue(undefined);
     vi.spyOn(api, "listReaderFonts").mockResolvedValue([]);
     vi.spyOn(api, "recordReadingTime").mockResolvedValue({ weekStart: "2026-10-19", weekEnd: "2026-10-25", totalSeconds: 0, previousWeekSeconds: 0, days: [] });
@@ -361,7 +361,7 @@ describe("ReaderWorkspace independent source", () => {
     expect(screen.queryByRole("toolbar", { name: "批注工具" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "更多阅读操作" }));
     expect(screen.queryByRole("menuitem", { name: "添加书签" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: "阅文札记" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "本篇文章的笔记" }));
     expect(screen.queryByRole("link", { name: "查看原始来源" })).not.toBeInTheDocument();
     expect(source.createAnnotation).not.toHaveBeenCalled();
   });

@@ -31,11 +31,11 @@ public class RecoveryService {
     }
     @Transactional
     public void request(String email) {
-        if (!mail.settings().enabled()) throw ApiException.badRequest("MAIL_DISABLED","主人尚未启用邮件服务。");
+        if (!mail.settings().enabled()) throw ApiException.badRequest("MAIL_DISABLED","站点所有者尚未启用邮件服务。");
         var id = db.fetchOptional("select user_id from recovery_mailboxes where email=?",email.toLowerCase(Locale.ROOT).trim()).map(r->r.get(0,UUID.class));
         id.flatMap(users::findById).filter(u->u.status()==UserStatus.ACTIVE).ifPresent(user -> {
             try { issue(user,email.toLowerCase(Locale.ROOT).trim(),"RESET"); }
-            catch (ApiException e) { /* 保护账户存在性；主人可通过测试邮件诊断投递。 */ // Keep account existence private; owner can diagnose delivery with test mail.
+            catch (ApiException e) { /* 保护账户存在性；站点所有者可通过测试邮件诊断投递。 */ // Keep account existence private; owner can diagnose delivery with test mail.
                 audit.record(user.id(),"PASSWORD_RESET_MAIL_FAILED","USER",user.id().toString(),null,null,null,null,"FAILED","{}");
             }
         });

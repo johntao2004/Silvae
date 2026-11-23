@@ -130,7 +130,7 @@ class BookUploadDraftNativePersistenceTest {
                     db.execute("update book_uploads set created_at = now() - interval '8 days', expires_at = now() - interval '8 days' where id = ?", partialId);
 
                     MetadataDraft incomplete = draft(null, List.of(), "Detected Author/Detected title.epub",
-                            Map.of("title", BookUploadModels.MetadataSource.GOOGLE_BOOKS,
+                            Map.of("title", BookUploadModels.MetadataSource.OPEN_LIBRARY,
                                     "authors", BookUploadModels.MetadataSource.AI));
                     var saved = service.updateDraft(partialId, incomplete, () -> "draft-owner");
                     assertThat(saved.status()).isEqualTo(BookUploadModels.BookUploadStatus.READY_FOR_REVIEW);

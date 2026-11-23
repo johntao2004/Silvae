@@ -1,5 +1,5 @@
 import { usePermissions } from "../auth/permissions";
-// 恢复和清理均经过安全预览，永久清理仍须主人权限与明确确认。
+// 恢复和清理均经过安全预览，永久清理仍须站点所有者权限与明确确认。
 // Restore and purge use safety previews; permanent purge still requires owner authorization and confirmation.
 import { EMPTY_RECYCLE_BIN_TITLE } from "../ui/empty-state-copy";
 import { Alert } from "@/ui/feedback";
@@ -22,12 +22,14 @@ import { BookCatalogEmptyState } from "../components/BookCatalogEmptyState";
 import { PageContainer, PageHeader } from "../components/PageHeader";
 import type { FileOperationPreview, RecycleBinEntry } from "../domain/types";
 import { tokens } from "../theme/tokens";
-import { DataTable } from "../ui/antd";
+import { DataTable, Skeleton } from "../ui/antd";
+import { MobileRecordCard, MobileRecordField, useIsMobileViewport } from "../ui/ResponsiveList";
 
 const DAY_IN_MILLISECONDS = 86_400_000;
 
 export function RecycleBinPage() {
   const client = useQueryClient();
+  const isMobile = useIsMobileViewport();
   const [searchParams] = useSearchParams();
   const query = useQuery({ queryKey: ["recycle-bin"], queryFn: api.listRecycleBin });
   const { can } = usePermissions();
@@ -67,42 +69,95 @@ export function RecycleBinPage() {
     } catch (reason) { setNotice(reason instanceof Error ? reason.message : "操作失败"); }
     finally { setBusy(false); }
   };
+  const formatDeletedDate = (value: string) =>
+    new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
+  const getRemainingDays = (expiresAt: string) =>
+    Math.max(0, Math.ceil((new Date(expiresAt).getTime() - referenceTime) / DAY_IN_MILLISECONDS));
 
   return (
     <PageContainer>
-      <PageHeader
-        eyebrow="RECYCLE BIN"
-        title="回收站"
-        action={<Chip label={`${entries.length} 本待处理`} variant="outlined" />}
-      />
-      <Alert severity="warning" sx={{ mb: 4 }}>条目会在这里保留 30 天。恢复时不会覆盖同路径的新文件；到期后自动清理，只有主人可以提前永久清理。</Alert>
-
-      {query.isError ? <Alert severity="error">回收站暂时无法读取，请检查网络与书库连接。</Alert> : (
-        <DataTable<RecycleBinEntry>
-          key={search}
-          aria-label="回收站列表"
-          rowKey="id"
-          dataSource={entries}
-          loading={query.isPending}
-          scroll={{ x: tokens.spacing[24] * 8 + tokens.spacing[16] }}
-          style={{ marginTop: tokens.spacing[4] }}
-          locale={{ emptyText: query.isPending ? null : <BookCatalogEmptyState title={EMPTY_RECYCLE_BIN_TITLE} /> }}
-          columns={[
-            { title: "书名", dataIndex: "bookTitle", key: "title", render: (title: string) => <Typography variant="body2" sx={{ minWidth: `${tokens.spacing[24] * 2}px`, overflowWrap: "anywhere" }}>{title}</Typography> },
-            { title: "作者", dataIndex: "bookAuthor", key: "author", width: tokens.spacing[24] + tokens.spacing[6], ellipsis: true, render: (author: string) => <Typography variant="body2" noWrap title={author}>{author || "—"}</Typography> },
-            { title: "格式", dataIndex: "format", key: "format", width: tokens.spacing[20], render: (format: string) => <Chip label={format} size="small" variant="outlined" /> },
-            { title: "移入时间", dataIndex: "deletedAt", key: "deleted", width: tokens.spacing[24] + tokens.spacing[6], render: (value: string) => <Typography component="time" dateTime={value} variant="body2" sx={{ whiteSpace: "nowrap" }}>{new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value))}</Typography> },
-            { title: "剩余", key: "remaining", width: tokens.spacing[20], render: (_, entry) => {
-              const days = Math.max(0, Math.ceil((new Date(entry.expiresAt).getTime() - referenceTime) / DAY_IN_MILLISECONDS));
-              return <Typography variant="body2" color={days < 5 ? "warning.main" : "text.secondary"} sx={{ whiteSpace: "nowrap" }}>{days} 天</Typography>;
-            } },
-            { title: "操作", key: "actions", width: tokens.spacing[24] * 2 + tokens.spacing[4], render: (_, entry) => <Stack direction="row" sx={{ gap: `${tokens.spacing[2]}px`, whiteSpace: "nowrap" }}>
-              <Button variant="outlined" disabled={busy || !can("settings.recycle.restore")} onClick={() => void openPreview(entry, "RESTORE")}>恢复</Button>
-              {can("settings.recycle.purge") && <Button color="error" variant="outlined" disabled={busy} aria-label={`永久清理${entry.bookTitle}`} onClick={() => void openPreview(entry, "PURGE")}>永久清理</Button>}
-            </Stack> },
-          ]}
+      <Stack spacing={2}>
+        <PageHeader
+          title="回收站"
+          action={<Chip label={`${entries.length} 本待处理`} variant="outlined" />}
         />
-      )}
+        <Alert severity="warning">条目会在这里保留 30 天。恢复时不会覆盖同路径的新文件；到期后自动清理，只有站点所有者可以提前永久清理。</Alert>
+
+        {query.isError ? <Alert severity="error">回收站暂时无法读取，请检查网络与书库连接。</Alert> : isMobile ? (
+          query.isPending ? <Skeleton active /> : entries.length === 0 ? <BookCatalogEmptyState title={EMPTY_RECYCLE_BIN_TITLE} /> : (
+            <Stack component="section" aria-label="回收站列表" spacing={2}>
+              {entries.map((entry) => {
+                const days = getRemainingDays(entry.expiresAt);
+                return (
+                  <MobileRecordCard key={entry.id} aria-label={entry.bookTitle}>
+                    <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "flex-start", gap: 1.5 }}>
+                      <Typography variant="subtitle1" sx={{ fontWeight: tokens.typography.fontWeight.semibold, minWidth: 0, overflowWrap: "anywhere" }}>
+                        {entry.bookTitle}
+                      </Typography>
+                      <Chip label={entry.format} size="small" variant="outlined" sx={{ flexShrink: 0 }} />
+                    </Stack>
+                    <MobileRecordField label="作者" value={entry.bookAuthor || "—"} />
+                    <MobileRecordField
+                      label="移入时间"
+                      value={<Typography component="time" dateTime={entry.deletedAt} variant="body2">{formatDeletedDate(entry.deletedAt)}</Typography>}
+                    />
+                    <MobileRecordField
+                      label="剩余"
+                      value={<Typography variant="body2" color={days < 5 ? "warning.main" : "text.secondary"}>{days} 天</Typography>}
+                    />
+                    <Stack direction="row" sx={{ gap: `${tokens.spacing[2]}px`, flexWrap: "wrap" }}>
+                      <Button
+                        variant="outlined"
+                        disabled={busy || !can("settings.recycle.restore")}
+                        onClick={() => void openPreview(entry, "RESTORE")}
+                        sx={{ flex: 1, minHeight: `${tokens.layout.touchTarget}px` }}
+                      >
+                        恢复
+                      </Button>
+                      {can("settings.recycle.purge") && (
+                        <Button
+                          color="error"
+                          variant="outlined"
+                          disabled={busy}
+                          aria-label={`永久清理${entry.bookTitle}`}
+                          onClick={() => void openPreview(entry, "PURGE")}
+                          sx={{ flex: 1, minHeight: `${tokens.layout.touchTarget}px` }}
+                        >
+                          永久清理
+                        </Button>
+                      )}
+                    </Stack>
+                  </MobileRecordCard>
+                );
+              })}
+            </Stack>
+          )
+        ) : (
+          <DataTable<RecycleBinEntry>
+            key={search}
+            aria-label="回收站列表"
+            rowKey="id"
+            dataSource={entries}
+            loading={query.isPending}
+            scroll={{ x: tokens.spacing[24] * 8 + tokens.spacing[16] }}
+            locale={{ emptyText: query.isPending ? null : <BookCatalogEmptyState title={EMPTY_RECYCLE_BIN_TITLE} /> }}
+            columns={[
+              { title: "书名", dataIndex: "bookTitle", key: "title", render: (title: string) => <Typography variant="body2" sx={{ minWidth: `${tokens.spacing[24] * 2}px`, overflowWrap: "anywhere" }}>{title}</Typography> },
+              { title: "作者", dataIndex: "bookAuthor", key: "author", width: tokens.spacing[24] + tokens.spacing[6], ellipsis: true, render: (author: string) => <Typography variant="body2" noWrap title={author}>{author || "—"}</Typography> },
+              { title: "格式", dataIndex: "format", key: "format", width: tokens.spacing[20], render: (format: string) => <Chip label={format} size="small" variant="outlined" /> },
+              { title: "移入时间", dataIndex: "deletedAt", key: "deleted", width: tokens.spacing[24] + tokens.spacing[6], render: (value: string) => <Typography component="time" dateTime={value} variant="body2" sx={{ whiteSpace: "nowrap" }}>{formatDeletedDate(value)}</Typography> },
+              { title: "剩余", key: "remaining", width: tokens.spacing[20], render: (_, entry) => {
+                const days = getRemainingDays(entry.expiresAt);
+                return <Typography variant="body2" color={days < 5 ? "warning.main" : "text.secondary"} sx={{ whiteSpace: "nowrap" }}>{days} 天</Typography>;
+              } },
+              { title: "操作", key: "actions", width: tokens.spacing[24] * 2 + tokens.spacing[4], render: (_, entry) => <Stack direction="row" sx={{ gap: `${tokens.spacing[2]}px`, whiteSpace: "nowrap" }}>
+                <Button variant="outlined" disabled={busy || !can("settings.recycle.restore")} onClick={() => void openPreview(entry, "RESTORE")}>恢复</Button>
+                {can("settings.recycle.purge") && <Button color="error" variant="outlined" disabled={busy} aria-label={`永久清理${entry.bookTitle}`} onClick={() => void openPreview(entry, "PURGE")}>永久清理</Button>}
+              </Stack> },
+            ]}
+          />
+        )}
+      </Stack>
 
       <Dialog open={Boolean(operationTarget)} onClose={() => !busy && setOperationTarget(null)} maxWidth="sm" fullWidth>
         <DialogTitle>{operationTarget?.type === "RESTORE" ? "确认恢复这本书" : "确认永久清理"}</DialogTitle>

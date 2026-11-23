@@ -21,7 +21,7 @@ describe("FileOperationsPage", () => {
   it("用紧凑表格呈现任务，并移除已完成阶段的重复信息", async () => {
     render(<TestProviders><FileOperationsPage /></TestProviders>);
 
-    const table = await screen.findByRole("table", { name: "操作日志列表" });
+    const table = await screen.findByRole("table", { name: "文件操作记录" });
     expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
       "任务",
       "书籍",
@@ -48,32 +48,33 @@ describe("FileOperationsPage", () => {
 
     render(<TestProviders><FileOperationsPage /></TestProviders>);
 
-    expect(await screen.findByRole("heading", { name: "暂无文件任务" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "暂无文件操作记录" })).toBeInTheDocument();
     expect(screen.getByText("书籍操作与上传任务会显示在这里。")).toBeInTheDocument();
   });
 
   it("使用服务端页码和准确总数，失败时显示错误", async () => {
     render(<TestProviders><FileOperationsPage /></TestProviders>);
     await screen.findByText("声之来信");
-    expect(api.listFileTaskHistoryPage).toHaveBeenCalledWith(0, 10);
-    expect(screen.getByText(/共 4 条/)).toBeInTheDocument();
+    expect(api.listFileTaskHistoryPage).toHaveBeenCalledWith(0, 5);
+    expect(screen.getByText("共 4 条")).toBeInTheDocument();
+    expect(screen.queryByText(/第 1–/)).not.toBeInTheDocument();
     vi.mocked(api.listFileTaskHistoryPage).mockRejectedValueOnce(new Error("offline"));
     // Refresh query through the page action to exercise the visible failure state.
     screen.getByRole("button", { name: "刷新" }).click();
-    expect(await screen.findByText("无法读取操作日志，请刷新重试。")).toBeInTheDocument();
+    expect(await screen.findByText("无法加载文件操作记录，请刷新重试。")).toBeInTheDocument();
   });
 
   it("切换到下一页时向服务端请求第二页，保持返回顺序", async () => {
-    vi.mocked(api.listFileTaskHistoryPage).mockImplementation(async (page = 0, _pageSize = 10) => ({
+    vi.mocked(api.listFileTaskHistoryPage).mockImplementation(async (page = 0, _pageSize = 5) => ({
       items: page === 0
         ? [{ id: "page-0", type: "BOOK_UPLOAD", action: null, status: "READY_FOR_REVIEW", title: "第一页首项", originalFilename: "one.epub", createdAt: "2026-08-20T07:02:00Z", updatedAt: "2026-08-20T07:02:00Z" }]
         : [{ id: "page-1", type: "BOOK_UPLOAD", action: null, status: "FAILED", title: "第二页首项", originalFilename: "two.epub", createdAt: "2026-08-19T07:02:00Z", updatedAt: "2026-08-19T07:02:00Z" }],
-      total: 11,
+      total: 6,
     }));
     render(<TestProviders><FileOperationsPage /></TestProviders>);
     await screen.findByText("第一页首项");
     fireEvent.click(screen.getByTitle("下一页"));
     await screen.findByText("第二页首项");
-    expect(api.listFileTaskHistoryPage).toHaveBeenLastCalledWith(1, 10);
+    expect(api.listFileTaskHistoryPage).toHaveBeenLastCalledWith(1, 5);
   });
 });

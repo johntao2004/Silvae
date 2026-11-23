@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @Profile("api")
 @RequestMapping("/api/v1")
-// 区分主人 SMTP 管理与个人邮箱恢复接口，并在邮件相关入口执行限流。
+// 区分站点所有者 SMTP 管理与个人邮箱恢复接口，并在邮件相关入口执行限流。
 // Separates owner SMTP management from personal recovery endpoints and rate-limits mail-related entry points.
 public class RecoveryController {
     private final MailService mail;
@@ -53,5 +53,6 @@ public class RecoveryController {
     public record EmailInput(@NotBlank @Email @Size(max=320) String email) {}
     public record BindInput(@NotBlank @Email @Size(max=320) String email,@NotBlank @Size(max=200) String password) {}
     public record TokenInput(@NotBlank @Size(max=100) String token) {}
-    public record ResetInput(@NotBlank @Size(max=100) String token,@NotBlank @Size(max=200) String password) {}
+    public record ResetInput(@NotBlank @Size(max=100) String token,
+            @NotBlank @Size(max = PasswordPolicyService.MAX_PASSWORD_LENGTH) String password) {}
 }

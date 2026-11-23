@@ -3,6 +3,7 @@ package com.elexvx.humite.common;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
+import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -51,6 +52,18 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ProblemDetail unexpected(Exception exception, HttpServletRequest request) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sql) {
+                if ("HU001".equals(sql.getSQLState())) {
+                    return apiException(ApiException.conflict("LIST_TITLE_EXISTS",
+                            "已有同名书单，请换一个名称。"), request);
+                }
+                if ("HU002".equals(sql.getSQLState())) {
+                    return apiException(ApiException.conflict("LIST_TITLE_EXISTS",
+                            "已有同名合集，请换一个名称。"), request);
+                }
+            }
+        }
         if (exception instanceof AccessDeniedException || exception instanceof AuthenticationException) {
             var status = exception instanceof AuthenticationException ? HttpStatus.UNAUTHORIZED : HttpStatus.FORBIDDEN;
             var problem = ProblemDetail.forStatusAndDetail(status, status == HttpStatus.UNAUTHORIZED

@@ -1,11 +1,7 @@
-import { Box } from "@/ui/primitives";
-import { Stack } from "@/ui/primitives";
-import { Typography } from "@/ui/primitives";
-import { flattenSx, useTheme } from "@/ui/primitives";
+import { Box, flattenSx, headingTypographySx, mergeClassNames, Stack, Typography, useTheme } from "@/ui/primitives";
 import type { SxProps, Theme } from "@/ui/primitives";
 import { createContext, useContext, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { Button } from "../ui/buttons";
 import { ArrowBackRounded } from "../ui/icons";
 
 export const EmbeddedSettingsContext = createContext(false);
@@ -15,7 +11,7 @@ export const pageWidthSx = {
   width: "100%",
   maxWidth: "none",
   mx: "auto",
-  px: { xs: `${tokens.spacing[3]}px`, sm: `${tokens.spacing[6]}px` },
+  px: { xs: `${tokens.spacing[4]}px`, sm: `${tokens.spacing[6]}px` },
 };
 
 // 阅读器导航与正文共用准确页面框架，避免平板和小型笔记本上上下导航栏错位。
@@ -38,13 +34,13 @@ export function PageContainer({ children, sx }: { children: ReactNode; sx?: SxPr
   return (
     <Box sx={{
       ...pageWidthSx,
-      pb: { xs: 6, md: 8 },
+      pb: { xs: 4, md: 8 },
       ...flattenSx(sx, theme),
       width: pageWidthSx.width,
       maxWidth: pageWidthSx.maxWidth,
       mx: pageWidthSx.mx,
       px: pageWidthSx.px,
-      pt: { xs: `${tokens.spacing[4]}px`, sm: `${tokens.spacing[6]}px` },
+      pt: { xs: `${tokens.spacing[3]}px`, sm: `${tokens.spacing[6]}px` },
     }}>{children}</Box>
   );
 }
@@ -60,27 +56,51 @@ export function PageTitle({
   className?: string;
   id?: string;
 }) {
-  return <Typography id={id} className={className} variant="h3" component="h1" color={color} sx={{ fontSize: { xs: tokens.typography.fontSize.headingSm, sm: tokens.typography.fontSize.heading }, overflowWrap: "anywhere" }}>{children}</Typography>;
+  return (
+    <Box
+      id={id}
+      component="h1"
+      className={mergeClassNames("bk-typography", "bk-typography-h3", className)}
+      sx={{
+        margin: 0,
+        ...headingTypographySx("h1"),
+        ...(color ? { color } : {}),
+        fontSize: { xs: 26, sm: 32 },
+        lineHeight: { xs: "32px", sm: "36px" },
+        overflowWrap: "anywhere",
+      }}
+    >
+      {children}
+    </Box>
+  );
 }
 
-export function PageBackAction({ children, to, onClick }: {
+export function PageBackAction({ children, to, onClick, inline = false }: {
   children: ReactNode;
   to?: string;
   onClick?: () => void;
+  inline?: boolean;
 }) {
-  return <Box className="bk-page-back" sx={{ display: "flex", justifyContent: "flex-start", mb: `${tokens.spacing[5]}px` }}>
-    <Button component={to ? Link : undefined} to={to} onClick={onClick} variant="outlined" startIcon={<ArrowBackRounded />}>{children}</Button>
+  const label = typeof children === "string" || typeof children === "number" ? String(children) : "返回";
+  const control = to
+    ? <Link to={to} className="bk-back-button" aria-label={label} title={label}><ArrowBackRounded aria-hidden="true" /></Link>
+    : <button type="button" className="bk-back-button" aria-label={label} title={label} onClick={onClick}><ArrowBackRounded aria-hidden="true" /></button>;
+  if (inline) return control;
+  return <Box className="bk-page-back" sx={{ display: "flex", justifyContent: "flex-start", mb: `${tokens.spacing[3]}px` }}>
+    {control}
   </Box>;
 }
 
 export function PageHeader({
   eyebrow,
   title,
+  back,
   embeddedDescription,
   action,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
+  back?: ReactNode;
   // 仅嵌入式设置标题支持说明文案，标准页头不显示描述。
   /** Supporting copy for embedded settings headings; standard page headers omit descriptions. */
   embeddedDescription?: string;
@@ -88,32 +108,35 @@ export function PageHeader({
 }) {
   const embedded = useContext(EmbeddedSettingsContext);
   return (
-    <Stack sx={{ mb: embedded ? 0 : `${tokens.spacing[6]}px` }}>
-      {!embedded && <Typography variant="overline" color="text.secondary" sx={{ fontWeight: tokens.typography.fontWeight.medium }}>{eyebrow}</Typography>}
+    <Stack sx={{ mb: embedded ? 0 : { xs: `${tokens.spacing[3]}px`, sm: `${tokens.spacing[6]}px` } }}>
+      {!embedded && eyebrow && <Typography variant="overline" color="text.secondary" sx={{ fontWeight: tokens.typography.fontWeight.medium, display: { xs: "none", sm: "block" } }}>{eyebrow}</Typography>}
       <Stack
-        direction={{ xs: "column", sm: "row" }}
+        direction="row"
         sx={{
           minWidth: 0,
-          alignItems: { xs: "stretch", sm: "center" },
+          alignItems: "center",
           flexWrap: "wrap",
           justifyContent: "space-between",
-          gap: embedded ? 2 : 3,
+          gap: embedded ? 2 : { xs: 1.5, sm: 3 },
         }}
       >
-        <Box sx={{ minWidth: 0 }}>
-          {embedded
-            ? <Typography variant="h5" component="h2">{title}</Typography>
-            : <PageTitle>{title}</PageTitle>}
-        </Box>
-        {action && <ActionToolbar>{action}</ActionToolbar>}
+        <Stack direction="row" sx={{ minWidth: 0, alignItems: "center", gap: "12px" }}>
+          {back}
+          <Box sx={{ minWidth: 0 }}>
+            {embedded
+              ? <Typography variant="h5" component="h2">{title}</Typography>
+              : <PageTitle>{title}</PageTitle>}
+          </Box>
+        </Stack>
+        {action && <ActionToolbar compactMobile>{action}</ActionToolbar>}
       </Stack>
       {embedded && embeddedDescription && <Typography color="text.secondary" sx={{ mt: 1.5, maxWidth: 720 }}>{embeddedDescription}</Typography>}
     </Stack>
   );
 }
 
-export function ActionToolbar({ children }: { children: ReactNode }) {
-  return <Stack className="bk-action-toolbar" direction="row" sx={{ minWidth: 0, maxWidth: "100%", width: { xs: "100%", sm: "auto" }, ml: "auto", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 1.5 }}>{children}</Stack>;
+export function ActionToolbar({ children, compactMobile = false }: { children: ReactNode; compactMobile?: boolean }) {
+  return <Stack className="bk-action-toolbar" direction="row" sx={{ minWidth: 0, maxWidth: "100%", width: compactMobile ? "auto" : { xs: "100%", sm: "auto" }, ml: "auto", justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap", gap: 1.5 }}>{children}</Stack>;
 }
 
 /** Align section actions with the shared page toolbar, above the section fields. */

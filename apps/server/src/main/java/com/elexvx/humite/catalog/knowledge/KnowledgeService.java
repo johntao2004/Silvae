@@ -7,6 +7,7 @@ import com.elexvx.humite.filemanagement.infrastructure.KnowledgeTextGateway;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -35,7 +36,8 @@ public class KnowledgeService {
             var sample = text.sample(file);
             if (sample.passages().isEmpty()) throw ApiException.badRequest("KNOWLEDGE_NO_TEXT", "没有可提取的文本；扫描版 PDF 不执行 OCR。");
             var result = ai.extractKnowledge(sample.passages().stream().map(p -> new AiMetadataService.KnowledgePassage(p.locator(), p.text())).toList());
-            var current = books.findPreferredFile(bookId).orElseThrow();
+            var current = books.findPreferredFile(bookId)
+                    .orElseThrow(() -> ApiException.notFound("BOOK_FILE_NOT_FOUND", "书籍文件不可用。"));
             if (!current.id().equals(file.id()) || !current.fingerprint().equals(file.fingerprint())) {
                 throw ApiException.conflict("KNOWLEDGE_SOURCE_CHANGED", "书籍已变化，请重新提取知识点。");
             }
@@ -43,6 +45,10 @@ public class KnowledgeService {
             else drafts.completeGenerated(bookId, operation, result.providerId(), sample.passages().size(), sample.totalSections(), result.points());
         } catch (ApiException exception) {
             knowledge.fail(bookId, operation); throw exception;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            knowledge.fail(bookId, operation);
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "KNOWLEDGE_GENERATION_INTERRUPTED", "知识点提取被中断，请稍后重试。");
         } catch (Exception exception) {
             knowledge.fail(bookId, operation);
             throw ApiException.badRequest("KNOWLEDGE_GENERATION_FAILED", "知识点提取失败，请检查文件是否可解析和 AI 平台配置后重试。");

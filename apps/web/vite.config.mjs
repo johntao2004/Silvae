@@ -18,11 +18,51 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
-            { name: "vendor-three", test: /node_modules\/.*\/three\// },
-            { name: "vendor-editor", test: /node_modules\/.*\/(@tiptap|prosemirror-)/ },
-            { name: "vendor-antv-g", test: /node_modules\/.*\/(@antv\/(g|g-[^/]+|util)|gl-matrix)\// },
-            { name: "vendor-graph-layout", test: /node_modules\/.*\/(@antv\/(layout|algorithm|graphlib)|d3-[^/]+)\// },
-            { name: "vendor-g6", test: /node_modules\/.*\/(@antv\/g6|@ant-design\/graphs)\// },
+            {
+              name: "vendor-react",
+              priority: 40,
+              test: /[\\/]node_modules[\\/](react|react-dom|scheduler|react-router(?:-dom)?)[\\/]/,
+            },
+            {
+              name: "vendor-antd",
+              priority: 30,
+              test: /[\\/]node_modules[\\/](antd|@ant-design[\\/](icons|icons-svg|cssinjs(?:-utils)?|colors|fast-color)|@rc-component|rc-[^\\/]+)[\\/]/,
+            },
+            {
+              name: "vendor-query",
+              priority: 25,
+              test: /[\\/]node_modules[\\/]@tanstack[\\/](react-query|query-core)[\\/]/,
+            },
+            {
+              name: "vendor-three",
+              priority: 10,
+              includeDependenciesRecursively: false,
+              test: /[\\/]node_modules[\\/]three[\\/]/,
+            },
+            {
+              name: "vendor-editor",
+              priority: 10,
+              includeDependenciesRecursively: false,
+              test: /[\\/]node_modules[\\/](@tiptap|prosemirror-[^\\/]+)[\\/]/,
+            },
+            {
+              name: "vendor-antv-g",
+              priority: 10,
+              includeDependenciesRecursively: false,
+              test: /[\\/]node_modules[\\/](@antv[\\/](g|g-[^\\/]+|util)|gl-matrix)[\\/]/,
+            },
+            {
+              name: "vendor-graph-layout",
+              priority: 10,
+              includeDependenciesRecursively: false,
+              test: /[\\/]node_modules[\\/](@antv[\\/](layout|algorithm|graphlib)|d3-[^\\/]+)[\\/]/,
+            },
+            {
+              name: "vendor-g6",
+              priority: 10,
+              includeDependenciesRecursively: false,
+              test: /[\\/]node_modules[\\/](@antv[\\/]g6|@ant-design[\\/]graphs)[\\/]/,
+            },
           ],
         },
       },
@@ -35,7 +75,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: Number(process.env.HUMITE_WEB_PORT || 4173),
     strictPort: true,
-    allowedHosts: ["terminal.local", "localhost", "127.0.0.1", "johns-MacBook-Air.local"],
+    allowedHosts: ["terminal.local", "localhost", "127.0.0.1"],
     proxy: {
       "/robots.txt": {target: apiProxyTarget, changeOrigin: true},
       "/api": {
@@ -59,7 +99,7 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
-    css: true,
+    css: false,
     maxWorkers: 2,
     testTimeout: 30_000,
   },

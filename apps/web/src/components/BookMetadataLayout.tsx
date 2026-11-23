@@ -11,10 +11,20 @@ export const bookMetadataTitleSx = {
 
 export const bookMetadataFieldsSx = {
   display: "grid",
-  gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "repeat(2, minmax(0, 1fr))" },
-  columnGap: `${tokens.spacing[6]}px`,
-  rowGap: `${tokens.spacing[4]}px`,
+  gridTemplateColumns: "minmax(0, 1fr)",
+  rowGap: `${tokens.spacing[3]}px`,
   minWidth: 0,
+};
+
+export const bookDetailMetadataFieldsSx = {
+  display: "grid",
+  minWidth: 0,
+  gridTemplateColumns: {
+    xs: "minmax(0, 1fr)",
+    sm: "repeat(auto-fill, minmax(min(100%, 230px), 1fr))",
+  },
+  rowGap: { xs: `${tokens.spacing[3]}px`, sm: `${tokens.spacing[4]}px` },
+  columnGap: { xs: 0, sm: `${tokens.spacing[6]}px` },
 };
 
 export function BookMetadataLayout({ coverUrl, coverAlt, coverActions, children }: {

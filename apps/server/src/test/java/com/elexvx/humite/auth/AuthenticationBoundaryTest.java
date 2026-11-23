@@ -1,4 +1,4 @@
-// 通过请求级测试区分匿名、角色不足与 CSRF 失败，保护公开恢复入口和主人专属设置的边界。
+// 通过请求级测试区分匿名、角色不足与 CSRF 失败，保护公开恢复入口和站点所有者专属设置的边界。
 // Uses request-level tests to distinguish anonymous access, insufficient roles and CSRF failures across recovery and owner-only settings.
 package com.elexvx.humite.auth;
 
@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 
 import com.elexvx.humite.users.UserRepository;
@@ -61,7 +63,7 @@ class AuthenticationBoundaryTest {
             org.mockito.Mockito.when(users.findByUsername(org.mockito.ArgumentMatchers.anyString())).thenAnswer(invocation -> {
                 String name = invocation.getArgument(0);
                 var role = switch (name) { case "owner" -> com.elexvx.humite.users.UserRole.OWNER; case "admin" -> com.elexvx.humite.users.UserRole.ADMIN; default -> com.elexvx.humite.users.UserRole.MEMBER; };
-                return java.util.Optional.of(new com.elexvx.humite.users.HumiteUser(java.util.UUID.randomUUID(), name, name, "unused", role, com.elexvx.humite.users.UserStatus.ACTIVE, false, null, null));
+                return java.util.Optional.of(new com.elexvx.humite.users.HumiteUser(java.util.UUID.randomUUID(), name, name, "unused", role, com.elexvx.humite.users.UserStatus.ACTIVE, "temporary".equals(name), null, null));
             });
             return users;
         }
@@ -80,6 +82,7 @@ class AuthenticationBoundaryTest {
     @RestController
     static class Probe {
         @GetMapping("/api/v1/auth/session") String session() { return "private"; }
+        @GetMapping("/api/v1/auth/setup-status") String setupStatus() { return "initialized"; }
         @GetMapping("/api/v1/auth/csrf") String csrf() { return "public"; }
     }
     @Autowired WebApplicationContext context;
@@ -96,6 +99,12 @@ class AuthenticationBoundaryTest {
     @Test void anonymousSessionIs401NotAnAuthorizationFailure() throws Exception {
         mvc.perform(get("/api/v1/auth/session")).andExpect(status().isUnauthorized())
             .andExpect(content().contentType("application/problem+json;charset=UTF-8"));
+    }
+    @Test void temporarySessionCanCheckInitializationButCannotOpenProtectedContent() throws Exception {
+        var temporary = user("temporary").roles("MEMBER");
+        mvc.perform(get("/api/v1/auth/setup-status").with(temporary)).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/file-task-history").with(temporary)).andExpect(status().isPreconditionRequired())
+            .andExpect(jsonPath("$.code").value("PASSWORD_CHANGE_REQUIRED"));
     }
     // 随包字体与 /assets 一样是公开静态资源：登录页也要用，且不应因 401 产生控制台错误；私有 API 仍需登录。
     // Bundled fonts are public static assets like /assets (the login page needs them); private APIs still require authentication.

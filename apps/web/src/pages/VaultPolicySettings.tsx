@@ -2,36 +2,55 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { vaultAccessApi } from "../features/vault/access-api";
 import { useAuth } from "../auth/AuthContext";
+import { AutoSaveError, AutoSaveStatus, type AutoSaveState } from "../hooks/useAutoSaveForm";
 import { Alert } from "../ui/feedback";
 import { Stack, Typography } from "../ui/primitives";
 import { Switch } from "../ui/forms";
 import { Skeleton } from "../ui/antd";
 import { publishVaultPolicyChange, vaultNavigationStatusKey } from "../features/vault/use-vault-navigation-status";
+import "./settings-page.css";
 
 export function VaultPolicySettings() {
-  const { user } = useAuth(); const client = useQueryClient();
+  const { user } = useAuth();
+  const client = useQueryClient();
   const query = useQuery({ queryKey: ["vault-policy"], queryFn: vaultAccessApi.policy });
-  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [saveState, setSaveState] = useState<AutoSaveState>("idle");
+  const [error, setError] = useState("");
   if (query.isPending) return <Skeleton active />;
-  if (query.isError) return <Alert severity="error">无法读取禁书区设置，请刷新重试。</Alert>;
-  return <Stack className="bk-form-section" spacing={2}>
-    <Stack direction={{ xs: "column", sm: "row" }} sx={{ alignItems: { xs: "flex-start", sm: "center" }, justifyContent: "space-between", gap: 2 }}>
-      <Stack spacing={1} sx={{ minWidth: 0 }}>
-        <Typography variant="h5">禁书区</Typography>
-        <Typography color="text.secondary">开启后，具备禁书区权限的用户须绑定身份验证器，通过 2FA 验证后进入。关闭后暂停访问，已加密内容仍保留。</Typography>
+  if (query.isError) return <Alert severity="error">无法读取加密书库设置，请刷新重试。</Alert>;
+  return (
+    <Stack className="bk-settings-card" spacing={2}>
+      <Stack direction="row" data-testid="vault-policy-header" sx={{ alignItems: "center", justifyContent: "space-between", gap: 2, minWidth: 0 }}>
+        <Typography component="h3" variant="h5" sx={{ minWidth: 0, overflowWrap: "anywhere" }}>加密书库</Typography>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexShrink: 0 }}>
+          <AutoSaveStatus state={saveState} />
+          <Switch
+            checked={query.data.enabled}
+            disabled={saveState === "saving" || user?.role !== "OWNER" || (!query.data.configured && !query.data.enabled)}
+            slotProps={{ input: { "aria-label": "启用加密书库" } }}
+            onChange={async (_, enabled) => {
+              setSaveState("saving");
+              setError("");
+              try {
+                const saved = await vaultAccessApi.savePolicy(enabled, query.data.revision);
+                client.setQueryData(["vault-policy"], saved);
+                if (user?.id) {
+                  const navKey = vaultNavigationStatusKey(user.id);
+                  await client.cancelQueries({ queryKey: navKey });
+                  publishVaultPolicyChange(saved.enabled, user.id, client);
+                }
+                setSaveState("saved");
+              } catch (reason) {
+                setSaveState("idle");
+                setError(reason instanceof Error ? reason.message : "保存失败");
+              }
+            }}
+          />
+        </Stack>
       </Stack>
-      <Switch checked={query.data.enabled} disabled={busy || user?.role !== "OWNER" || (!query.data.configured && !query.data.enabled)} slotProps={{ input: { "aria-label": "启用禁书区" } }} sx={{ alignSelf: { xs: "flex-end", sm: "auto" }, flexShrink: 0 }} onChange={async (_, enabled) => {
-        setBusy(true); setError("");
-        try { const saved = await vaultAccessApi.savePolicy(enabled, query.data.revision); client.setQueryData(["vault-policy"], saved); if (user?.id) {
-          const navKey = vaultNavigationStatusKey(user.id);
-          await client.cancelQueries({ queryKey: navKey });
-          publishVaultPolicyChange(saved.enabled, user.id, client);
-        } }
-        catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); }
-        finally { setBusy(false); }
-      }} />
+      <Typography color="text.secondary">有访问权限的用户需绑定身份验证器，每次进入时验证身份。关闭后所有用户都无法进入，已有的加密书籍会保留。</Typography>
+      {!query.data.configured && <Alert severity="warning">尚未配置身份验证器服务。请在服务器配置 HUMITE_TWO_FACTOR_ENCRYPTION_KEY 后重启，再启用加密书库。</Alert>}
+      <AutoSaveError error={error} />
     </Stack>
-    {!query.data.configured && <Alert severity="warning">尚未配置身份验证器服务。请在服务器配置 HUMITE_TWO_FACTOR_ENCRYPTION_KEY 后重启，再启用禁书区。</Alert>}
-    {error && <Alert severity="error">{error}</Alert>}
-  </Stack>;
+  );
 }

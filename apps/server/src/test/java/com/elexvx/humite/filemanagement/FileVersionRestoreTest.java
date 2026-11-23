@@ -84,7 +84,7 @@ class FileVersionRestoreTest {
                 fingerprints.sha256(archive), Files.size(archive), "METADATA_WRITE", actorId,
                 OffsetDateTime.now().minusMinutes(1), OffsetDateTime.now().plusDays(30), null);
 
-        when(users.findByUsername("owner")).thenReturn(Optional.of(new HumiteUser(actorId, "owner", "主人", "hash",
+        when(users.findByUsername("owner")).thenReturn(Optional.of(new HumiteUser(actorId, "owner", "站点所有者", "hash",
                 UserRole.OWNER, UserStatus.ACTIVE, false, OffsetDateTime.now(), null)));
         when(books.findFile(fileId)).thenReturn(Optional.of(file));
         when(roots.findById(rootId)).thenReturn(Optional.of(root));

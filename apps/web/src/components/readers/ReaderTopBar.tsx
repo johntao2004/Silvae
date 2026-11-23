@@ -16,9 +16,9 @@ import { Stack } from "@/ui/primitives";
 import { Toolbar } from "@/ui/primitives";
 import { Tooltip } from "@/ui/feedback";
 import { Typography } from "@/ui/primitives";
-import { useMediaQuery } from "@/ui/primitives";
 import { useState, type MouseEvent, type MouseEventHandler, type ReactNode } from "react";
 import type { BookFormat } from "../../domain/types";
+import { useDesktopViewport } from "../../hooks/useIsMobileViewport";
 import { tokens } from "../../theme/tokens";
 import { readerWidthSx, topNavigationSurfaceSx } from "../PageHeader";
 import { READER_PROGRESS_HEIGHT } from "./reader-layout";
@@ -42,6 +42,7 @@ interface ReaderTopBarProps {
   privateActions?: boolean;
   notesAvailable?: boolean;
   assistant?: ReactNode;
+  collapsed?: boolean;
 }
 
 export function ReaderTopBar({
@@ -63,13 +64,19 @@ export function ReaderTopBar({
   notesLabel = "本书笔记",
   notesAvailable = privateActions,
   assistant,
+  collapsed = false,
 }: ReaderTopBarProps) {
   const safeProgress = Math.max(0, Math.min(100, progressPercent));
   const [moreAnchor, setMoreAnchor] = useState<HTMLElement | null>(null);
-  const compactChrome = !useMediaQuery(`(min-width: ${tokens.layout.breakpointMobile}px)`);
+  const compactChrome = !useDesktopViewport();
   const hasSecondaryActions = tableOfContentsAvailable || privateActions || notesAvailable;
   const closeMore = () => setMoreAnchor(null);
-  const touchIconSx = { width: tokens.layout.touchTarget, height: tokens.layout.touchTarget };
+  const touchIconSx = {
+    minWidth: tokens.layout.touchTarget,
+    width: tokens.layout.touchTarget,
+    minHeight: tokens.layout.touchTarget,
+    height: tokens.layout.touchTarget,
+  };
 
   return (
     <AppBar
@@ -79,69 +86,76 @@ export function ReaderTopBar({
       elevation={0}
       data-reader-format={format}
       data-reader-layout="shared"
-      sx={topNavigationSurfaceSx}
+      sx={collapsed ? { ...topNavigationSurfaceSx, minHeight: 0 } : topNavigationSurfaceSx}
     >
-      <Toolbar
-        component="nav"
-        aria-label="阅读器顶部导航"
-        sx={{
-          ...readerWidthSx,
-          minHeight: `${tokens.layout.navHeight}px !important`,
-        }}
-      >
-        <Tooltip title={backLabel}>
-          <IconButton onClick={onBack} color="inherit" aria-label={backLabel} sx={touchIconSx}><ArrowBackRounded /></IconButton>
-        </Tooltip>
-        <Box sx={{ minWidth: 0, ml: 1, flex: 1 }}>
-          <Typography variant="body2" noWrap sx={{ fontWeight: tokens.typography.fontWeight.semibold }}>{title}</Typography>
-          {!compactChrome && <Typography variant="caption" noWrap color="text.secondary" sx={{ display: "block" }}>{subtitle}</Typography>}
-        </Box>
-        {assistant}
-        {compactChrome ? <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
-          <Tooltip title="阅读设置">
-            <IconButton onClick={onOpenSettings} color="inherit" aria-label="阅读设置" sx={touchIconSx}><SettingsBrightnessOutlined /></IconButton>
+      {collapsed ? (
+        <Box
+          data-reader-chrome-collapsed="true"
+          sx={{ height: 0, overflow: "hidden", opacity: 0, pointerEvents: "none" }}
+        />
+      ) : (
+        <Toolbar
+          component="nav"
+          aria-label="阅读器顶部导航"
+          sx={{
+            ...readerWidthSx,
+            minHeight: `${tokens.layout.navHeight}px !important`,
+          }}
+        >
+          <Tooltip title={backLabel}>
+            <IconButton onClick={onBack} color="inherit" aria-label={backLabel} sx={touchIconSx}><ArrowBackRounded /></IconButton>
           </Tooltip>
-          {hasSecondaryActions && (
-            <Tooltip title="更多阅读操作">
-              <IconButton
-                onClick={(event: MouseEvent<HTMLButtonElement>) => setMoreAnchor(event.currentTarget)}
-                color="inherit"
-                aria-label="更多阅读操作"
-                aria-haspopup="menu"
-                aria-expanded={Boolean(moreAnchor)}
-                sx={touchIconSx}
-              >
-                <MoreVert />
-              </IconButton>
+          <Box sx={{ minWidth: 0, ml: 1, flex: 1 }}>
+            <Typography variant="body2" noWrap sx={{ fontWeight: tokens.typography.fontWeight.semibold }}>{title}</Typography>
+            {!compactChrome && <Typography variant="caption" noWrap color="text.secondary" sx={{ display: "block" }}>{subtitle}</Typography>}
+          </Box>
+          {assistant}
+          {compactChrome ? <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
+            <Tooltip title="阅读设置">
+              <IconButton onClick={onOpenSettings} color="inherit" aria-label="阅读设置" sx={touchIconSx}><SettingsBrightnessOutlined /></IconButton>
             </Tooltip>
-          )}
-        </Stack> : <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
-          {tableOfContentsAvailable && (
-            <Tooltip title={tableOfContentsLabel}>
-              <IconButton onClick={onOpenTableOfContents} color="inherit" aria-label={`打开${tableOfContentsLabel}`} sx={touchIconSx}><FormatListBulletedRounded /></IconButton>
+            {hasSecondaryActions && (
+              <Tooltip title="更多阅读操作">
+                <IconButton
+                  onClick={(event: MouseEvent<HTMLButtonElement>) => setMoreAnchor(event.currentTarget)}
+                  color="inherit"
+                  aria-label="更多阅读操作"
+                  aria-haspopup="menu"
+                  aria-expanded={Boolean(moreAnchor)}
+                  sx={touchIconSx}
+                >
+                  <MoreVert />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Stack> : <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
+            {tableOfContentsAvailable && (
+              <Tooltip title={tableOfContentsLabel}>
+                <IconButton onClick={onOpenTableOfContents} color="inherit" aria-label={`打开${tableOfContentsLabel}`} sx={touchIconSx}><FormatListBulletedRounded /></IconButton>
+              </Tooltip>
+            )}
+            {privateActions && <Tooltip title={bookmarked ? "移除书签" : "添加书签"}>
+              <span>
+                <IconButton disabled={bookmarkBusy} onClick={onToggleBookmark} color="inherit" aria-label="切换书签" aria-pressed={bookmarked} sx={touchIconSx}>
+                  {bookmarked ? <BookmarkRounded color="primary" /> : <BookmarkBorderRounded />}
+                </IconButton>
+              </span>
+            </Tooltip>}
+            <Tooltip title="阅读设置">
+              <IconButton onClick={onOpenSettings} color="inherit" aria-label="阅读设置" sx={touchIconSx}><SettingsBrightnessOutlined /></IconButton>
             </Tooltip>
-          )}
-          {privateActions && <Tooltip title={bookmarked ? "移除书签" : "添加书签"}>
-            <span>
-              <IconButton disabled={bookmarkBusy} onClick={onToggleBookmark} color="inherit" aria-label="切换书签" aria-pressed={bookmarked} sx={touchIconSx}>
-                {bookmarked ? <BookmarkRounded color="primary" /> : <BookmarkBorderRounded />}
-              </IconButton>
-            </span>
-          </Tooltip>}
-          <Tooltip title="阅读设置">
-            <IconButton onClick={onOpenSettings} color="inherit" aria-label="阅读设置" sx={touchIconSx}><SettingsBrightnessOutlined /></IconButton>
-          </Tooltip>
-          {notesAvailable && <Tooltip title={notesLabel}>
-            <IconButton onClick={onOpenNotes} color="inherit" aria-label="打开笔记" sx={touchIconSx}><NotesOutlined /></IconButton>
-          </Tooltip>}
-        </Stack>}
-      </Toolbar>
+            {notesAvailable && <Tooltip title={notesLabel}>
+              <IconButton onClick={onOpenNotes} color="inherit" aria-label="打开笔记" sx={touchIconSx}><NotesOutlined /></IconButton>
+            </Tooltip>}
+          </Stack>}
+        </Toolbar>
+      )}
       <Box sx={{ height: READER_PROGRESS_HEIGHT, bgcolor: "divider" }}>
         <Box sx={{ height: "100%", width: `${safeProgress}%`, bgcolor: "primary.main", transition: "width 180ms ease" }} />
       </Box>
       <Menu
         anchorEl={moreAnchor}
-        open={Boolean(moreAnchor)}
+        open={Boolean(moreAnchor) && !collapsed}
         onClose={closeMore}
         slotProps={{ paper: { sx: { minWidth: `calc(100vw - ${tokens.spacing[8]}px)`, maxWidth: `calc(100vw - ${tokens.spacing[8]}px)`, maxHeight: `calc(100dvh - ${tokens.spacing[8]}px)`, overflowY: "auto", overscrollBehavior: "contain" } } }}
       >

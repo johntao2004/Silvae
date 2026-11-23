@@ -16,9 +16,10 @@ interface ReadingLine {
 
 export type PdfReadingBlock =
   | { kind: "paragraph"; text: string }
-  | { kind: "heading"; text: string }
+  | { kind: "heading"; text: string; chapterStart?: boolean; notesSection?: boolean; bibliographySection?: boolean }
   | { kind: "toc-entry"; text: string; pageLabel: string }
-  | { kind: "footnote"; marker: string; text: string };
+  | { kind: "footnote"; marker: string; text: string }
+  | { kind: "reference"; marker: string; text: string };
 
 export function shouldJoinPdfPageBoundaryParagraphs(previous: PdfReadingBlock, next: PdfReadingBlock) {
   if (previous.kind !== "paragraph" || next.kind !== "paragraph") return false;
@@ -42,10 +43,66 @@ export type PdfInlineTextPart =
   | { kind: "footnote-reference"; marker: string };
 
 export function pdfTextToReadingBlocks(items: unknown[]): PdfReadingBlock[] {
-  const lines = buildLines(items);
+  const lines = splitTrailingFootnoteSectionHeadings(buildLines(items));
   if (lines.length === 0) return [];
   if (isTableOfContents(lines)) return tableOfContentsBlocks(lines);
-  return reflowParagraphs(lines).map(readingBlockFromParagraph);
+  const chapterLines = findChapterHeadingLines(lines);
+  const blocks: PdfReadingBlock[] = [];
+  let bodyLines: ReadingLine[] = [];
+  let title = "";
+  const flushBody = () => {
+    blocks.push(...reflowParagraphs(bodyLines).map(readingBlockFromParagraph));
+    bodyLines = [];
+  };
+  const flushTitle = () => {
+    if (title) blocks.push({ kind: "heading", text: title, chapterStart: true });
+    title = "";
+  };
+  for (const line of lines) {
+    if (chapterLines.has(line)) {
+      flushBody();
+      title += lineSeparator(title, line.text) + line.text;
+    } else {
+      flushTitle();
+      bodyLines.push(line);
+    }
+  }
+  flushTitle();
+  flushBody();
+  return blocks;
+}
+
+function splitTrailingFootnoteSectionHeadings(lines: ReadingLine[]) {
+  return lines.flatMap((line) => {
+    const match = line.text.match(/^(.+[。.!！？?；;])\s*(注\s*释)$/u);
+    if (!match?.[1] || !match[2]) return [line];
+    const headingWidth = line.height * 2;
+    return [
+      { ...line, text: match[1], endX: Math.max(line.x, line.endX - headingWidth) },
+      { ...line, text: match[2], x: Math.max(line.x, line.endX - headingWidth) },
+    ];
+  });
+}
+
+function findChapterHeadingLines(lines: ReadingLine[]) {
+  // 按正文字符数估计常用字号，只把明显放大且居中的原文标题作为篇章起点。
+  // Weight font sizes by text length, and reserve chapter breaks for enlarged, centered source titles.
+  const fontWeights = new Map<number, number>();
+  lines.forEach(line => {
+    const height = Math.round(line.height);
+    fontWeights.set(height, (fontWeights.get(height) ?? 0) + line.text.length);
+  });
+  const bodyHeight = [...fontWeights].sort((left, right) => right[1] - left[1])[0]?.[0] ?? 0;
+  const bodyLines = lines.filter(line => Math.abs(line.height - bodyHeight) <= bodyHeight * 0.15);
+  const left = Math.min(...bodyLines.map(line => line.x));
+  const right = Math.max(...bodyLines.map(line => line.endX));
+  const center = (left + right) / 2;
+  return new Set(lines.filter(line => line.height >= bodyHeight * 1.5
+    && !parseFootnote(line.text)
+    && !isNotesSectionHeading(line.text)
+    && !isBibliographySectionHeading(line.text)
+    && !/^[一二三四五六七八九十百千零〇○\d]+$/u.test(line.text.replace(/\s/gu, ""))
+    && Math.abs((line.x + line.endX) / 2 - center) <= Math.max(line.height * 2, (right - left) * 0.1)));
 }
 
 export function pdfTextToParagraphs(items: unknown[]): string[] {
@@ -118,7 +175,8 @@ function reflowParagraphs(lines: ReadingLine[]): string[] {
     const visiblyIndented = line.x - previous.x > referenceHeight * 1.15;
     const startsFootnote = Boolean(parseFootnote(line.text));
     const startsListItem = /^(?:\d+[.)、]|[（(]\d+[)）]|[•●▪-]\s)/u.test(line.text);
-    const startsParagraph = startsFootnote || startsListItem || fontScaleChanged || visiblyIndented || verticalGap > Math.max(referenceHeight * 1.65, regularGap * 1.25);
+    const startsFootnoteSection = line.text.replace(/\s/gu, "") === "注释";
+    const startsParagraph = startsFootnote || startsFootnoteSection || startsListItem || fontScaleChanged || visiblyIndented || verticalGap > Math.max(referenceHeight * 1.65, regularGap * 1.25);
 
     if (startsParagraph) {
       paragraphs.push(paragraph.trim());
@@ -132,12 +190,21 @@ function reflowParagraphs(lines: ReadingLine[]): string[] {
 }
 
 function readingBlockFromParagraph(text: string): PdfReadingBlock {
-  if (text.replace(/\s/gu, "") === "注释") return { kind: "heading", text: "注释" };
+  if (isNotesSectionHeading(text)) return { kind: "heading", text: text.trim(), notesSection: true };
+  if (isBibliographySectionHeading(text)) return { kind: "heading", text: text.trim(), bibliographySection: true };
   return parseFootnote(text) ?? { kind: "paragraph", text };
 }
 
+function isNotesSectionHeading(value: string) {
+  return /^(?:注释|注解|注|notes?)$/iu.test(value.replace(/[\s：:。]+/gu, "").toLocaleLowerCase());
+}
+
+function isBibliographySectionHeading(value: string) {
+  return /^(?:参考文献|参考资料|引用文献|bibliography|references)$/iu.test(value.replace(/[\s：:。]+/gu, "").toLocaleLowerCase());
+}
+
 function parseFootnote(value: string): Extract<PdfReadingBlock, { kind: "footnote" }> | null {
-  const match = value.trim().match(/^(\*|\[\d+\]|［\d+］|〔\d+〕)\s*(.+)$/u);
+  const match = value.trim().match(/^(\*|\[\d+\]|［\d+］|〔\d+〕|\(\d+\)|（\d+）)\s*(.+)$/u);
   if (!match?.[1] || !match[2]) return null;
   return { kind: "footnote", marker: normalizeFootnoteMarker(match[1]), text: match[2].trim() };
 }
@@ -145,7 +212,7 @@ function parseFootnote(value: string): Extract<PdfReadingBlock, { kind: "footnot
 export function splitPdfInlineFootnoteReferences(value: string): PdfInlineTextPart[] {
   const parts: PdfInlineTextPart[] = [];
   let cursor = 0;
-  const pattern = /(\*|\[\d+\]|［\d+］|〔\d+〕)/gu;
+  const pattern = /(\*|\[\d+\]|［\d+］|〔\d+〕|\(\d+\)|（\d+）)/gu;
   for (const match of value.matchAll(pattern)) {
     const index = match.index ?? 0;
     if (index > cursor) parts.push({ kind: "text", text: value.slice(cursor, index) });

@@ -148,8 +148,8 @@
   },
   {
     "code": "knowledge.view",
-    "group": "学脉图",
-    "label": "查看书籍学脉图",
+    "group": "知识图谱",
+    "label": "查看书籍知识图谱",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -162,7 +162,7 @@
   },
   {
     "code": "knowledge.generate",
-    "group": "学脉图",
+    "group": "知识图谱",
     "label": "分析书籍正文",
     "kind": "action",
     "roles": [
@@ -175,8 +175,8 @@
   },
   {
     "code": "virtual.view",
-    "group": "书楼漫游",
-    "label": "访问书楼漫游",
+    "group": "3D 书库",
+    "label": "访问3D 书库",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -189,8 +189,8 @@
   },
   {
     "code": "articles.view",
-    "group": "文章收藏",
-    "label": "查看与阅读文章收藏",
+    "group": "文章",
+    "label": "查看和阅读文章",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -201,7 +201,7 @@
   },
   {
     "code": "articles.edit",
-    "group": "文章收藏",
+    "group": "文章",
     "label": "采集、创建、编辑和删除文章",
     "kind": "action",
     "roles": [
@@ -214,8 +214,8 @@
   },
   {
     "code": "articles.collections.edit",
-    "group": "文章收藏",
-    "label": "管理自己的选集与文章归类",
+    "group": "文章",
+    "label": "管理自己的合集及其中的文章",
     "kind": "action",
     "roles": [
       "OWNER",
@@ -243,7 +243,7 @@
   {
     "code": "booklists.edit",
     "group": "书单",
-    "label": "管理自己的书单与书目",
+    "label": "管理自己的书单",
     "kind": "action",
     "roles": [
       "OWNER",
@@ -282,8 +282,8 @@
   },
   {
     "code": "vault.use",
-    "group": "禁书库",
-    "label": "使用自己的加密禁书库",
+    "group": "加密书库",
+    "label": "访问自己的加密书库",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -294,8 +294,8 @@
   },
   {
     "code": "vault.read",
-    "group": "禁书库",
-    "label": "读取个人禁书库密文",
+    "group": "加密书库",
+    "label": "浏览和阅读自己的加密书籍",
     "kind": "action",
     "roles": [
       "OWNER",
@@ -308,8 +308,8 @@
   },
   {
     "code": "vault.upload",
-    "group": "禁书库",
-    "label": "导入与上传个人密文",
+    "group": "加密书库",
+    "label": "上传加密书籍",
     "kind": "action",
     "roles": [
       "OWNER",
@@ -322,8 +322,8 @@
   },
   {
     "code": "vault.delete",
-    "group": "禁书库",
-    "label": "删除自己的禁书密文",
+    "group": "加密书库",
+    "label": "删除自己的加密书籍",
     "kind": "action",
     "roles": [
       "OWNER",
@@ -361,7 +361,7 @@
   {
     "code": "settings.operations.view",
     "group": "文件任务",
-    "label": "访问文件任务",
+    "label": "查看文件操作记录",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -445,7 +445,7 @@
   {
     "code": "settings.sessions.view",
     "group": "在线会话",
-    "label": "访问在线会话",
+    "label": "查看登录会话",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -456,7 +456,7 @@
   {
     "code": "settings.sessions.revoke",
     "group": "在线会话",
-    "label": "撤销成员在线会话",
+    "label": "让成员退出所有登录会话",
     "kind": "action",
     "roles": [
       "OWNER",
@@ -629,7 +629,7 @@
   {
     "code": "booklists.details.view",
     "group": "书单",
-    "label": "访问书目详情",
+    "label": "访问书单详情",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -640,7 +640,7 @@
   },
   {
     "code": "articles.read",
-    "group": "文章收藏",
+    "group": "文章",
     "label": "阅读文章",
     "kind": "page",
     "roles": [
@@ -652,7 +652,7 @@
   },
   {
     "code": "articles.annotate",
-    "group": "文章收藏",
+    "group": "文章",
     "label": "创建和删除个人文章批注与书签",
     "kind": "action",
     "roles": [
@@ -666,8 +666,8 @@
   },
   {
     "code": "articles.collections.view",
-    "group": "文章收藏",
-    "label": "查看选集",
+    "group": "文章",
+    "label": "查看合集",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -678,8 +678,8 @@
   },
   {
     "code": "articles.collections.details.view",
-    "group": "文章收藏",
-    "label": "查看选集详情",
+    "group": "文章",
+    "label": "查看合集详情",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -691,7 +691,7 @@
   {
     "code": "notes.books.view",
     "group": "阅读笔记",
-    "label": "查看读书札记",
+    "label": "查看书籍笔记",
     "kind": "page",
     "roles": [
       "OWNER",
@@ -703,7 +703,7 @@
   {
     "code": "notes.articles.view",
     "group": "阅读笔记",
-    "label": "查看阅文札记",
+    "label": "查看文章笔记",
     "kind": "page",
     "roles": [
       "OWNER",

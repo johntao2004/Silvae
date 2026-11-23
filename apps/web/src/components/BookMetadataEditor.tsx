@@ -12,7 +12,7 @@ import { FormControlLabel } from "@/ui/primitives";
 import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { api } from "../api/client";
 import type { Book, BookMetadata, BookKnowledgeDraft, FileOperation, FileOperationPreview } from "../domain/types";
 import { FileOperationDialog } from "./FileOperationDialog";
@@ -109,7 +109,7 @@ function updateCachedBook(queryClient: QueryClient, updatedBook: Book) {
   const refreshableKeys = new Set([
     "books", "book", "display-books", "booklists", "booklist", "booklist-books",
     "categories", "category", "category-books", "global-search-books", "global-search-notes",
-    "annotation-books", "annotations", "notes-feed-books", "reading-posts", "book-reviews",
+    "annotation-books", "annotations", "notes-feed-books", "reading-posts",
   ]);
   const snapshots = queryClient.getQueriesData<unknown>({
     predicate: ({ queryKey }) => refreshableKeys.has(String(queryKey[0]))
@@ -127,7 +127,7 @@ function invalidateBookMetadataConsumers(queryClient: QueryClient) {
   for (const queryKey of [
     ["book"], ["books"], ["display-books"], ["booklists"], ["booklist"], ["booklist-books"],
     ["categories"], ["category"], ["category-books"], ["global-search-books"], ["global-search-notes"],
-    ["annotation-books"], ["annotations"], ["notes-feed-books"], ["reading-posts"], ["book-reviews"],
+    ["annotation-books"], ["annotations"], ["notes-feed-books"], ["reading-posts"],
   ]) void queryClient.invalidateQueries({ queryKey });
 }
 
@@ -377,14 +377,14 @@ export function BookMetadataEditor({ book, layout = "page", bibliographyFallback
     }
     void queryClient.invalidateQueries({ queryKey: ["books"] });
     void queryClient.invalidateQueries({ queryKey: ["display-books"] });
-    void queryClient.invalidateQueries({ queryKey: ["file-operations"] });
+    void queryClient.invalidateQueries({ queryKey: ["file-task-history"] });
 
     if (operation.status === "SUCCEEDED") {
       onCompleted("原文件已重命名");
     } else if (["PLANNED", "RUNNING"].includes(operation.status)) {
-      onCompleted("重命名任务已提交，可在文件任务页查看进度");
+      onCompleted("重命名任务已提交，可在「文件操作记录」中查看进度");
     } else {
-      onSaveFailed("重命名任务未完成，可在文件任务页查看结果");
+      onSaveFailed("重命名任务未完成，可在「文件操作记录」中查看结果");
     }
   };
 
@@ -477,7 +477,7 @@ export function BookMetadataEditor({ book, layout = "page", bibliographyFallback
               <Button variant="outlined" disabled={!canEdit || busy || Boolean(preview)} onClick={() => coverInput.current?.click()}>更换封面</Button>
               <Button variant="outlined" disabled={busy || Boolean(preview)} onClick={() => void readSource()}>读取原书资料</Button>
               <Button color="inherit" disabled={!canEdit || busy || Boolean(preview)} onClick={() => setResetCoverOpen(true)}>恢复默认封面</Button>
-              <input ref={coverInput} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={!canEdit || busy || Boolean(preview)} onChange={(event: any) => { const file = event.target.files?.[0]; if (file) void replaceCover(file); event.target.value = ""; }} />
+              <input ref={coverInput} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={!canEdit || busy || Boolean(preview)} onChange={(event: ChangeEvent<HTMLInputElement>) => { const file = event.target.files?.[0]; if (file) void replaceCover(file); event.target.value = ""; }} />
             </>} extraFields={() => (
               <ThemaSubjectField value={form.subjectCodes} disabled={!canEdit || busy || Boolean(preview)} contentSource={contentSource}
                 onChange={subjectCodes => { editedFields.current.add("subjectCodes"); setForm(current => ({ ...current, subjectCodes })); setPreview(null); }} />
@@ -486,7 +486,7 @@ export function BookMetadataEditor({ book, layout = "page", bibliographyFallback
               <Typography variant="h5" component="h3">确认写回原文件</Typography>
               <Typography>是否将刚刚保存的元信息同步到原文件？</Typography>
               {preview.conflicts.map((conflict) => <Alert key={`${conflict.code}-${conflict.path}`} severity="error">{conflict.message}</Alert>)}
-            </Stack> : <FormControlLabel control={<Checkbox disabled={!canEdit || busy || !can("library.files")} checked={form.writeBack && can("library.files")} onChange={(event: any) => update("writeBack", event.target.checked)} />} label={`同时写回 ${book?.format ?? ""} 原文件`} />}
+            </Stack> : <FormControlLabel control={<Checkbox disabled={!canEdit || busy || !can("library.files")} checked={form.writeBack && can("library.files")} onChange={(event: { target: { checked: boolean } }) => update("writeBack", event.target.checked)} />} label={`同时写回 ${book?.format ?? ""} 原文件`} />}
           </MetadataEditorForm>
         )}
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}

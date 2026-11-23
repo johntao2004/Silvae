@@ -36,8 +36,8 @@ describe("role permission page aggregation", () => {
     expect(search.accessCodes).toEqual(["library.search.view"]);
     expect(search.operations).toEqual([
       { label: "查询书籍", codes: ["library.query"] },
-      { label: "查询笔记（同时控制读书录访问）", codes: ["notes.view"] },
-      { label: "查询书目（同时控制书目页面访问）", codes: ["booklists.view"] },
+      { label: "搜索笔记与访问阅读笔记", codes: ["notes.view"] },
+      { label: "查询书单（同时控制书单页面访问）", codes: ["booklists.view"] },
     ]);
   });
 
@@ -87,10 +87,10 @@ describe("role permission page aggregation", () => {
   it("places controls beside the real page features that use them", () => {
     const modelAt = (route: string) => permissionPageModel(rolePermissionPages.find(page => page.route === route)!);
     expect(modelAt("/library/books/:bookId").operations.map(operation => operation.label)).toEqual([
-      "下载", "更新", "删除", "开始阅读", "加入书目", "查看知识点", "查看书评与随笔", "撰写与编辑随笔",
+      "下载", "更新", "删除", "开始阅读", "加入书单", "查看知识点", "查看书评与随笔", "撰写与编辑随笔",
     ]);
     expect(modelAt("/reader/:bookId").operations.map(operation => operation.label)).toEqual(["批注与书签", "整理笔记"]);
-    expect(modelAt("/articles").operations.map(operation => operation.label)).toEqual(["管理文章", "加入选集"]);
+    expect(modelAt("/articles").operations.map(operation => operation.label)).toEqual(["管理文章", "加入合集"]);
     expect(modelAt("/articles/:articleId").operations).toEqual(permissionCatalog.some(permission => permission.code === "articles.annotate")
       ? [{ label: "批注与书签", codes: ["articles.annotate"] }]
       : []);
@@ -98,6 +98,6 @@ describe("role permission page aggregation", () => {
       ? [{ label: "阅读", codes: ["vault.read"] }, { label: "上传", codes: ["vault.upload"] }, { label: "删除", codes: ["vault.delete"] }]
       : []);
     expect(modelAt("/settings#services/ai").operations).toEqual([{ label: "配置服务", codes: ["settings.ai.edit"] }]);
-    expect(modelAt("/settings#services/metadata").operations).toEqual([{ label: "配置元数据来源", codes: ["settings.metadata.edit"] }]);
+    expect(modelAt("/settings#services/metadata").operations).toEqual([{ label: "配置书目信息来源", codes: ["settings.metadata.edit"] }]);
   });
 });

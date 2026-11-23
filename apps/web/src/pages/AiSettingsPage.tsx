@@ -1,12 +1,13 @@
 import { usePermissions } from "../auth/permissions";
-// 编辑提供商配置及启用选择；已保存密钥仅显示配置状态，空输入按 API 约定处理。
-// Edits provider configuration/selection; saved keys expose only configured status and blank inputs follow API semantics.
-import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+// 编辑提供商配置及启用选择；自动保存与动态模型获取协同工作，已保存密钥仅显示配置状态。
+// Edits provider configuration/selection with auto-save and dynamic model discovery; saved keys expose configured status only.
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAutoSaveForm } from "../hooks/useAutoSaveForm";
 import { Alert } from "@/ui/feedback";
 import { _AntAlert } from "@/ui/antd";
 import { Box } from "@/ui/primitives";
-import { Button, SaveButton } from "@/ui/buttons";
+import { Button } from "@/ui/buttons";
 import { Checkbox } from "@/ui/forms";
 import { CircularProgress } from "@/ui/feedback";
 import { FormControl } from "@/ui/primitives";
@@ -20,122 +21,275 @@ import { TextField } from "@/ui/forms";
 import { Typography } from "@/ui/primitives";
 import { SectionHeader, PageContainer } from "../components/PageHeader";
 import { api, request } from "../api/client";
-import type { AiProviderSetting, AiProviderSettingInput, AiSettings, AiSettingsInput } from "../domain/types";
-import { tokens } from "../theme/tokens";
-import type { ReactNode } from "react";
-
-type ModelPreset = { value: string; label: string };
+import type { AiProviderModelOption, AiProviderSetting, AiProviderSettingInput, AiSettings, AiSettingsInput } from "../domain/types";
+import "./settings-page.css";
 
 const customModelValue = "__custom__";
 
-const modelPresetsByProvider: Record<string, ModelPreset[]> = {
-  openai: [
-    { value: "gpt-5.2", label: "GPT-5.2" },
-    { value: "gpt-5.1", label: "GPT-5.1" },
-    { value: "gpt-5-mini", label: "GPT-5 mini" },
-    { value: "gpt-4.1", label: "GPT-4.1" },
-    { value: "gpt-4.1-mini", label: "GPT-4.1 mini" },
-    { value: "gpt-4o-mini", label: "GPT-4o mini" },
-  ],
-  deepseek: [
-    { value: "deepseek-flash", label: "deepseek-flash" },
-    { value: "deepseek-v4-pro", label: "deepseek-v4-pro" },
-  ],
-  zhipu: [
-    { value: "glm-5.1", label: "GLM-5.1" },
-    { value: "glm-5", label: "GLM-5" },
-    { value: "glm-4.7", label: "GLM-4.7" },
-    { value: "glm-4.7-flash", label: "GLM-4.7 Flash" },
-    { value: "glm-4.5-flash", label: "GLM-4.5 Flash" },
-  ],
-  qwen: [
-    { value: "qwen3-max", label: "qwen3-max" },
-    { value: "qwen-plus", label: "qwen-plus" },
-    { value: "qwen3.5-plus", label: "qwen3.5-plus" },
-    { value: "qwen-flash", label: "qwen-flash" },
-    { value: "qwen-turbo", label: "qwen-turbo" },
-    { value: "qwen3-coder-plus", label: "qwen3-coder-plus" },
-  ],
-  siliconflow: [
-    { value: "Qwen/Qwen3-32B", label: "Qwen/Qwen3-32B" },
-    { value: "Qwen/Qwen3-14B", label: "Qwen/Qwen3-14B" },
-    { value: "Qwen/Qwen3-8B", label: "Qwen/Qwen3-8B" },
-    { value: "Pro/deepseek-ai/DeepSeek-V3", label: "Pro/deepseek-ai/DeepSeek-V3" },
-    { value: "Pro/deepseek-ai/DeepSeek-R1", label: "Pro/deepseek-ai/DeepSeek-R1" },
-  ],
-  anthropic: [
-    { value: "claude-opus-4-8", label: "claude-opus-4-8" },
-    { value: "claude-sonnet-4-6", label: "claude-sonnet-4-6" },
-    { value: "claude-haiku-4-5-20251001", label: "claude-haiku-4-5-20251001" },
-  ],
-  gemini: [
-    { value: "gemini-3.6-flash", label: "gemini-3.6-flash" },
-    { value: "gemini-3.5-flash", label: "gemini-3.5-flash" },
-    { value: "gemini-3.5-flash-lite", label: "gemini-3.5-flash-lite" },
-    { value: "gemini-3.1-pro-preview", label: "gemini-3.1-pro-preview" },
-    { value: "gemini-3-flash-preview", label: "gemini-3-flash-preview" },
-  ],
-  ollama: [
-    { value: "qwen3", label: "qwen3" },
-    { value: "deepseek-r1", label: "deepseek-r1" },
-    { value: "llama3.3", label: "llama3.3" },
-    { value: "gemma3", label: "gemma3" },
-  ],
-};
+function isValidHttpUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeOrigin(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    return new URL(trimmed).origin.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isLocalProviderUrl(value: string): boolean {
+  try {
+    const { hostname } = new URL(value.trim());
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function validateAiDraft(
+  draft: AiSettingsInput,
+  selectedProviderId: string,
+  maxCandidatesText: string,
+  timeoutSecondsText: string,
+  customMode: boolean,
+): { valid: boolean; maxCandidates: number; timeoutSeconds: number; error: string } {
+  const trimmedCandidates = maxCandidatesText.trim();
+  const maxCandidates = Number(trimmedCandidates);
+  if (!trimmedCandidates || !Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 10) {
+    return { valid: false, maxCandidates: draft.maxCandidates, timeoutSeconds: draft.timeoutSeconds, error: "最多返回候选数需为 1–10 的整数。" };
+  }
+  const trimmedTimeout = timeoutSecondsText.trim();
+  const timeoutSeconds = Number(trimmedTimeout);
+  if (!trimmedTimeout || !Number.isInteger(timeoutSeconds) || timeoutSeconds < 5 || timeoutSeconds > 120) {
+    return { valid: false, maxCandidates, timeoutSeconds: draft.timeoutSeconds, error: "平台超时需为 5–120 秒的整数。" };
+  }
+  const active = draft.providers.find((p) => p.id === selectedProviderId) ?? draft.providers[0];
+  if (active) {
+    if (!active.label.trim()) {
+      return { valid: false, maxCandidates, timeoutSeconds, error: "请填写平台显示名称。" };
+    }
+    if (active.baseUrl.trim() && !isValidHttpUrl(active.baseUrl)) {
+      return { valid: false, maxCandidates, timeoutSeconds, error: "请输入有效的 HTTP/HTTPS 接口地址。" };
+    }
+    if (customMode && !active.model.trim()) {
+      return { valid: false, maxCandidates, timeoutSeconds, error: "请输入自定义模型 ID。" };
+    }
+  }
+  return { valid: true, maxCandidates, timeoutSeconds, error: "" };
+}
+
+interface AiFormState {
+  draft: AiSettingsInput;
+  selectedProviderId: string;
+  maxCandidatesText: string;
+  timeoutSecondsText: string;
+}
 
 export function AiSettingsPage() {
   const { can } = usePermissions();
+  const queryClient = useQueryClient();
+  const canEdit = can("settings.ai.edit");
   const query = useQuery({ queryKey: ["ai-settings"], queryFn: api.getAiSettings });
-  const [draft, setDraft] = useState<AiSettingsInput | null>(null);
-  const [currentSettings, setCurrentSettings] = useState<AiSettings | null>(null);
-  const [selectedProviderId, setSelectedProviderId] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [customModeByProvider, setCustomModeByProvider] = useState<Record<string, boolean>>({});
+  const [modelsByProvider, setModelsByProvider] = useState<Record<string, { models: AiProviderModelOption[]; source: string; hint?: string }>>({});
+  const [loadingModels, setLoadingModels] = useState(false);
 
-  useEffect(() => {
-    if (query.data) {
-      setCurrentSettings(query.data);
-      setDraft(toDraft(query.data));
-      setSelectedProviderId(query.data.providers.find((provider) => provider.enabled)?.id ?? query.data.providers[0]?.id ?? "");
-    }
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState("");
+  const [testError, setTestError] = useState("");
+
+  const customModeRef = useRef<Record<string, boolean>>({});
+  customModeRef.current = customModeByProvider;
+  const modelTimerRef = useRef<number | undefined>(undefined);
+  const modelFetchSeqRef = useRef(0);
+  const lastModelFetchKeyRef = useRef("");
+  const mountedRef = useRef(true);
+
+  const initialForm = useMemo<AiFormState | null>(() => {
+    if (!query.data) return null;
+    return {
+      draft: toDraft(query.data),
+      selectedProviderId: query.data.providers.find((provider) => provider.enabled)?.id ?? query.data.providers[0]?.id ?? "",
+      maxCandidatesText: String(query.data.maxCandidates),
+      timeoutSecondsText: String(query.data.timeoutSeconds),
+    };
   }, [query.data]);
 
+  const {
+    form,
+    error: saveError,
+    statusNode,
+    update,
+    flush,
+    handleBlur,
+  } = useAutoSaveForm<AiFormState, AiSettings>({
+    initial: initialForm,
+    canEdit,
+    resyncOnInitialChange: false,
+    validate: (state) =>
+      validateAiDraft(
+        state.draft,
+        state.selectedProviderId,
+        state.maxCandidatesText,
+        state.timeoutSecondsText,
+        Boolean(customModeRef.current[state.selectedProviderId]),
+      ).error,
+    save: (state) => {
+      const check = validateAiDraft(
+        state.draft,
+        state.selectedProviderId,
+        state.maxCandidatesText,
+        state.timeoutSecondsText,
+        Boolean(customModeRef.current[state.selectedProviderId]),
+      );
+      const providers = state.draft.providers.map((provider) => ({
+        ...provider,
+        enabled: provider.id === state.selectedProviderId,
+      }));
+      return api.updateAiSettings({
+        ...state.draft,
+        maxCandidates: check.maxCandidates,
+        timeoutSeconds: check.timeoutSeconds,
+        providers,
+      });
+    },
+    mapSaved: (_saved, currentForm, snapshot) => {
+      const clearedIds = new Set(snapshot.draft.providers.filter((p) => p.clearApiKey).map((p) => p.id));
+      if (clearedIds.size === 0) return currentForm;
+      return {
+        ...currentForm,
+        draft: {
+          ...currentForm.draft,
+          providers: currentForm.draft.providers.map((p) =>
+            clearedIds.has(p.id) ? { ...p, apiKey: "", clearApiKey: false } : p,
+          ),
+        },
+      };
+    },
+    onSaved: (next) => {
+      queryClient.setQueryData(["ai-settings"], next);
+      void queryClient.invalidateQueries({ queryKey: ["ai-status"] });
+    },
+    onEdit: () => {
+      setTestMessage("");
+      setTestError("");
+    },
+    errorFallback: "AI 设置保存失败，请重试。",
+  });
+
+  const clearModelTimer = useCallback(() => {
+    if (modelTimerRef.current !== undefined) window.clearTimeout(modelTimerRef.current);
+    modelTimerRef.current = undefined;
+  }, []);
+
   useEffect(() => {
-    const providers = draft?.providers ?? [];
-    if (!providers.some((provider) => provider.id === selectedProviderId)) {
-      setSelectedProviderId(providers[0]?.id ?? "");
-    }
-  }, [draft?.providers, selectedProviderId]);
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      clearModelTimer();
+    };
+  }, [clearModelTimer]);
 
-  const statuses = useMemo(() => new Map((currentSettings?.providers ?? []).map((provider) => [provider.id, provider])), [currentSettings]);
-  const update = <K extends keyof AiSettingsInput>(key: K, value: AiSettingsInput[K]) => setDraft((current) => current ? { ...current, [key]: value } : current);
-  const updateProvider = (id: string, patch: Partial<AiProviderSettingInput>) => setDraft((current) => current ? {
-    ...current,
-    providers: current.providers.map((provider) => provider.id === id ? { ...provider, ...patch } : provider),
-  } : current);
+  const statuses = useMemo(
+    () => new Map((query.data?.providers ?? []).map((provider) => [provider.id, provider])),
+    [query.data],
+  );
 
-  const save = async (scope: "strategy" | "provider") => {
-    if (!draft) return;
-    setBusy(true); setError(""); setMessage("");
+  const draft = form?.draft ?? null;
+  const selectedProviderId = form?.selectedProviderId ?? "";
+  const maxCandidatesText = form?.maxCandidatesText ?? "4";
+  const timeoutSecondsText = form?.timeoutSecondsText ?? "20";
+
+  const selectedProvider = draft?.providers.find((provider) => provider.id === selectedProviderId) ?? draft?.providers[0];
+  const selectedStatus = selectedProvider ? statuses.get(selectedProvider.id) : undefined;
+  const selectedHasSavedKey = Boolean(
+    selectedProvider
+    && selectedStatus?.apiKeyConfigured
+    && !selectedProvider.clearApiKey
+    && normalizeOrigin(selectedProvider.baseUrl) === normalizeOrigin(selectedStatus.baseUrl),
+  );
+  const selectedCanQueryModels = Boolean(
+    selectedProvider
+    && isValidHttpUrl(selectedProvider.baseUrl)
+    && (Boolean(selectedProvider.apiKey?.trim()) || selectedHasSavedKey || isLocalProviderUrl(selectedProvider.baseUrl)),
+  );
+  const selectedModelFetchKey = selectedProvider
+    ? `${selectedProvider.id}|${selectedProvider.type}|${selectedProvider.baseUrl.trim()}|${selectedProvider.apiKey?.trim() ?? ""}|${selectedHasSavedKey}`
+    : "";
+
+  const runModelDiscovery = useCallback(async (provider: AiProviderSettingInput, key: string) => {
+    if (!key || lastModelFetchKeyRef.current === key) return;
+    lastModelFetchKeyRef.current = key;
+    const seq = ++modelFetchSeqRef.current;
+    setLoadingModels(true);
     try {
-      const savedDraft = currentSettings ? toDraft(currentSettings) : draft;
-      const savedProviderId = currentSettings?.providers.find((provider) => provider.enabled)?.id
-        ?? savedDraft.providers[0]?.id
-        ?? selectedProviderId;
-      const providers = scope === "provider"
-        ? draft.providers.map((provider) => ({ ...provider, enabled: provider.id === selectedProviderId }))
-        : savedDraft.providers.map((provider) => ({ ...provider, enabled: provider.id === savedProviderId }));
-      const next = await api.updateAiSettings(scope === "provider" ? { ...savedDraft, providers } : { ...draft, providers });
-      setCurrentSettings(next);
-      setDraft(toDraft(next));
-      setSelectedProviderId(next.providers.find((provider) => provider.enabled)?.id ?? next.providers[0]?.id ?? "");
-      setMessage(scope === "strategy" ? "匹配策略已保存。" : "AI 平台设置已保存。新的上传任务会按当前策略匹配书目信息。");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "AI 设置保存失败，请重试。");
+      const response = await api.listAiProviderModels({
+        id: provider.id,
+        type: provider.type,
+        baseUrl: provider.baseUrl.trim(),
+        ...(provider.apiKey?.trim() ? { apiKey: provider.apiKey.trim() } : {}),
+      });
+      if (!mountedRef.current || seq !== modelFetchSeqRef.current) return;
+      const models = response?.models ?? [];
+      setModelsByProvider((current) => ({
+        ...current,
+        [provider.id]: {
+          models,
+          source: response?.source ?? "remote",
+          hint: models.length === 0 ? "未获取到可用模型，可选择自定义模型手动输入模型 ID。" : undefined,
+        },
+      }));
+    } catch {
+      if (!mountedRef.current || seq !== modelFetchSeqRef.current) return;
+      setModelsByProvider((current) => ({
+        ...current,
+        [provider.id]: {
+          models: [],
+          source: "fallback",
+          hint: "未能获取实时模型列表，可选择自定义模型手动输入模型 ID。",
+        },
+      }));
     } finally {
-      setBusy(false);
+      if (mountedRef.current && seq === modelFetchSeqRef.current) {
+        setLoadingModels(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    clearModelTimer();
+    if (!selectedProvider || !selectedCanQueryModels || !selectedModelFetchKey) {
+      setLoadingModels(false);
+      return;
+    }
+    if (lastModelFetchKeyRef.current === selectedModelFetchKey) return;
+    const isInitialOrProviderSwitch = !lastModelFetchKeyRef.current.startsWith(`${selectedProvider.id}|`);
+    if (isInitialOrProviderSwitch) {
+      void runModelDiscovery(selectedProvider, selectedModelFetchKey);
+      return;
+    }
+    modelTimerRef.current = window.setTimeout(() => {
+      modelTimerRef.current = undefined;
+      void runModelDiscovery(selectedProvider, selectedModelFetchKey);
+    }, 500);
+    return clearModelTimer;
+  }, [clearModelTimer, runModelDiscovery, selectedCanQueryModels, selectedModelFetchKey, selectedProvider]);
+
+  const handleFieldBlur = () => {
+    handleBlur();
+    if (selectedProvider && selectedCanQueryModels && selectedModelFetchKey && lastModelFetchKeyRef.current !== selectedModelFetchKey) {
+      clearModelTimer();
+      void runModelDiscovery(selectedProvider, selectedModelFetchKey);
     }
   };
 
@@ -143,96 +297,405 @@ export function AiSettingsPage() {
   if (query.isError || !query.data) return <PageContainer><Alert severity="error">无法读取 AI 设置，请刷新页面后重试。</Alert></PageContainer>;
   if (!draft) return <PageContainer><Stack sx={{ minHeight: 260, alignItems: "center", justifyContent: "center" }}><CircularProgress /></Stack></PageContainer>;
 
-  const selectedProvider = draft.providers.find((provider) => provider.id === selectedProviderId) ?? draft.providers[0];
-  return <PageContainer>
-    {message && <_AntAlert type="success" description={message} showIcon />}
-    {error && <_AntAlert type="error" description={error} showIcon />}
-    <Stack spacing={3}>
-      <SettingsPanel
-        title="匹配策略"
-        description="入库书目匹配只发送结构化书目信息；助读与编辑辅助经逐次确认后发送有界正文采样或当前草稿。秘阁内容不接入外部 AI。"
-        action={<SaveButton disabled={busy || !can("settings.ai.edit")} onClick={() => void save("strategy")}>{busy ? "保存中…" : "保存策略"}</SaveButton>}
-      >
-        <Stack spacing={1.5}>
-          <FormControlLabel control={<Switch disabled={!can("settings.ai.edit")} checked={draft.enabled} onChange={(_, checked) => update("enabled", checked)} />} label={<SettingLabel title="启用 AI 服务" description="统一控制助读、编辑辅助、知识点提取与书目匹配；关闭后不会调用 AI 平台。" />} />
-          <FormControlLabel control={<Switch checked={draft.autoMatch} disabled={!draft.enabled || !can("settings.ai.edit")} onChange={(_, checked) => update("autoMatch", checked)} />} label={<SettingLabel title="入库时自动查找未匹配书目" description="常规来源没有强 ISBN 或书名/作者匹配时，自动请求已启用的平台。" />} />
-          <Stack sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "repeat(2, minmax(0, 1fr))" }, gap: `${tokens.spacing[4]}px`, pt: `${tokens.spacing[1]}px` }}>
-            <TextField fullWidth label="最多候选数" type="number" value={draft.maxCandidates} slotProps={{ htmlInput: { min: 1, max: 10 } }} onChange={(event) => update("maxCandidates", clampNumber(event.target.value, 1, 10, 4))} />
-            <TextField fullWidth label="平台超时（秒）" type="number" value={draft.timeoutSeconds} slotProps={{ htmlInput: { min: 5, max: 120 } }} onChange={(event) => update("timeoutSeconds", clampNumber(event.target.value, 5, 120, 20))} />
+  const updateField = <K extends keyof AiSettingsInput>(key: K, value: AiSettingsInput[K], immediate: boolean) => {
+    update(
+      (prev) => ({ ...prev, draft: { ...prev.draft, [key]: value } }),
+      { immediate },
+    );
+  };
+
+  const updateProvider = (id: string, patch: Partial<AiProviderSettingInput>, immediate: boolean) => {
+    update(
+      (prev) => ({
+        ...prev,
+        draft: {
+          ...prev.draft,
+          providers: prev.draft.providers.map((provider) => (provider.id === id ? { ...provider, ...patch } : provider)),
+        },
+      }),
+      { immediate },
+    );
+  };
+
+  const modelDiscoveryState = selectedProvider ? modelsByProvider[selectedProvider.id] : undefined;
+  const discoveryHint = !selectedProvider
+    ? undefined
+    : !selectedCanQueryModels
+      ? "填写接口地址与 API 密钥后可自动获取可用模型，或选择自定义模型手动输入。"
+      : modelDiscoveryState?.hint;
+
+  return (
+    <PageContainer>
+      <Stack className="bk-settings-stack">
+        {saveError && <_AntAlert type="error" role="alert" description={saveError} showIcon />}
+
+        <SettingsPanel
+          title="匹配策略"
+          description="匹配书目信息时会向 AI 平台发送书名等书目信息。使用阅读或写作辅助时，会发送部分正文或当前草稿。加密书库的内容不会发送给 AI 平台。"
+          action={statusNode}
+        >
+          <div className="bk-settings-toggle-list">
+            <div className="bk-settings-toggle-row">
+              <SettingLabel
+                title="启用 AI 服务"
+                description="统一控制助读、编辑辅助、知识点提取与书目匹配；关闭后不会调用 AI 平台。"
+              />
+              <Switch
+                disabled={!canEdit}
+                checked={draft.enabled}
+                slotProps={{ input: { "aria-label": "启用 AI 服务" } }}
+                sx={{ flexShrink: 0 }}
+                onChange={(_, checked) => updateField("enabled", checked, true)}
+              />
+            </div>
+            <div className="bk-settings-toggle-row">
+              <SettingLabel
+                title="用 AI 补查书目信息"
+                description="常规来源找不到与 ISBN、书名或作者可靠匹配的结果时，尝试用 AI 查找。"
+              />
+              <Switch
+                checked={draft.autoMatch}
+                disabled={!draft.enabled || !canEdit}
+                slotProps={{ input: { "aria-label": "用 AI 补查书目信息" } }}
+                sx={{ flexShrink: 0 }}
+                onChange={(_, checked) => updateField("autoMatch", checked, true)}
+              />
+            </div>
+          </div>
+          <div className="bk-settings-field-grid">
+            <TextField
+              fullWidth
+              label="最多返回几个候选"
+              type="number"
+              disabled={!canEdit}
+              value={maxCandidatesText}
+              slotProps={{ htmlInput: { min: 1, max: 10 } }}
+              onChange={(event) => {
+                const nextMax = event.target.value;
+                update((prev) => {
+                  const check = validateAiDraft(
+                    prev.draft,
+                    prev.selectedProviderId,
+                    nextMax,
+                    prev.timeoutSecondsText,
+                    Boolean(customModeRef.current[prev.selectedProviderId]),
+                  );
+                  return {
+                    ...prev,
+                    maxCandidatesText: nextMax,
+                    draft: check.valid ? { ...prev.draft, maxCandidates: check.maxCandidates } : prev.draft,
+                  };
+                });
+              }}
+              onBlur={handleFieldBlur}
+            />
+            <TextField
+              fullWidth
+              label="平台超时（秒）"
+              type="number"
+              disabled={!canEdit}
+              value={timeoutSecondsText}
+              slotProps={{ htmlInput: { min: 5, max: 120 } }}
+              onChange={(event) => {
+                const nextTimeout = event.target.value;
+                update((prev) => {
+                  const check = validateAiDraft(
+                    prev.draft,
+                    prev.selectedProviderId,
+                    prev.maxCandidatesText,
+                    nextTimeout,
+                    Boolean(customModeRef.current[prev.selectedProviderId]),
+                  );
+                  return {
+                    ...prev,
+                    timeoutSecondsText: nextTimeout,
+                    draft: check.valid ? { ...prev.draft, timeoutSeconds: check.timeoutSeconds } : prev.draft,
+                  };
+                });
+              }}
+              onBlur={handleFieldBlur}
+            />
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel
+          title="AI 平台"
+          description="选择要使用的厂商并配置模型与接口，修改将自动保存。"
+          action={
+            <Button
+              disabled={testing || !canEdit}
+              onClick={async () => {
+                setTesting(true);
+                setTestError("");
+                setTestMessage("");
+                try {
+                  await flush();
+                  const result = await request<{ provider: string; model: string; elapsedMs: number }>(
+                    "/ai/test",
+                    { method: "POST" },
+                    { timeoutMs: 150000 },
+                  );
+                  setTestMessage(`${result.provider} · ${result.model} 连接成功（${(result.elapsedMs / 1000).toFixed(1)} 秒）。使用已保存配置，未发送书籍或私人内容。`);
+                } catch (reason) {
+                  setTestError(reason instanceof Error ? reason.message : "连接测试失败，请重试。");
+                } finally {
+                  setTesting(false);
+                }
+              }}
+            >
+              {testing ? "检测中…" : "测试已保存配置"}
+            </Button>
+          }
+        >
+          <Stack spacing={2} sx={{ width: "100%", maxWidth: "none" }}>
+            <div className="bk-settings-field-grid">
+              <FormControl fullWidth>
+                <InputLabel id="ai-provider-select-label">选择厂商</InputLabel>
+                <Select
+                  labelId="ai-provider-select-label"
+                  label="选择厂商"
+                  value={selectedProvider?.id ?? ""}
+                  disabled={!canEdit}
+                  onChange={(event: { target: { value: string } }) => {
+                    const nextId = event.target.value;
+                    update(
+                      (prev) => ({
+                        ...prev,
+                        selectedProviderId: nextId,
+                        draft: {
+                          ...prev.draft,
+                          providers: prev.draft.providers.map((provider) => ({ ...provider, enabled: provider.id === nextId })),
+                        },
+                      }),
+                      { immediate: true },
+                    );
+                  }}
+                >
+                  {draft.providers.map((provider) => <MenuItem key={provider.id} value={provider.id}>{provider.label}</MenuItem>)}
+                </Select>
+              </FormControl>
+              {selectedProvider && (
+                <TextField
+                  fullWidth
+                  label="显示名称"
+                  value={selectedProvider.label}
+                  disabled={!canEdit}
+                  onChange={(event) => updateProvider(selectedProvider.id, { label: event.target.value }, false)}
+                  onBlur={handleFieldBlur}
+                />
+              )}
+            </div>
+            {selectedProvider && (
+              <ProviderPanel
+                key={selectedProvider.id}
+                provider={selectedProvider}
+                status={selectedStatus}
+                disabled={!canEdit}
+                liveModels={modelDiscoveryState?.models}
+                loadingModels={loadingModels}
+                discoveryHint={discoveryHint}
+                customMode={Boolean(customModeByProvider[selectedProvider.id])}
+                onSelectPreset={(model) => {
+                  const nextCustom = { ...customModeRef.current, [selectedProvider.id]: false };
+                  customModeRef.current = nextCustom;
+                  setCustomModeByProvider(nextCustom);
+                  updateProvider(selectedProvider.id, { model }, true);
+                }}
+                onEnterCustomMode={() => {
+                  const nextCustom = { ...customModeRef.current, [selectedProvider.id]: true };
+                  customModeRef.current = nextCustom;
+                  setCustomModeByProvider(nextCustom);
+                }}
+                onChange={(patch, immediate) => updateProvider(selectedProvider.id, patch, immediate)}
+                onBlur={handleFieldBlur}
+              />
+            )}
+            {testMessage && <_AntAlert type="success" description={testMessage} showIcon />}
+            {!saveError && testError && <_AntAlert type="error" role="alert" description={testError} showIcon />}
           </Stack>
-        </Stack>
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="AI 平台"
-        description="选择要使用的厂商，配置模型和接口后保存。"
-        action={<Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}><Button disabled={testing || busy || !can("settings.ai.edit")} onClick={() => {
-          setTesting(true); setError(""); setMessage("");
-          void request<{ provider: string; model: string; elapsedMs: number }>("/ai/test", { method: "POST" }, { timeoutMs: 150000 })
-            .then(result => setMessage(`${result.provider} · ${result.model} 连接成功（${(result.elapsedMs / 1000).toFixed(1)} 秒）。使用已保存配置，未发送书籍或私人内容。`))
-            .catch(reason => setError(reason instanceof Error ? reason.message : "连接测试失败，请重试。"))
-            .finally(() => setTesting(false));
-        }}>{testing ? "检测中…" : "测试已保存配置"}</Button><SaveButton disabled={busy || testing || !can("settings.ai.edit")} onClick={() => void save("provider")}>{busy ? "保存中…" : "保存平台"}</SaveButton></Stack>}
-      >
-        <Stack spacing={2} sx={{ width: "100%", maxWidth: "none" }}>
-          <FormControl fullWidth>
-            <InputLabel id="ai-provider-select-label">选择厂商</InputLabel>
-            <Select labelId="ai-provider-select-label" label="选择厂商" value={selectedProvider?.id ?? ""} disabled={busy || !can("settings.ai.edit")} onChange={(event) => setSelectedProviderId(event.target.value)}>
-              {draft.providers.map((provider) => <MenuItem key={provider.id} value={provider.id}>{provider.label}</MenuItem>)}
-            </Select>
-          </FormControl>
-          {selectedProvider && <ProviderPanel key={selectedProvider.id} provider={selectedProvider} status={statuses.get(selectedProvider.id)} disabled={busy || !can("settings.ai.edit")} onChange={(patch) => updateProvider(selectedProvider.id, patch)} />}
-        </Stack>
-      </SettingsPanel>
-    </Stack>
-  </PageContainer>;
+        </SettingsPanel>
+      </Stack>
+    </PageContainer>
+  );
 }
 
-function ProviderPanel({ provider, status, disabled, onChange }: { provider: AiProviderSettingInput; status?: AiProviderSetting; disabled: boolean; onChange: (patch: Partial<AiProviderSettingInput>) => void }) {
-  return <Stack spacing={1.5}>
-    <TextField fullWidth label="显示名称" value={provider.label} disabled={disabled} onChange={(event) => onChange({ label: event.target.value })} />
-    <ModelField provider={provider} disabled={disabled} onChange={onChange} />
-    <TextField fullWidth label="接口地址" value={provider.baseUrl} disabled={disabled} onChange={(event) => onChange({ baseUrl: event.target.value })} />
-    <Stack spacing={1.5}>
-      <TextField fullWidth type="password" label="API 密钥" value={provider.apiKey ?? ""} disabled={disabled} onChange={(event) => onChange({ apiKey: event.target.value, clearApiKey: false })} placeholder={status?.apiKeyConfigured ? "已配置，留空保持不变" : "请输入 API 密钥"} helperText={status?.apiKeyConfigured ? "密钥已保存，留空保持不变。" : undefined} autoComplete="new-password" />
-      {status?.apiKeyConfigured && <FormControlLabel control={<Checkbox checked={provider.clearApiKey} disabled={disabled} onChange={(event) => onChange({ clearApiKey: event.target.checked, apiKey: "" })} />} label="清除密钥" />}
+function ProviderPanel({
+  provider,
+  status,
+  disabled,
+  liveModels,
+  loadingModels,
+  discoveryHint,
+  customMode,
+  onSelectPreset,
+  onEnterCustomMode,
+  onChange,
+  onBlur,
+}: {
+  provider: AiProviderSettingInput;
+  status?: AiProviderSetting;
+  disabled: boolean;
+  liveModels?: AiProviderModelOption[];
+  loadingModels: boolean;
+  discoveryHint?: string;
+  customMode: boolean;
+  onSelectPreset: (model: string) => void;
+  onEnterCustomMode: () => void;
+  onChange: (patch: Partial<AiProviderSettingInput>, immediate: boolean) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <Stack spacing={2}>
+      <div className="bk-settings-field-grid">
+        <TextField
+          fullWidth
+          label="接口地址"
+          value={provider.baseUrl}
+          disabled={disabled}
+          onChange={(event) => onChange({ baseUrl: event.target.value }, false)}
+          onBlur={onBlur}
+        />
+        <TextField
+          fullWidth
+          type="password"
+          label="API 密钥"
+          value={provider.apiKey ?? ""}
+          disabled={disabled}
+          onChange={(event) => onChange({ apiKey: event.target.value, clearApiKey: false }, false)}
+          onBlur={onBlur}
+          placeholder={status?.apiKeyConfigured ? "已配置，留空保持不变" : "请输入 API 密钥"}
+          helperText={status?.apiKeyConfigured ? "密钥已保存，留空保持不变。" : undefined}
+          autoComplete="new-password"
+        />
+      </div>
+      <ModelField
+        provider={provider}
+        disabled={disabled}
+        liveModels={liveModels}
+        loadingModels={loadingModels}
+        discoveryHint={discoveryHint}
+        customMode={customMode}
+        onSelectPreset={onSelectPreset}
+        onEnterCustomMode={onEnterCustomMode}
+        onCustomModelChange={(model) => onChange({ model }, false)}
+        onBlur={onBlur}
+      />
+      {status?.apiKeyConfigured && (
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={provider.clearApiKey}
+              disabled={disabled}
+              onChange={(event) => onChange({ clearApiKey: event.target.checked, apiKey: "" }, event.target.checked)}
+            />
+          }
+          label="清除密钥"
+        />
+      )}
     </Stack>
-  </Stack>;
+  );
 }
 
-function ModelField({ provider, disabled, onChange }: { provider: AiProviderSettingInput; disabled: boolean; onChange: (patch: Partial<AiProviderSettingInput>) => void }) {
-  const presets = modelPresetsByProvider[provider.id] ?? [];
-  if (presets.length === 0) {
-    return <TextField fullWidth label="模型 ID" value={provider.model} disabled={disabled} onChange={(event) => onChange({ model: event.target.value })} />;
-  }
+function ModelField({
+  provider,
+  disabled,
+  liveModels,
+  loadingModels,
+  discoveryHint,
+  customMode,
+  onSelectPreset,
+  onEnterCustomMode,
+  onCustomModelChange,
+  onBlur,
+}: {
+  provider: AiProviderSettingInput;
+  disabled: boolean;
+  liveModels?: AiProviderModelOption[];
+  loadingModels: boolean;
+  discoveryHint?: string;
+  customMode: boolean;
+  onSelectPreset: (model: string) => void;
+  onEnterCustomMode: () => void;
+  onCustomModelChange: (model: string) => void;
+  onBlur: () => void;
+}) {
+  const currentModel = provider.model.trim();
+  const options = useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: Array<{ value: string; label: string }> = [];
+    for (const item of liveModels ?? []) {
+      if (!item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      deduped.push({ value: item.id, label: item.label || item.id });
+    }
+    if (!customMode && currentModel && !seen.has(currentModel)) {
+      deduped.unshift({ value: currentModel, label: currentModel });
+    }
+    return deduped;
+  }, [currentModel, customMode, liveModels]);
 
-  const isPreset = presets.some((preset) => preset.value === provider.model);
-  return <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
-    <FormControl fullWidth disabled={disabled}>
-      <InputLabel id={`ai-model-preset-${provider.id}`}>模型预设</InputLabel>
-      <Select
-        labelId={`ai-model-preset-${provider.id}`}
-        label="模型预设"
-        value={isPreset ? provider.model : customModelValue}
-        onChange={(event: any) => onChange({ model: event.target.value === customModelValue ? "" : event.target.value })}
-      >
-        {presets.map((preset) => <MenuItem key={preset.value} value={preset.value}>{preset.label}</MenuItem>)}
-        <MenuItem value={customModelValue}>自定义模型</MenuItem>
-      </Select>
-    </FormControl>
-    {!isPreset && <TextField fullWidth label="自定义模型 ID" value={provider.model} disabled={disabled} onChange={(event) => onChange({ model: event.target.value })} />}
-  </Stack>;
+  const selectValue = customMode ? customModelValue : (currentModel || undefined);
+
+  return (
+    <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+      <FormControl fullWidth>
+        <InputLabel id={`ai-model-preset-${provider.id}`}>模型预设</InputLabel>
+        <Select
+          labelId={`ai-model-preset-${provider.id}`}
+          label="模型预设"
+          value={selectValue}
+          disabled={disabled}
+          placeholder="填写凭证后自动获取，或选择自定义模型"
+          onChange={(event: { target: { value: string } }) => {
+            if (event.target.value === customModelValue) {
+              onEnterCustomMode();
+              return;
+            }
+            onSelectPreset(event.target.value);
+          }}
+        >
+          {options.map((preset) => <MenuItem key={preset.value} value={preset.value}>{preset.label}</MenuItem>)}
+          <MenuItem value={customModelValue}>自定义模型</MenuItem>
+        </Select>
+      </FormControl>
+      {loadingModels ? (
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+          <CircularProgress size={14} />
+          <Typography variant="caption" color="text.secondary">正在获取可用模型…</Typography>
+        </Stack>
+      ) : discoveryHint ? (
+        <Typography variant="caption" color="text.secondary">{discoveryHint}</Typography>
+      ) : null}
+      {customMode && (
+        <TextField
+          fullWidth
+          label="自定义模型 ID"
+          value={provider.model}
+          disabled={disabled}
+          onChange={(event) => onCustomModelChange(event.target.value)}
+          onBlur={onBlur}
+        />
+      )}
+    </Stack>
+  );
 }
 
 function SettingsPanel({ title, description, children, action }: { title: string; description: string; children: ReactNode; action?: ReactNode }) {
-  return <Stack spacing={1.5} className="bk-form-section">
-    <SectionHeader title={title} description={description} action={action} />
-    {children}
-  </Stack>;
+  return (
+    <Stack spacing={2} className="bk-settings-card">
+      <SectionHeader title={title} description={description} action={action} />
+      {children}
+    </Stack>
+  );
 }
 
 function SettingLabel({ title, description }: { title: string; description: string }) {
-  return <Box><Typography component="span" sx={{ display: "block", fontWeight: 700 }}>{title}</Typography><Typography component="span" variant="body2" color="text.secondary">{description}</Typography></Box>;
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography component="span" sx={{ display: "block", fontWeight: 700 }}>{title}</Typography>
+      <Typography component="span" variant="body2" color="text.secondary">{description}</Typography>
+    </Box>
+  );
 }
 
 function toDraft(settings: AiSettings): AiSettingsInput {
@@ -241,11 +704,15 @@ function toDraft(settings: AiSettings): AiSettingsInput {
     autoMatch: settings.autoMatch,
     maxCandidates: settings.maxCandidates,
     timeoutSeconds: settings.timeoutSeconds,
-    providers: settings.providers.map(({ id, label, type, enabled, baseUrl, model }) => ({ id, label, type, enabled, baseUrl, model, apiKey: "", clearApiKey: false })),
+    providers: settings.providers.map(({ id, label, type, enabled, baseUrl, model }) => ({
+      id,
+      label,
+      type,
+      enabled,
+      baseUrl,
+      model,
+      apiKey: "",
+      clearApiKey: false,
+    })),
   };
-}
-
-function clampNumber(value: string, min: number, max: number, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback;
 }

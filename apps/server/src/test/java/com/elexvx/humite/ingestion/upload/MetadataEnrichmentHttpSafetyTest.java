@@ -21,7 +21,7 @@ class MetadataEnrichmentHttpSafetyTest {
     void acceptsOnlyHttpsRequestsToFixedBibliographyHosts() {
         assertEquals(URI.create("https://openlibrary.org/search.json?q=example"),
                 MetadataEnrichmentService.validateProviderUri("https://openlibrary.org/search.json?q=example"));
-        assertEquals(URI.create("https://www.googleapis.com/books/v1/volumes?q=example"),
+        assertThrows(IllegalArgumentException.class, () ->
                 MetadataEnrichmentService.validateProviderUri("https://www.googleapis.com/books/v1/volumes?q=example"));
         assertThrows(IllegalArgumentException.class, () ->
                 MetadataEnrichmentService.validateProviderUri("https://openlibrary.org.attacker.example/search.json"));
@@ -30,7 +30,7 @@ class MetadataEnrichmentHttpSafetyTest {
         assertThrows(IllegalArgumentException.class, () ->
                 MetadataEnrichmentService.validateProviderUri("https://user@openlibrary.org/search.json"));
         assertThrows(IllegalArgumentException.class, () ->
-                MetadataEnrichmentService.validateProviderUri("https://www.googleapis.com:444/books/v1/volumes"));
+                MetadataEnrichmentService.validateProviderUri("https://openlibrary.org:444/search.json"));
     }
 
     @Test
@@ -42,7 +42,7 @@ class MetadataEnrichmentHttpSafetyTest {
                 new ByteArrayInputStream(new byte[0]), OptionalLong.empty());
         assertThrows(IllegalStateException.class, () ->
                 MetadataEnrichmentService.readJsonResponse(requestUri, redirect, json));
-        HttpResponse<InputStream> followedRedirect = response(200, URI.create("https://www.googleapis.com/books/v1/volumes"),
+        HttpResponse<InputStream> followedRedirect = response(200, URI.create("https://openlibrary.org/other"),
                 new ByteArrayInputStream("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)), OptionalLong.of(2));
         assertThrows(IllegalStateException.class, () ->
                 MetadataEnrichmentService.readJsonResponse(requestUri, followedRedirect, json));

@@ -24,7 +24,7 @@ public class LibraryLocationProbe {
             for (Path part : path) { current = current.resolve(part); if (Files.isSymbolicLink(current)) throw new IllegalArgumentException("书库路径不能包含软链接"); }
             if (!Files.isDirectory(path) || !Files.isReadable(path)) throw new IllegalArgumentException("Docker 无法读取该目录，请检查目录挂载和权限");
             var real = path.toRealPath();
-            if (content.overlaps(real)) throw new IllegalArgumentException("书籍书库不能与文章书库或禁书区目录重叠");
+            if (content.overlaps(real)) throw new IllegalArgumentException("书籍书库不能与文章书库或加密书库目录重叠");
             var attrs = Files.readAttributes(real, BasicFileAttributes.class);
             String fingerprint = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest((real + ":" + attrs.fileKey()).getBytes(StandardCharsets.UTF_8)));
             return new Result(real.toString(), fingerprint, Files.isWritable(real), Files.getFileStore(real).getUsableSpace());

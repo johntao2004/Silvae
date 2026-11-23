@@ -16,6 +16,12 @@ tags:
   - name: Display catalog
   - name: Reading
   - name: Annotations
+  - name: Reading posts
+  - name: Articles
+  - name: ArticleCollections
+  - name: Knowledge
+  - name: Vault
+  - name: Site settings
   - name: File operations
   - name: Book uploads
   - name: AI
@@ -24,6 +30,8 @@ tags:
 paths:
   /vault/key/open:
     post:
+      tags: [Vault]
+      operationId: openVaultKey
       summary: 当前用户通过会话绑定的 2FA 后领取内容密钥，空旧库可原子升级
       responses:
         '200':
@@ -42,6 +50,8 @@ paths:
         '409': { description: 服务器实例密钥不可用，或非空旧库缺少原内容密钥 }
   /vault/key/migrate:
     post:
+      tags: [Vault]
+      operationId: migrateVaultKey
       summary: 已通过 2FA 的旧浏览器迁移原内容密钥，验证已有密文，不改动文件及阅读记录
       requestBody:
         required: true
@@ -57,16 +67,78 @@ paths:
         '200': { description: 已迁移或相同密钥幂等重试，返回与 open 相同的 no-store 密钥响应 }
         '403': { description: 无权限或 2FA 授权已失效 }
         '409': { description: 原密钥校验失败或配置修订冲突，原数据保留 }
+  /vault/config:
+    get:
+      tags: [Vault]
+      operationId: getVaultConfig
+      responses:
+        '200': { description: 当前用户密钥信封与修订版本, content: { application/json: { schema: { $ref: '#/components/schemas/VaultConfig' } } } }
+    put:
+      tags: [Vault]
+      operationId: updateVaultConfig
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VaultConfig' } } } }
+      responses:
+        '204': { description: 已保存密钥信封 }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+  /vault/objects:
+    get:
+      tags: [Vault]
+      operationId: listVaultObjects
+      responses:
+        '200': { description: 当前用户密文对象列表, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VaultObject' } } } } }
+  /vault/objects/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Vault]
+      operationId: createVaultObject
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateVaultObjectRequest' } } } }
+      responses:
+        '204': { description: 已创建密文对象 }
+        '400': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Vault]
+      operationId: deleteVaultObject
+      responses:
+        '204': { description: 已删除密文对象 }
+        '404': { $ref: '#/components/responses/Problem' }
+  /vault/objects/{id}/chunks/{index}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { name: index, in: path, required: true, schema: { type: integer, minimum: 0, maximum: 1023 } }
+    put:
+      tags: [Vault]
+      operationId: uploadVaultChunk
+      requestBody: { required: true, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+      responses:
+        '204': { description: 分块已保存 }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+    get:
+      tags: [Vault]
+      operationId: downloadVaultChunk
+      responses:
+        '200': { description: 加密分块流, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /vault/objects/{id}/state:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    put:
+      tags: [Vault]
+      operationId: updateVaultObjectState
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateVaultStateRequest' } } } }
+      responses:
+        '204': { description: 阅读状态已保存 }
+        '404': { $ref: '#/components/responses/Problem' }
   /users/vault-policy:
     get:
       tags: [Users]
-      summary: 查看禁书区开关及 2FA 服务配置状态
+      summary: 查看加密书库开关及 2FA 服务配置状态
       responses:
-        '200': { description: 管理员与主人可查看, content: { application/json: { schema: { $ref: '#/components/schemas/VaultPolicy' } } } }
+        '200': { description: 管理员与站点所有者可查看, content: { application/json: { schema: { $ref: '#/components/schemas/VaultPolicy' } } } }
         '403': { description: 无安全设置查看权限 }
     put:
       tags: [Users]
-      summary: 主人配置禁书区开关，关闭或重新启用均使旧 2FA 授权失效
+      summary: 站点所有者配置加密书库开关，关闭或重新启用均使旧 2FA 授权失效
       requestBody:
         required: true
         content:
@@ -79,15 +151,15 @@ paths:
                 revision: { type: integer, format: int64, minimum: 0 }
       responses:
         '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/VaultPolicy' } } } }
-        '403': { description: 仅主人可修改 }
+        '403': { description: 仅站点所有者可修改 }
         '409': { description: 修订冲突或服务器未配置加密密钥 }
   /auth/two-factor/status:
     get:
       tags: [Auth]
-      summary: 当前用户身份验证器绑定与本会话的禁书区授权状态
+      summary: 当前用户身份验证器绑定与本会话的加密书库授权状态
       responses:
-        '200': { description: 不返回种子或备用码, content: { application/json: { schema: { $ref: '#/components/schemas/TwoFactorStatus' } } } }
-        '403': { description: 当前角色没有禁书区权限 }
+        '200': { description: 不返回种子或备用验证码, content: { application/json: { schema: { $ref: '#/components/schemas/TwoFactorStatus' } } } }
+        '403': { description: 当前角色没有加密书库权限 }
   /auth/two-factor/enrollment:
     post:
       tags: [Auth]
@@ -121,7 +193,7 @@ paths:
   /auth/two-factor/confirm:
     post:
       tags: [Auth]
-      summary: 验证 6 位动态码并完成绑定，生成 10 条一次性备用码
+      summary: 验证 6 位动态验证码并完成绑定，生成 10 条一次性备用验证码
       requestBody:
         required: true
         content:
@@ -134,7 +206,7 @@ paths:
                 code: { type: string, pattern: '^[0-9]{6}$' }
       responses:
         '200':
-          description: 备用码仅返回一次，并授予本会话 5 分钟禁书区访问权限
+          description: 备用验证码仅返回一次，并授予本会话 5 分钟加密书库访问权限
           content:
             application/json:
               schema:
@@ -142,13 +214,13 @@ paths:
                 required: [recoveryCodes]
                 properties:
                   recoveryCodes: { type: array, items: { type: string } }
-        '400': { description: 动态码无效 }
+        '400': { description: 动态验证码无效 }
         '409': { description: 绑定过期或已完成 }
         '429': { description: 验证尝试过于频繁 }
   /auth/two-factor/verify:
     post:
       tags: [Auth]
-      summary: 使用动态码或一次性备用码验证，授予当前会话 5 分钟禁书区访问权限
+      summary: 使用动态验证码或一次性备用验证码验证，授予当前会话 5 分钟加密书库访问权限
       requestBody:
         required: true
         content:
@@ -162,7 +234,7 @@ paths:
   /auth/two-factor/lock:
     post:
       tags: [Auth]
-      summary: 撤销当前会话的禁书区访问授权，不退出普通登录
+      summary: 撤销当前会话的加密书库访问授权，不退出普通登录
       responses:
         '204': { description: 已锁定 }
   /auth/two-factor/renew:
@@ -175,7 +247,7 @@ paths:
   /auth/two-factor/reset:
     post:
       tags: [Auth]
-      summary: 同时验证登录密码与动态码或备用码后解除旧绑定，要求重新绑定并使所有旧授权失效
+      summary: 同时验证登录密码与动态验证码或备用验证码后解除旧绑定，要求重新绑定并使所有旧授权失效
       requestBody:
         required: true
         content:
@@ -188,13 +260,13 @@ paths:
                   properties:
                     password: { type: string, format: password, maxLength: 256 }
       responses:
-        '204': { description: 旧绑定与剩余备用码已失效，书籍密文未改变 }
+        '204': { description: 旧绑定与剩余备用验证码已失效，书籍密文未改变 }
         '400': { description: 密码或验证码不正确 }
         '429': { description: 验证尝试过于频繁 }
   /articles/notes:
     get:
       tags: [Annotations]
-      summary: 当前用户的文章笔记，独立于图书批注和禁书区
+      summary: 当前用户的文章笔记，独立于图书批注和加密书库
       responses:
         '200':
           description: 可访问文章中的个人笔记分组，不含书签或其他用户记录
@@ -214,48 +286,6 @@ paths:
                       type: array
                       items: { $ref: '#/components/schemas/ArticleNoteEntry' }
         '401': { description: 需要登录 }
-  /books/{bookId}/reviews:
-    parameters:
-      - { in: path, name: bookId, required: true, schema: { type: string, format: uuid } }
-    get:
-      tags: [Annotations]
-      summary: 读取本人的私密长文和书库共享长文
-      responses:
-        '200': { description: 不包含其他用户的私密长文，管理员也不例外, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/BookReview' } } } } }
-        '401': { description: 需要登录 }
-        '404': { description: 书籍不存在 }
-    post:
-      tags: [Annotations]
-      summary: 为当前用户创建独立存储的读后长文
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/BookReviewDraft' } } }
-      responses:
-        '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/BookReview' } } } }
-        '400': { description: 标题或正文格式无效 }
-        '401': { description: 需要登录 }
-        '404': { description: 书籍不存在 }
-  /book-reviews/{id}:
-    parameters:
-      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
-    put:
-      tags: [Annotations]
-      summary: 作者编辑长文；管理员不能代改
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              allOf:
-                - { $ref: '#/components/schemas/BookReviewDraft' }
-                - type: object
-                  required: [revision]
-                  properties: { revision: { type: integer, minimum: 1 } }
-      responses:
-        '200': { description: 新版本长文, content: { application/json: { schema: { $ref: '#/components/schemas/BookReview' } } } }
-        '401': { description: 需要登录 }
-        '404': { description: 长文不存在或不属于当前用户 }
-        '409': { description: 版本冲突，原有长文不被覆盖 }
   /auth/profile:
     put:
       tags: [Auth]
@@ -289,7 +319,7 @@ paths:
     put:
       tags: [Auth]
       operationId: savePasswordPolicy
-      description: 仅主人可修改，对新设置的密码生效，不拒绝已有密码登录。
+      description: 仅站点所有者可修改，对新设置的密码生效，不拒绝已有密码登录。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PasswordPolicy' } } } }
       responses:
         '200': { description: 已保存, content: { application/json: { schema: { $ref: '#/components/schemas/PasswordPolicy' } } } }
@@ -299,7 +329,7 @@ paths:
     get:
       tags: [Auth]
       operationId: getMailSettings
-      description: 主人读取 SMTP 配置；密码不返回
+      description: 站点所有者读取 SMTP 配置；密码不返回
       responses:
         "200": { description: 操作成功 }
         "400": { $ref: "#/components/responses/Problem" }
@@ -308,7 +338,7 @@ paths:
     put:
       tags: [Auth]
       operationId: saveMailSettings
-      description: 主人保存 SMTP 配置；空密码保留原值
+      description: 站点所有者保存 SMTP 配置；空密码保留原值
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/MailSettings" } } } }
       responses:
         "200": { description: 操作成功 }
@@ -319,7 +349,7 @@ paths:
     post:
       tags: [Auth]
       operationId: sendTestMail
-      description: 主人发送测试邮件
+      description: 站点所有者发送测试邮件
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/RecoveryEmailInput" } } } }
       responses:
         "200": { description: 操作成功 }
@@ -405,6 +435,25 @@ paths:
       operationId: getSetupStatus
       responses:
         '200': { description: Whether owner initialization has already completed, content: { application/json: { schema: { $ref: '#/components/schemas/SetupStatus' } } } }
+  /auth/registration-status:
+    get:
+      tags: [Auth]
+      security: []
+      operationId: getRegistrationStatus
+      responses:
+        '200': { description: Whether public registration is enabled, content: { application/json: { schema: { $ref: '#/components/schemas/RegistrationPolicy' } } } }
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: registerMember
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegisterRequest' } } } }
+      responses:
+        '200': { description: Registration succeeded, content: { application/json: { schema: { type: object, required: [registered], properties: { registered: { type: boolean } } } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
   /auth/login:
     post:
       tags: [Auth]
@@ -421,6 +470,83 @@ paths:
       operationId: getSession
       responses:
         '200': { description: Current user, content: { application/json: { schema: { $ref: '#/components/schemas/SessionUser' } } } }
+  /auth/session-status:
+    get:
+      tags: [Auth]
+      operationId: getSessionStatus
+      responses:
+        '200': { description: Current session lifetime and revocation status, content: { application/json: { schema: { $ref: '#/components/schemas/SessionStatus' } } } }
+  /users/security-settings:
+    get:
+      tags: [Users]
+      operationId: getSecuritySettings
+      responses:
+        '200': { description: Current self-registration toggle, content: { application/json: { schema: { $ref: '#/components/schemas/RegistrationPolicy' } } } }
+    put:
+      tags: [Users]
+      operationId: updateSecuritySettings
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/RegistrationPolicy' } } } }
+      responses:
+        '200': { description: Updated self-registration toggle, content: { application/json: { schema: { $ref: '#/components/schemas/RegistrationPolicy' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+  /users/session-policy:
+    get:
+      tags: [Users]
+      operationId: getSessionPolicy
+      responses:
+        '200': { description: Current absolute session lifetime policy, content: { application/json: { schema: { $ref: '#/components/schemas/SessionPolicy' } } } }
+    put:
+      tags: [Users]
+      operationId: updateSessionPolicy
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SessionPolicy' } } } }
+      responses:
+        '200': { description: Saved session policy, content: { application/json: { schema: { $ref: '#/components/schemas/SessionPolicy' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+  /users/active-sessions:
+    get:
+      tags: [Users]
+      operationId: listActiveSessions
+      responses:
+        '200': { description: Active sessions across users, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ActiveSession' } } } } }
+  /users/login-logs:
+    get:
+      tags: [Users]
+      operationId: listLoginLogs
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200': { description: Paginated login audit log entries, content: { application/json: { schema: { $ref: '#/components/schemas/LoginLogPage' } } } }
+  /site-settings:
+    get:
+      tags: [Site settings]
+      security: []
+      operationId: getSiteSettings
+      responses:
+        '200': { description: Site personalization and indexing settings, content: { application/json: { schema: { $ref: '#/components/schemas/SiteSettings' } } } }
+    put:
+      tags: [Site settings]
+      operationId: updateSiteSettings
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SiteSettings' } } } }
+      responses:
+        '200': { description: Saved site personalization settings, content: { application/json: { schema: { $ref: '#/components/schemas/SiteSettings' } } } }
+        '403': { $ref: '#/components/responses/Problem' }
+  /site-settings/robots.txt:
+    get:
+      tags: [Site settings]
+      security: []
+      operationId: getSiteSettingsRobotsTxt
+      responses:
+        '200': { description: Generated robots.txt policy, content: { text/plain: { schema: { type: string } } } }
+  /robots.txt:
+    get:
+      tags: [Site settings]
+      servers:
+        - url: /
+      security: []
+      operationId: getRobotsTxt
+      responses:
+        '200': { description: Root robots.txt policy, content: { text/plain: { schema: { type: string } } } }
   /auth/permissions:
     get:
       tags: [Auth]
@@ -469,9 +595,12 @@ paths:
     put:
       tags: [Auth]
       operationId: changePassword
+      description: A session authenticated with the current temporary password may set a new password without resubmitting its temporary password.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ChangePasswordRequest' } } } }
       responses:
         '200': { description: Updated session, content: { application/json: { schema: { $ref: '#/components/schemas/SessionUser' } } } }
+        '400': { description: Current password is required or invalid, or the new password fails policy validation }
+        '409': { description: The credential or account state changed during the request }
   /auth/logout:
     post:
       tags: [Auth]
@@ -877,6 +1006,15 @@ paths:
       responses:
         '200': { description: Public read-only EPUB or PDF, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         '206': { description: Partial public content, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+  /display-books/{id}/excerpt:
+    get:
+      tags: [Display catalog]
+      security: []
+      operationId: getDisplayBookExcerpt
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Public sentence excerpts for the display book, content: { application/json: { schema: { $ref: '#/components/schemas/ExcerptResponse' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /books/{id}:
     get:
       tags: [Catalog]
@@ -894,6 +1032,24 @@ paths:
       responses:
         '200': { description: Complete EPUB or PDF, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         '206': { description: Partial content, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+  /books/{id}/download:
+    get:
+      tags: [Reading]
+      operationId: downloadBook
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: Range, in: header, schema: { type: string }, example: bytes=0-1048575 }
+      responses:
+        '200': { description: Complete EPUB or PDF attachment, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        '206': { description: Partial attachment content, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+  /books/{id}/excerpt:
+    get:
+      tags: [Reading]
+      operationId: getBookExcerpt
+      parameters: [{ $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Private/book sentence excerpts, content: { application/json: { schema: { $ref: '#/components/schemas/ExcerptResponse' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
   /books/{id}/position:
     get:
       tags: [Reading]
@@ -924,12 +1080,6 @@ paths:
       responses:
         '200': { description: Private reading overview, content: { application/json: { schema: { $ref: '#/components/schemas/ReadingOverview' } } } }
         '401': { description: Authentication required }
-  /reading-stats/weekly:
-    get:
-      tags: [Reading]
-      operationId: getWeeklyReadingStats
-      responses:
-        '200': { description: Current user's private weekly reading statistics, content: { application/json: { schema: { $ref: '#/components/schemas/WeeklyReadingStats' } } } }
   /books/{id}/metadata:
     get:
       tags: [Catalog]
@@ -950,8 +1100,42 @@ paths:
       operationId: listAiProviders
       responses:
         '200': { description: AI providers available to managers, content: { application/json: { schema: { $ref: '#/components/schemas/AiProviderList' } } } }
+  /ai/status:
+    get:
+      tags: [AI]
+      operationId: getAiAvailability
+      responses:
+        '200': { description: Readiness flags for signed-in users without exposing settings, content: { application/json: { schema: { $ref: '#/components/schemas/AiAvailabilityView' } } } }
+  /ai/test:
+    post:
+      tags: [AI]
+      operationId: testAiConnection
+      responses:
+        '200': { description: Connection test succeeded using saved configuration, content: { application/json: { schema: { $ref: '#/components/schemas/AiConnectionResult' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '502': { $ref: '#/components/responses/Problem' }
+  /ai/models:
+    post:
+      tags: [AI]
+      operationId: listAiProviderModels
+      description: Fetches live models from an AI provider endpoint. Requires OWNER or ADMIN and settings.ai.edit. Reuses stored API key only when baseUrl matches the saved origin.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FetchAiModelsRequest' } } } }
+      responses:
+        '200': { description: Discovered models, content: { application/json: { schema: { $ref: '#/components/schemas/AiModelListResult' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '502': { $ref: '#/components/responses/Problem' }
+  /ai/assistance:
+    post:
+      tags: [AI]
+      operationId: requestAiAssistance
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AiAssistanceRequest' } } } }
+      responses:
+        '200': { description: Grounded assistance result, content: { application/json: { schema: { $ref: '#/components/schemas/AiAssistanceResult' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '410': { $ref: '#/components/responses/Problem' }
   /metadata-terms:
     get:
+      tags: [Catalog]
       operationId: searchMetadataTerms
       description: Shared vocabulary search; requires library.edit or library.upload.
       parameters:
@@ -961,6 +1145,7 @@ paths:
       responses:
         '200': { description: Matching shared terms }
     post:
+      tags: [Catalog]
       operationId: createMetadataTerm
       description: Creates or reuses one normalized term. Requires library.edit or library.upload.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MetadataTermInput' } } } }
@@ -968,6 +1153,7 @@ paths:
         '200': { description: Canonical reusable term }
   /metadata-terms/ensure:
     post:
+      tags: [Catalog]
       operationId: ensureMetadataTerms
       description: Atomically creates or reuses up to 50 terms in input order; requires library.edit or library.upload.
       requestBody:
@@ -979,6 +1165,7 @@ paths:
         '200': { description: Canonical reusable terms in input order }
   /ai/metadata-terms:
     post:
+      tags: [AI]
       operationId: previewMetadataTerms
       description: Language or explicitly evidenced series suggestions from authorized bounded book text. Does not persist vocabulary until adopted.
       requestBody:
@@ -1012,6 +1199,19 @@ paths:
             schema: { $ref: '#/components/schemas/BookClassificationRequest' }
       responses:
         '200': { description: Thema subjects and evidence-backed ordinary tags from sampled body text, content: { application/json: { schema: { $ref: '#/components/schemas/BookClassificationResult' } } } }
+  /knowledge:
+    get:
+      tags: [Knowledge]
+      operationId: listKnowledgeGraph
+      responses:
+        '200': { description: Knowledge graph entries for available books, content: { application/json: { schema: { $ref: '#/components/schemas/KnowledgeList' } } } }
+  /knowledge/books/{bookId}/generate:
+    post:
+      tags: [Knowledge]
+      operationId: generateBookKnowledge
+      parameters: [{ name: bookId, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200': { description: Updated knowledge graph list, content: { application/json: { schema: { $ref: '#/components/schemas/KnowledgeList' } } } }
   /knowledge/books/{bookId}:
     get:
       tags: [Knowledge]
@@ -1114,15 +1314,6 @@ paths:
       responses:
         '200': { description: Server-validated preview. Book MOVE requests are disabled and return 403 BOOK_MOVE_DISABLED., content: { application/json: { schema: { $ref: '#/components/schemas/FileOperationPreview' } } } }
   /file-operations:
-    get:
-      tags: [File operations]
-      operationId: listFileOperations
-      parameters:
-        - { name: limit, in: query, description: Legacy bounded recent list when page is omitted, schema: { type: integer, default: 50, minimum: 1, maximum: 200 } }
-        - { name: page, in: query, description: Zero-based history page, schema: { type: integer, minimum: 0 } }
-        - { name: pageSize, in: query, schema: { type: integer, default: 10, minimum: 1, maximum: 100 } }
-      responses:
-        '200': { description: Operation journal, content: { application/json: { schema: { type: object, properties: { total: { type: integer, format: int64 }, items: { type: array, items: { $ref: '#/components/schemas/FileOperation' } } } } } } }
     post:
       tags: [File operations]
       operationId: executeFileOperation
@@ -1197,6 +1388,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LibraryRootList' }
+    post:
+      tags: [File operations]
+      operationId: createLibraryRoot
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryRootRegistrationRequest' } } } }
+      responses:
+        '403': { $ref: '#/components/responses/Problem' }
+  /library-roots/preview:
+    post:
+      tags: [File operations]
+      operationId: previewLibraryRoot
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { path: { type: string } } } } } }
+      responses:
+        '403': { $ref: '#/components/responses/Problem' }
+  /library-roots/check:
+    post:
+      tags: [File operations]
+      operationId: checkLibraryRoots
+      responses:
+        '200': { description: Refreshed capability and content storage scan snapshots, content: { application/json: { schema: { $ref: '#/components/schemas/LibraryRootList' } } } }
+        '503': { $ref: '#/components/responses/Problem' }
   /library-roots/content-storage:
     get:
       tags: [File operations]
@@ -1291,12 +1502,12 @@ paths:
     get:
       tags: [Book uploads]
       operationId: getMetadataProviderSettings
-      description: Requires OWNER or ADMIN role and settings.ai.view.
+      description: Requires OWNER or ADMIN role and settings.metadata.view.
       responses: { '200': { description: Fixed metadata sources and availability, content: { application/json: { schema: { $ref: '#/components/schemas/MetadataProviderSettings' } } } } }
     put:
       tags: [Book uploads]
       operationId: updateMetadataProviderSettings
-      description: Requires OWNER or ADMIN role and settings.ai.edit. Arbitrary source URLs and credentials are not accepted.
+      description: Requires OWNER or ADMIN role and settings.metadata.edit. Arbitrary source URLs and credentials are not accepted.
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MetadataProviderSettingsInput' } } } }
       responses: { '200': { description: Saved source switches, content: { application/json: { schema: { $ref: '#/components/schemas/MetadataProviderSettings' } } } } }
   /book-uploads/{id}/enrich:
@@ -1369,6 +1580,144 @@ paths:
       operationId: getReaderFontContent
       parameters: [{ $ref: '#/components/parameters/Id' }]
       responses: { '200': { description: Enabled font file, content: { application/octet-stream: { schema: { type: string, format: binary } } } } }
+  /articles:
+    get:
+      tags: [Articles]
+      operationId: listArticles
+      responses:
+        '200': { description: Visible articles for the current user, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ArticleSummary' } } } } }
+    post:
+      tags: [Articles]
+      operationId: createArticle
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleDraft' } } } }
+      responses:
+        '200': { description: Saved article, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleDetail' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+  /articles/fetch:
+    post:
+      tags: [Articles]
+      operationId: fetchArticle
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleFetchRequest' } } } }
+      responses:
+        '200': { description: Fetched and sanitized article draft, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleDraft' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+  /articles/fetch-stream:
+    post:
+      tags: [Articles]
+      operationId: fetchArticleStream
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleFetchRequest' } } } }
+      responses:
+        '200': { description: NDJSON stream of progress, error, or result events, content: { application/x-ndjson: { schema: { type: string } } } }
+  /articles/batch-import:
+    post:
+      tags: [Articles]
+      operationId: batchImportArticles
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleBatchImportRequest' } } } }
+      responses:
+        '200': { description: Batch import summary, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleBatchImportResult' } } } }
+  /articles/batch-import-stream:
+    post:
+      tags: [Articles]
+      operationId: batchImportArticlesStream
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleBatchImportRequest' } } } }
+      responses:
+        '200': { description: NDJSON stream of batch import progress and item events, content: { application/x-ndjson: { schema: { type: string } } } }
+  /articles/prepare:
+    post:
+      tags: [Articles]
+      operationId: prepareArticleHtml
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticlePrepareRequest' } } } }
+      responses:
+        '200': { description: Sanitized HTML preview, content: { application/json: { schema: { type: object, required: [html], properties: { html: { type: string } } } } } }
+  /articles/knowledge:
+    get:
+      tags: [Articles]
+      operationId: listArticleKnowledge
+      responses:
+        '200': { description: Article knowledge snapshots visible to the user, content: { application/json: { schema: { type: array, items: { type: object, required: [id, title, points], properties: { id: { type: string, format: uuid }, title: { type: string }, points: { type: string } } } } } } }
+  /articles/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Articles]
+      operationId: getArticle
+      responses:
+        '200': { description: Full sanitized article, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleDetail' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [Articles]
+      operationId: updateArticle
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleDraft' } } } }
+      responses:
+        '200': { description: Updated article, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleDetail' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Articles]
+      operationId: deleteArticle
+      responses:
+        '204': { description: Article deleted }
+  /articles/{id}/reading:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Articles]
+      operationId: getArticleReadingState
+      responses:
+        '200': { description: Private reading progress and annotations JSON state, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleReadingState' } } } }
+    put:
+      tags: [Articles]
+      operationId: updateArticleReadingState
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ArticleReadingState' } } } }
+      responses:
+        '204': { description: Reading state saved }
+  /articles/{id}/knowledge:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Articles]
+      operationId: generateArticleKnowledge
+      responses:
+        '410': { $ref: '#/components/responses/Problem' }
+  /articles/assets/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Articles]
+      operationId: getArticleAsset
+      responses:
+        '200': { description: Sanitized PNG image asset, content: { image/png: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+  /reading-posts:
+    get:
+      tags: [Reading posts]
+      operationId: listMyReadingPosts
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [BOOK, ARTICLE, ALL], default: ALL } }
+        - { name: sourceId, in: query, required: false, description: Optional source book ID filter when kind=BOOK (returns visible book reviews with full markdown), schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Current user reading posts across books and articles, or visible book reviews when kind=BOOK and sourceId is specified, content: { application/json: { schema: { $ref: '#/components/schemas/ReadingPostPage' } } } }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Reading posts]
+      operationId: createReadingPost
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateReadingPostRequest' } } } }
+      responses:
+        '200': { description: Created reading post, content: { application/json: { schema: { $ref: '#/components/schemas/ReadingPost' } } } }
+  /reading-posts/{kind}/{id}:
+    parameters:
+      - { name: kind, in: path, required: true, schema: { type: string, enum: [BOOK, ARTICLE] } }
+      - { $ref: '#/components/parameters/Id' }
+    get:
+      tags: [Reading posts]
+      operationId: getReadingPost
+      responses:
+        '200': { description: Reading post detail, content: { application/json: { schema: { $ref: '#/components/schemas/ReadingPost' } } } }
+        '404': { $ref: '#/components/responses/Problem' }
+    put:
+      tags: [Reading posts]
+      operationId: updateReadingPost
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UpdateReadingPostRequest' } } } }
+      responses:
+        '200': { description: Updated reading post, content: { application/json: { schema: { $ref: '#/components/schemas/ReadingPost' } } } }
+        '409': { $ref: '#/components/responses/Problem' }
 
 components:
   securitySchemes:
@@ -1418,7 +1767,7 @@ components:
       type: object
       required: [minLength, requireUppercase, requireLowercase, requireDigit, requireSpecial]
       properties:
-        minLength: { type: integer, minimum: 8, maximum: 128 }
+        minLength: { type: integer, minimum: 8, maximum: 64 }
         requireUppercase: { type: boolean }
         requireLowercase: { type: boolean }
         requireDigit: { type: boolean }
@@ -1459,7 +1808,7 @@ components:
         - type: object
           required: [password]
           properties:
-            password: { type: string, writeOnly: true, minLength: 1, maxLength: 200 }
+            password: { type: string, writeOnly: true, minLength: 1, maxLength: 64 }
     Problem:
       type: object
       properties: { type: { type: string, format: uri }, title: { type: string }, status: { type: integer }, detail: { type: string }, code: { type: string } }
@@ -1487,7 +1836,13 @@ components:
     SessionUser:
       type: object
       required: [id, username, displayName, role, mustChangePassword]
-      properties: { id: { type: string, format: uuid }, username: { type: string }, displayName: { type: string }, role: { $ref: '#/components/schemas/UserRole' }, mustChangePassword: { type: boolean } }
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        mustChangePassword: { type: boolean }
+        canChangePasswordWithoutCurrent: { type: boolean, description: The current session has already verified the active temporary password. }
     ManagedUser:
       allOf:
         - { $ref: '#/components/schemas/SessionUser' }
@@ -1495,13 +1850,113 @@ components:
     SetupRequest:
       type: object
       required: [username, displayName, password]
-      properties: { username: { type: string, pattern: '^[a-zA-Z0-9._-]{3,80}$' }, displayName: { type: string, maxLength: 120 }, password: { type: string, minLength: 1, maxLength: 200 } }
+      properties: { username: { type: string, pattern: '^[a-zA-Z0-9._-]{3,80}$' }, displayName: { type: string, maxLength: 120 }, password: { type: string, minLength: 1, maxLength: 64 } }
     SetupStatus:
       type: object
       required: [initialized]
       properties: { initialized: { type: boolean } }
-    LoginRequest: { type: object, required: [username, password], properties: { username: { type: string }, password: { type: string } } }
-    ChangePasswordRequest: { type: object, required: [currentPassword, newPassword], properties: { currentPassword: { type: string }, newPassword: { type: string, minLength: 1 } } }
+    LoginRequest: { type: object, required: [username, password], properties: { username: { type: string, maxLength: 80 }, password: { type: string, maxLength: 256 } } }
+    RegistrationPolicy:
+      type: object
+      required: [registrationEnabled]
+      properties: { registrationEnabled: { type: boolean } }
+    RegisterRequest:
+      type: object
+      required: [username, displayName, password]
+      properties:
+        username: { type: string, pattern: '^[a-zA-Z0-9._-]{3,80}$' }
+        displayName: { type: string, minLength: 1, maxLength: 120 }
+        password: { type: string, minLength: 1, maxLength: 64 }
+    SessionStatus:
+      type: object
+      required: [expiresAt, revocationRequested, serverTime]
+      properties:
+        expiresAt: { type: integer, format: int64 }
+        revocationRequested: { type: boolean }
+        serverTime: { type: integer, format: int64 }
+    SessionPolicy:
+      type: object
+      required: [maxMinutes]
+      properties: { maxMinutes: { type: integer, minimum: 5, maximum: 43200 } }
+    ActiveSession:
+      type: object
+      required: [id, userId, username, displayName, role, createdAt, lastAccessAt, expiresAt, current, ending]
+      properties:
+        id: { type: string }
+        userId: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        createdAt: { type: string, format: date-time }
+        lastAccessAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        current: { type: boolean }
+        ending: { type: boolean }
+    LoginLogEntry:
+      type: object
+      required: [id, subjectId, outcome, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        actorId: { type: [string, 'null'], format: uuid }
+        subjectId: { type: string }
+        outcome: { type: string }
+        ip: { type: [string, 'null'] }
+        occurredAt: { type: string, format: date-time }
+    LoginLogPage:
+      type: object
+      required: [items, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/LoginLogEntry' } }
+        total: { type: integer, format: int64, minimum: 0 }
+    SiteSettings:
+      type: object
+      required: [name, tagline, description, keywords, publicUrl, allowIndexing, virtualLibraryEnabled, icpNumber, policeNumber, copyright, contactEmail]
+      properties:
+        name: { type: string, maxLength: 80 }
+        tagline: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 500 }
+        keywords: { type: string, maxLength: 250 }
+        publicUrl: { type: string, maxLength: 255 }
+        allowIndexing: { type: boolean }
+        virtualLibraryEnabled: { type: boolean }
+        icpNumber: { type: string, maxLength: 80 }
+        policeNumber: { type: string, maxLength: 80 }
+        copyright: { type: string, maxLength: 200 }
+        contactEmail: { type: string, format: email, maxLength: 254 }
+    VaultConfig:
+      type: object
+      required: [envelope, revision]
+      properties:
+        envelope: { type: string, maxLength: 16384 }
+        revision: { type: integer, format: int64, minimum: 0 }
+    VaultObject:
+      type: object
+      required: [id, manifest, state, revision, chunk_count]
+      properties:
+        id: { type: string, format: uuid }
+        manifest: { type: string }
+        state: { type: string }
+        revision: { type: integer, format: int64 }
+        chunk_count: { type: integer, minimum: 1, maximum: 256 }
+    CreateVaultObjectRequest:
+      type: object
+      required: [manifest, state, chunkCount]
+      properties:
+        manifest: { type: string, maxLength: 32768 }
+        state: { type: string, maxLength: 2000000 }
+        chunkCount: { type: integer, minimum: 1, maximum: 256 }
+    UpdateVaultStateRequest:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, maxLength: 2000000 }
+        revision: { type: integer, format: int64 }
+    ChangePasswordRequest:
+      type: object
+      required: [newPassword]
+      properties:
+        currentPassword: { type: string, description: Required unless the current session has already verified the active temporary password. }
+        newPassword: { type: string, minLength: 1, maxLength: 64 }
     CreateUserRequest: { type: object, required: [username, displayName, role], properties: { username: { type: string }, displayName: { type: string }, role: { type: string, enum: [ADMIN, MEMBER] } } }
     BookFormat: { type: string, enum: [EPUB, PDF] }
     BookFileStatus: { type: string, enum: [AVAILABLE, OPERATING, TRASHED, MISSING, DELETED] }
@@ -1741,8 +2196,8 @@ components:
     CommitBookUploadRequest:
       type: object
       properties: { publishToDisplay: { type: boolean, default: false } }
-    MetadataSource: { type: string, enum: [FILE, FILENAME, OPEN_LIBRARY, WIKIDATA, GOOGLE_BOOKS, AI, MANUAL] }
-    CoverSource: { type: string, enum: [EMBEDDED, PDF_FIRST_PAGE, OPEN_LIBRARY, GOOGLE_BOOKS, CUSTOM, GENERATED] }
+    MetadataSource: { type: string, enum: [FILE, FILENAME, OPEN_LIBRARY, WIKIDATA, AI, MANUAL] }
+    CoverSource: { type: string, enum: [EMBEDDED, PDF_FIRST_PAGE, OPEN_LIBRARY, CUSTOM, GENERATED] }
     BookUploadStatus: { type: string, enum: [RECEIVING, INSPECTING, ENRICHING, READY_FOR_REVIEW, COMMITTING, SUCCEEDED, DUPLICATE, FAILED, CANCELLED, EXPIRED] }
     PublicBookMetadata:
       type: object
@@ -1770,7 +2225,7 @@ components:
     BookMetadata:
       type: object
       required: [id, title, authors, translators, tags, subjectCodes, sources]
-      properties: { knowledgeTerms: { type: array, maxItems: 50, items: { type: string, maxLength: 60 } }, publiclyVisible: { type: boolean }, authorBiography: { type: [string, "null"], maxLength: 20000 }, tableOfContents: { type: [string, "null"], maxLength: 40000 }, id: { type: string, format: uuid }, title: { type: string }, subtitle: { type: [string, 'null'] }, authors: { type: array, items: { type: string } }, translators: { type: array, items: { type: string } }, language: { type: [string, 'null'] }, publisher: { type: [string, 'null'] }, publishedDate: { type: [string, 'null'] }, isbn: { type: [string, 'null'] }, description: { type: [string, 'null'] }, series: { type: [string, 'null'] }, seriesIndex: { type: [number, 'null'] }, tags: { type: array, items: { type: string } }, subjectCodes: { type: array, items: { type: string, maxLength: 32 } }, coverCacheKey: { type: [string, 'null'] }, coverUrl: { type: [string, 'null'] }, sources: { type: object, additionalProperties: { $ref: '#/components/schemas/MetadataSource' } } }
+      properties: { knowledgeTerms: { type: array, maxItems: 50, items: { type: string, maxLength: 60 } }, publiclyVisible: { type: boolean }, authorBiography: { type: [string, "null"], maxLength: 20000 }, tableOfContents: { type: [string, "null"], maxLength: 40000 }, id: { type: string, format: uuid }, title: { type: string }, subtitle: { type: [string, 'null'] }, authors: { type: array, items: { type: string } }, translators: { type: array, items: { type: string } }, language: { type: [string, 'null'], maxLength: 1024 }, publisher: { type: [string, 'null'] }, publishedDate: { type: [string, 'null'] }, isbn: { type: [string, 'null'] }, description: { type: [string, 'null'] }, series: { type: [string, 'null'] }, seriesIndex: { type: [number, 'null'] }, tags: { type: array, items: { type: string } }, subjectCodes: { type: array, items: { type: string, maxLength: 32 } }, coverCacheKey: { type: [string, 'null'] }, coverUrl: { type: [string, 'null'] }, sources: { type: object, additionalProperties: { $ref: '#/components/schemas/MetadataSource' } } }
     BookMetadataDraft:
       type: object
       required: [title, authors, translators, tags, sources, targetPath]
@@ -1785,7 +2240,7 @@ components:
         subtitle: { type: [string, 'null'], maxLength: 500 }
         authors: { type: array, maxItems: 20, items: { type: string, maxLength: 300 } }
         translators: { type: array, maxItems: 20, items: { type: string, maxLength: 300 } }
-        language: { type: [string, 'null'], maxLength: 32 }
+        language: { type: [string, 'null'], maxLength: 1024 }
         publisher: { type: [string, 'null'], maxLength: 500 }
         publishedDate: { type: [string, 'null'], maxLength: 40 }
         isbn: { type: [string, 'null'], maxLength: 40 }
@@ -1804,7 +2259,7 @@ components:
     OnlineMatchRequest:
       type: object
       properties: { refresh: { type: boolean, default: false }, providerId: { type: [string, 'null'], maxLength: 80 } }
-    MetadataProviderId: { type: string, enum: [OPEN_LIBRARY, WIKIDATA, GOOGLE_BOOKS] }
+    MetadataProviderId: { type: string, enum: [OPEN_LIBRARY, WIKIDATA] }
     MetadataProviderSettings:
       type: object
       required: [providers]
@@ -1822,7 +2277,7 @@ components:
         providers:
           type: array
           minItems: 1
-          maxItems: 3
+          maxItems: 2
           items:
             type: object
             required: [id, enabled]
@@ -2054,7 +2509,213 @@ components:
       properties: { id: { type: string, format: uuid }, bookId: { type: string, format: uuid }, bookTitle: { type: string }, bookAuthor: { type: string }, format: { $ref: '#/components/schemas/BookFormat' }, coverUrl: { type: string }, originalPath: { type: string }, trashPath: { type: string }, sizeBytes: { type: integer, format: int64 }, deletedBy: { type: string }, deletedAt: { type: string, format: date-time }, expiresAt: { type: string, format: date-time }, fingerprint: { type: string } }
     MetadataRequest:
       type: object
-      properties: { publiclyVisible: { type: boolean }, authorBiography: { type: [string, "null"], maxLength: 20000 }, tableOfContents: { type: [string, "null"], maxLength: 40000 }, knowledgeTerms: { type: array, maxItems: 50, items: { type: string, maxLength: 60 } }, knowledgeDraft: { oneOf: [{ $ref: '#/components/schemas/KnowledgeDraft' }, { type: 'null' }] }, title: { type: string }, subtitle: { type: string }, authors: { type: array, items: { type: string } }, translators: { type: array, items: { type: string } }, language: { type: string }, publisher: { type: string }, publishedDate: { type: string }, isbn: { type: string }, description: { type: string }, series: { type: string }, seriesIndex: { type: number }, tags: { type: array, items: { type: string } }, subjectCodes: { type: array, maxItems: 4, items: { type: string, maxLength: 32 } }, manualFields: { type: array, items: { type: string } }, writeBack: { type: boolean }, bookFileId: { type: string, format: uuid }, expectedFingerprint: { type: string } }
+      properties: { publiclyVisible: { type: boolean }, authorBiography: { type: [string, "null"], maxLength: 20000 }, tableOfContents: { type: [string, "null"], maxLength: 40000 }, knowledgeTerms: { type: array, maxItems: 50, items: { type: string, maxLength: 60 } }, knowledgeDraft: { oneOf: [{ $ref: '#/components/schemas/KnowledgeDraft' }, { type: 'null' }] }, title: { type: string }, subtitle: { type: string }, authors: { type: array, items: { type: string } }, translators: { type: array, items: { type: string } }, language: { type: [string, 'null'], maxLength: 1024 }, publisher: { type: string }, publishedDate: { type: string }, isbn: { type: string }, description: { type: string }, series: { type: string }, seriesIndex: { type: number }, tags: { type: array, items: { type: string } }, subjectCodes: { type: array, maxItems: 4, items: { type: string, maxLength: 32 } }, manualFields: { type: array, items: { type: string } }, writeBack: { type: boolean }, bookFileId: { type: string, format: uuid }, expectedFingerprint: { type: string } }
+
+    AiAvailabilityView:
+      type: object
+      required: [enabled, hasConfiguredProvider, hasEnabledProvider]
+      properties: { enabled: { type: boolean }, hasConfiguredProvider: { type: boolean }, hasEnabledProvider: { type: boolean } }
+    AiConnectionResult:
+      type: object
+      required: [provider, model, elapsedMs]
+      properties: { provider: { type: string }, model: { type: string }, elapsedMs: { type: integer, format: int64 } }
+    FetchAiModelsRequest:
+      type: object
+      required: [id, type]
+      properties:
+        id: { type: string, maxLength: 80 }
+        type: { type: string, maxLength: 32 }
+        baseUrl: { type: [string, 'null'], maxLength: 500 }
+        apiKey: { type: [string, 'null'], maxLength: 500, writeOnly: true }
+    AiModelOption:
+      type: object
+      required: [id, label]
+      properties: { id: { type: string }, label: { type: string } }
+    AiModelListResult:
+      type: object
+      required: [models, source]
+      properties:
+        models: { type: array, items: { $ref: '#/components/schemas/AiModelOption' } }
+        source: { type: string }
+    AiAssistanceRequest:
+      type: object
+      required: [source, action, consent]
+      properties:
+        source: { type: string, enum: [BOOK, ARTICLE, COLLECTION, NOTE_DRAFT, ARTICLE_DRAFT, METADATA_DRAFT] }
+        id: { type: [string, 'null'], maxLength: 36 }
+        action: { type: string, enum: [SUMMARY, OUTLINE, QUESTIONS, ASK, READING_PLAN, POLISH, TITLES, DESCRIPTION, TAGS, AUTHOR_BIOGRAPHY] }
+        question: { type: [string, 'null'], maxLength: 1000 }
+        draft: { type: [string, 'null'], maxLength: 20000 }
+        consent: { type: boolean }
+    AiAssistanceResult:
+      type: object
+      required: [text, evidence, provider, model, sourceTitle, included, total, coverage]
+      properties:
+        text: { type: string }
+        evidence: { type: array, items: { $ref: '#/components/schemas/BookClassificationEvidence' } }
+        provider: { type: string }
+        model: { type: string }
+        sourceTitle: { type: string }
+        included: { type: integer }
+        total: { type: integer }
+        coverage: { type: string }
+    ExcerptResponse:
+      type: object
+      required: [bookId, quotes, source]
+      properties:
+        bookId: { type: string, format: uuid }
+        quotes: { type: array, items: { type: string } }
+        source: { type: string }
+    KnowledgeBook:
+      type: object
+      required: [bookId, status, sampledSections, totalSections, points]
+      properties:
+        bookId: { type: string, format: uuid }
+        status: { type: string }
+        providerId: { type: [string, 'null'] }
+        sampledSections: { type: integer }
+        totalSections: { type: integer }
+        generatedAt: { type: [string, 'null'], format: date-time }
+        points: { type: array, items: { $ref: '#/components/schemas/KnowledgePoint' } }
+    KnowledgeList:
+      type: object
+      required: [items]
+      properties: { items: { type: array, items: { $ref: '#/components/schemas/KnowledgeBook' } } }
+    LibraryRootRegistrationRequest:
+      type: object
+      properties:
+        name: { type: string }
+        path: { type: string }
+        expectedFingerprint: { type: string }
+        idempotencyKey: { type: string, format: uuid }
+    ArticleVisibility: { type: string, enum: [PUBLIC, PRIVATE] }
+    ArticleDraft:
+      type: object
+      required: [title, author, sourceUrl, publishedAt, visibility, tags, html]
+      properties:
+        title: { type: string, maxLength: 300 }
+        author: { type: string, maxLength: 300 }
+        sourceUrl: { type: string, maxLength: 4096 }
+        publishedAt: { type: string, maxLength: 100 }
+        visibility: { $ref: '#/components/schemas/ArticleVisibility' }
+        tags: { type: string, maxLength: 1000 }
+        html: { type: string, maxLength: 30000000 }
+        coverUrl: { type: [string, 'null'], maxLength: 8000000 }
+    ArticleSummary:
+      type: object
+      required: [id, owner_id, title, author, source_url, published_at, visibility, tags, created_at, updated_at, excerpt]
+      properties:
+        id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid }
+        title: { type: string }
+        author: { type: string }
+        source_url: { type: string }
+        published_at: { type: string }
+        visibility: { $ref: '#/components/schemas/ArticleVisibility' }
+        tags: { type: string }
+        cover_url: { type: [string, 'null'] }
+        excerpt: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ArticleDetail:
+      type: object
+      required: [id, owner_id, title, author, source_url, published_at, visibility, html, tags, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        owner_id: { type: string, format: uuid }
+        title: { type: string }
+        author: { type: string }
+        source_url: { type: string }
+        published_at: { type: string }
+        visibility: { $ref: '#/components/schemas/ArticleVisibility' }
+        html: { type: string }
+        tags: { type: string }
+        cover_url: { type: [string, 'null'] }
+        knowledge: { type: string }
+        knowledge_revision: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ArticleFetchRequest:
+      type: object
+      required: [url]
+      properties: { url: { type: string, maxLength: 4096 } }
+    ArticleBatchImportRequest:
+      type: object
+      required: [urls, visibility, tags]
+      properties:
+        urls: { type: array, minItems: 1, maxItems: 20, items: { type: string, maxLength: 4096 } }
+        visibility: { $ref: '#/components/schemas/ArticleVisibility' }
+        tags: { type: string, maxLength: 1000 }
+    ArticleBatchImportItem:
+      type: object
+      required: [url, status]
+      properties:
+        url: { type: string }
+        status: { type: string }
+        id: { type: [string, 'null'] }
+        title: { type: [string, 'null'] }
+        message: { type: [string, 'null'] }
+    ArticleBatchImportResult:
+      type: object
+      required: [imported, duplicate, failed, items]
+      properties:
+        imported: { type: integer }
+        duplicate: { type: integer }
+        failed: { type: integer }
+        items: { type: array, items: { $ref: '#/components/schemas/ArticleBatchImportItem' } }
+    ArticlePrepareRequest:
+      type: object
+      required: [html, sourceUrl]
+      properties:
+        html: { type: string, maxLength: 30000000 }
+        sourceUrl: { type: string, maxLength: 4096 }
+    ArticleReadingState:
+      type: object
+      required: [state, revision]
+      properties:
+        state: { type: string, maxLength: 1000000 }
+        revision: { type: integer, format: int64 }
+    ReadingPostKind: { type: string, enum: [BOOK, ARTICLE] }
+    ReadingPost:
+      type: object
+      required: [id, kind, sourceId, userId, authorName, title, visibility, revision, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/ReadingPostKind' }
+        sourceId: { type: string, format: uuid }
+        sourceTitle: { type: [string, 'null'] }
+        userId: { type: string, format: uuid }
+        authorName: { type: string }
+        title: { type: string }
+        markdown: { type: [string, 'null'] }
+        excerpt: { type: [string, 'null'] }
+        visibility: { type: string, enum: [PRIVATE, LIBRARY] }
+        revision: { type: integer, format: int64, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ReadingPostPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ReadingPost' } }
+        nextCursor: { type: [string, 'null'] }
+    CreateReadingPostRequest:
+      type: object
+      required: [kind, sourceId, title, markdown]
+      properties:
+        kind: { $ref: '#/components/schemas/ReadingPostKind' }
+        sourceId: { type: string, format: uuid }
+        title: { type: string, maxLength: 200 }
+        markdown: { type: string, maxLength: 500000 }
+        visibility: { type: string, enum: [PRIVATE, LIBRARY] }
+    UpdateReadingPostRequest:
+      type: object
+      required: [title, markdown, revision]
+      properties:
+        title: { type: string, maxLength: 200 }
+        markdown: { type: string, maxLength: 500000 }
+        visibility: { type: string, enum: [PRIVATE, LIBRARY] }
+        revision: { type: integer, format: int64, minimum: 1 }
 
     ArticleNoteEntry:
       type: object
@@ -2068,23 +2729,3 @@ components:
         style: { type: string, enum: [HIGHLIGHT, UNDERLINE, BOLD] }
         color: { type: string }
         createdAt: { type: string, format: date-time }
-    BookReviewDraft:
-      type: object
-      required: [title, markdown]
-      properties:
-        title: { type: string, minLength: 1, maxLength: 200 }
-        markdown: { type: string, minLength: 1, maxLength: 500000 }
-        visibility: { type: string, enum: [PRIVATE, LIBRARY], default: PRIVATE }
-    BookReview:
-      allOf:
-        - { $ref: '#/components/schemas/BookReviewDraft' }
-        - type: object
-          required: [id, bookId, userId, authorName, revision, createdAt, updatedAt]
-          properties:
-            id: { type: string, format: uuid }
-            bookId: { type: string, format: uuid }
-            userId: { type: string, format: uuid }
-            authorName: { type: string }
-            revision: { type: integer, minimum: 1 }
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }

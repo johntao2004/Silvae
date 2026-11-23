@@ -19,6 +19,7 @@ import type {
   BrowseBookPage,
   CategoryDetail,
   CategoryList,
+  ChangePasswordInput,
   DisplayBook,
   DisplayBookPage,
   BookMetadata,
@@ -26,6 +27,8 @@ import type {
   BookMetadataDraft,
   BookUpload,
   AiProviderInfo,
+  AiProviderModelOption,
+  AiProviderModelsResult,
   AiServiceAvailability,
   AiSettings,
   AiSettingsInput,
@@ -100,7 +103,7 @@ function confirmSessionExpired(): Promise<boolean> {
 
 // 统一传输层处理 Cookie、CSRF、超时与错误；下方还包含独立的演示数据分支。
 // The shared transport handles cookies, CSRF, timeouts and errors; separate demo-data branches also live below.
-export async function request<T>(path: string, init: RequestInit = {}, options: { timeoutMs?: number } = {}): Promise<T> {
+async function sendApiRequest(path: string, init: RequestInit = {}, options: { timeoutMs?: number } = {}): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
   const needsCsrf = !["GET", "HEAD", "OPTIONS"].includes(method);
   const timeoutMs = options.timeoutMs ?? (path.startsWith("/mail/") || path.startsWith("/auth/recovery") ? 30000 : path.startsWith("/auth/") ? AUTH_TIMEOUT_MS : undefined);
@@ -135,10 +138,7 @@ export async function request<T>(path: string, init: RequestInit = {}, options: 
       }
       throw await responseError(response);
     }
-    if (response.status === 204) return undefined as T;
-    const text = await response.text();
-    if (!text) return undefined as T;
-    return JSON.parse(text) as T;
+    return response;
   } catch (reason) {
     if (timeoutSignal?.aborted && !init.signal?.aborted) {
       throw new Error(path.startsWith("/auth/") || path.startsWith("/mail/")
@@ -147,6 +147,61 @@ export async function request<T>(path: string, init: RequestInit = {}, options: 
     }
     if (reason instanceof TypeError) throw new Error(CONNECTION_ERROR, { cause: reason });
     throw reason;
+  }
+}
+
+export async function request<T>(path: string, init: RequestInit = {}, options: { timeoutMs?: number } = {}): Promise<T> {
+  if (demoMode && (path === "/reading-posts" || path.startsWith("/reading-posts?") || path.startsWith("/reading-posts/"))) {
+    return handleDemoReadingPostRequest(path, init) as Promise<T>;
+  }
+  const response = await sendApiRequest(path, init, options);
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
+export async function streamNdjson<T>(
+  path: string,
+  init: RequestInit,
+  onEvent: (event: T) => void,
+  options: { timeoutMs?: number } = {},
+): Promise<void> {
+  const response = await sendApiRequest(path, init, options);
+  if (!response.body) {
+    const text = await response.text();
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed) onEvent(JSON.parse(trimmed) as T);
+    }
+    return;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf("\n");
+        while (newlineIndex >= 0) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line) onEvent(JSON.parse(line) as T);
+          newlineIndex = buffer.indexOf("\n");
+        }
+      }
+      if (done) break;
+    }
+    buffer += decoder.decode();
+    const tail = buffer.trim();
+    if (tail) onEvent(JSON.parse(tail) as T);
+  } catch (reason) {
+    if (reason instanceof TypeError) throw new Error(CONNECTION_ERROR, { cause: reason });
+    throw reason;
+  } finally {
+    reader.releaseLock();
   }
 }
 
@@ -160,14 +215,14 @@ let demoAiSettings: AiSettings = {
   maxCandidates: 4,
   timeoutSeconds: 20,
   providers: [
-    { id: "openai", label: "OpenAI", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini", configured: false, available: false, apiKeyConfigured: false },
-    { id: "deepseek", label: "DeepSeek", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://api.deepseek.com", model: "deepseek-v4-flash", configured: false, available: false, apiKeyConfigured: false },
-    { id: "zhipu", label: "智谱", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://open.bigmodel.cn/api/paas/v4/", model: "glm-4.7-flash", configured: false, available: false, apiKeyConfigured: false },
-    { id: "qwen", label: "通义千问", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", configured: false, available: false, apiKeyConfigured: false },
-    { id: "siliconflow", label: "SiliconFlow", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen3-32B", configured: false, available: false, apiKeyConfigured: false },
-    { id: "anthropic", label: "Anthropic", type: "ANTHROPIC", enabled: false, baseUrl: "https://api.anthropic.com", model: "claude-sonnet-4-6", configured: false, available: false, apiKeyConfigured: false },
-    { id: "gemini", label: "Google Gemini", type: "GEMINI", enabled: false, baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "gemini-3.5-flash", configured: false, available: false, apiKeyConfigured: false },
-    { id: "ollama", label: "Ollama（本地）", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "http://127.0.0.1:11434/v1", model: "qwen3", configured: false, available: false, apiKeyConfigured: false },
+    { id: "openai", label: "OpenAI", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://api.openai.com/v1", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "deepseek", label: "DeepSeek", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://api.deepseek.com", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "zhipu", label: "智谱", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://open.bigmodel.cn/api/paas/v4/", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "qwen", label: "通义千问", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "siliconflow", label: "SiliconFlow", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "https://api.siliconflow.cn/v1", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "anthropic", label: "Anthropic", type: "ANTHROPIC", enabled: false, baseUrl: "https://api.anthropic.com", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "gemini", label: "Google Gemini", type: "GEMINI", enabled: false, baseUrl: "https://generativelanguage.googleapis.com/v1beta", model: "", configured: false, available: false, apiKeyConfigured: false },
+    { id: "ollama", label: "Ollama（本地）", type: "OPENAI_COMPATIBLE", enabled: false, baseUrl: "http://127.0.0.1:11434/v1", model: "", configured: false, available: false, apiKeyConfigured: false },
   ],
 };
 interface DemoCategory {
@@ -203,9 +258,26 @@ let booklists: DemoBooklist[] = [
   { id: "booklist-private", ownerId: "user-owner", ownerDisplayName: "林", kind: "PERSONAL", visibility: "PRIVATE", title: "想读的自然笔记", description: "先收好，等下一个安静的下午。", bookIds: ["book-3", "book-6", "book-8"], revision: 0, updatedAt: "2026-08-24T08:00:00Z" },
   { id: "booklist-public", ownerId: "user-member", ownerDisplayName: "家庭成员", kind: "PERSONAL", visibility: "PUBLIC", title: "灯塔与远方", description: "几本关于出发、等待与归来的书。", bookIds: ["book-2", "book-7", "book-9"], revision: 0, updatedAt: "2026-08-23T07:00:00Z" },
 ];
+interface DemoReadingPost {
+  id: string;
+  kind: "BOOK" | "ARTICLE";
+  sourceId: string;
+  sourceTitle: string;
+  userId: string;
+  authorName: string;
+  title: string;
+  markdown: string | null;
+  excerpt: string;
+  visibility: "PRIVATE" | "LIBRARY";
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 let recycleBin = [...demoRecycleBin];
 let operations: FileOperation[] = [];
 let annotations: Annotation[] = [];
+let demoReadingPosts: DemoReadingPost[] = [];
 const readingPositions = new Map<string, ReadingPosition>();
 const readingTimeDaily = new Map<string, number>();
 let readerFonts: ReaderFont[] = [...PRESET_READER_FONTS];
@@ -230,6 +302,111 @@ function demoSessionUser(): SessionUser | null {
   } catch {
     return null;
   }
+}
+
+async function handleDemoReadingPostRequest(path: string, init: RequestInit): Promise<unknown> {
+  await pause(40);
+  const user = demoSessionUser();
+  if (!user) throw new ApiRequestError("请先登录。", 403, "AUTH_REQUIRED");
+  const method = (init.method ?? "GET").toUpperCase();
+  const url = new URL(path, "http://demo.local");
+  const resolveSourceTitle = (kind: "BOOK" | "ARTICLE", sourceId: string, fallback = "书籍") => (
+    kind === "BOOK" ? (books.find((book) => book.id === sourceId)?.title ?? fallback) : fallback
+  );
+
+  if (url.pathname === "/reading-posts" && method === "GET") {
+    const kind = url.searchParams.get("kind") ?? "ALL";
+    const sourceId = url.searchParams.get("sourceId");
+    if (sourceId) {
+      if (kind !== "BOOK") throw new ApiRequestError("暂仅支持按书籍筛选随笔。", 400, "UNSUPPORTED_POST_FILTER");
+      const items = demoReadingPosts
+        .filter((post) => post.kind === "BOOK" && post.sourceId === sourceId && (post.userId === user.id || post.visibility === "LIBRARY"))
+        .map((post) => ({ ...post, sourceTitle: resolveSourceTitle("BOOK", post.sourceId, post.sourceTitle) }));
+      return { items, nextCursor: null };
+    }
+    const items = demoReadingPosts
+      .filter((post) => post.userId === user.id && (kind === "ALL" || post.kind === kind))
+      .map((post) => ({ ...post, markdown: null, sourceTitle: resolveSourceTitle(post.kind, post.sourceId, post.sourceTitle) }));
+    return { items, nextCursor: null };
+  }
+
+  if (url.pathname === "/reading-posts" && method === "POST") {
+    const body = JSON.parse(typeof init.body === "string" ? init.body : "{}") as {
+      kind?: "BOOK" | "ARTICLE";
+      sourceId?: string;
+      title?: string;
+      markdown?: string;
+      visibility?: "PRIVATE" | "LIBRARY";
+    };
+    const kind = body.kind === "ARTICLE" ? "ARTICLE" : "BOOK";
+    const sourceId = body.sourceId ?? "";
+    const title = body.title?.trim() ?? "";
+    const markdown = body.markdown ?? "";
+    if (!sourceId || !title || title.length > 200 || !markdown.trim() || markdown.length > 500_000) {
+      throw new ApiRequestError("请填写有效的随笔标题和正文。", 400, "POST_INVALID");
+    }
+    const now = new Date().toISOString();
+    const created: DemoReadingPost = {
+      id: randomId(),
+      kind,
+      sourceId,
+      sourceTitle: resolveSourceTitle(kind, sourceId, kind === "BOOK" ? "书籍" : "文章"),
+      userId: user.id,
+      authorName: user.displayName,
+      title,
+      markdown,
+      excerpt: markdown.slice(0, 240),
+      visibility: body.visibility === "LIBRARY" ? "LIBRARY" : "PRIVATE",
+      revision: 1,
+      createdAt: now,
+      updatedAt: now,
+    };
+    demoReadingPosts = [created, ...demoReadingPosts];
+    return { ...created };
+  }
+
+  const itemMatch = /^\/reading-posts\/(BOOK|ARTICLE)\/([^/]+)$/.exec(url.pathname);
+  if (itemMatch) {
+    const kind = itemMatch[1] as "BOOK" | "ARTICLE";
+    const id = decodeURIComponent(itemMatch[2]);
+    if (method === "GET") {
+      const found = demoReadingPosts.find((post) => post.kind === kind && post.id === id && (post.userId === user.id || post.visibility === "LIBRARY"));
+      if (!found) throw new ApiRequestError("随笔不存在或无权访问。", 404, "POST_NOT_FOUND");
+      return { ...found, sourceTitle: resolveSourceTitle(found.kind, found.sourceId, found.sourceTitle) };
+    }
+    if (method === "PUT") {
+      const body = JSON.parse(typeof init.body === "string" ? init.body : "{}") as {
+        title?: string;
+        markdown?: string;
+        visibility?: "PRIVATE" | "LIBRARY";
+        revision?: number;
+      };
+      const existing = demoReadingPosts.find((post) => post.kind === kind && post.id === id && post.userId === user.id);
+      if (!existing) throw new ApiRequestError("随笔不存在或无权访问。", 404, "POST_NOT_FOUND");
+      const title = body.title?.trim() ?? "";
+      const markdown = body.markdown ?? "";
+      if (!title || title.length > 200 || !markdown.trim() || markdown.length > 500_000) {
+        throw new ApiRequestError("请填写有效的随笔标题和正文。", 400, "POST_INVALID");
+      }
+      if (body.revision !== existing.revision) {
+        throw new ApiRequestError("随笔已在其他页面更新，请刷新后重试。", 409, "REVISION_CONFLICT");
+      }
+      const updated: DemoReadingPost = {
+        ...existing,
+        sourceTitle: resolveSourceTitle(existing.kind, existing.sourceId, existing.sourceTitle),
+        title,
+        markdown,
+        excerpt: markdown.slice(0, 240),
+        visibility: body.visibility === "LIBRARY" || body.visibility === "PRIVATE" ? body.visibility : existing.visibility,
+        revision: existing.revision + 1,
+        updatedAt: new Date().toISOString(),
+      };
+      demoReadingPosts = demoReadingPosts.map((post) => (post.kind === kind && post.id === id ? updated : post));
+      return { ...updated };
+    }
+  }
+
+  throw new ApiRequestError("随笔接口路径无效。", 404, "POST_NOT_FOUND");
 }
 
 function browseBook(book: Book): BrowseBook {
@@ -279,6 +456,14 @@ function canEditDemoBooklist(booklist: DemoBooklist, user: SessionUser | null): 
   if (!user) return false;
   if (booklist.visibility === "PRIVATE" && booklist.ownerId !== user.id) return false;
   return booklist.kind === "OFFICIAL" ? canManageDemo(user) : booklist.ownerId === user.id;
+}
+
+function ensureDemoBooklistTitleAvailable(ownerId: string, title: string, current?: DemoBooklist) {
+  const titleKey = title.trim().toLowerCase();
+  if (titleKey === current?.title.trim().toLowerCase()) return;
+  if (booklists.some((booklist) => booklist.ownerId === ownerId && booklist.title.trim().toLowerCase() === titleKey)) {
+    throw new ApiRequestError("已有同名书单，请换一个名称。", 409, "LIST_TITLE_EXISTS");
+  }
 }
 
 function demoBooklist(booklist: DemoBooklist, user: SessionUser | null): BooklistDetail {
@@ -384,7 +569,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {name:"Humite",tagline:"电�
 let demoSiteSettings = {...DEFAULT_SITE_SETTINGS};
 
 export interface PasswordPolicy { minLength: number; requireUppercase: boolean; requireLowercase: boolean; requireDigit: boolean; requireSpecial: boolean; }
-let demoPasswordPolicy: PasswordPolicy = {minLength:12, requireUppercase:false, requireLowercase:false, requireDigit:false, requireSpecial:false};
+let demoPasswordPolicy: PasswordPolicy = {minLength:8, requireUppercase:false, requireLowercase:false, requireDigit:false, requireSpecial:false};
 export interface MailSettings {
   enabled: boolean; host: string; port: number; security: string; username: string;
   password: string; sender: string; publicUrl: string; passwordConfigured: boolean;
@@ -392,10 +577,61 @@ export interface MailSettings {
 let demoMetadataProviders: MetadataProviderSettings = { providers: [
   { id: "OPEN_LIBRARY", label: "Open Library", enabled: true, available: true, description: "按 ISBN、书名与作者查询作品及各版本资料。", homepage: "https://openlibrary.org/developers/api" },
   { id: "WIKIDATA", label: "Wikidata", enabled: false, available: true, description: "查询开放书目、版本与出版信息。", homepage: "https://www.wikidata.org/wiki/Wikidata:Data_access" },
-  { id: "GOOGLE_BOOKS", label: "Google Books", enabled: false, available: false, description: "查询 Google Books 书目资料，需要配置 API 密钥。", homepage: "https://developers.google.com/books" },
 ] };
 
 const demoMetadataTerms: MetadataTerm[] = [];
+
+const DEMO_AI_MODELS: Record<string, AiProviderModelOption[]> = {
+  openai: [
+    { id: "gpt-5.2", label: "GPT-5.2" },
+    { id: "gpt-5.1", label: "GPT-5.1" },
+    { id: "gpt-5-mini", label: "GPT-5 mini" },
+    { id: "gpt-4.1", label: "GPT-4.1" },
+    { id: "gpt-4.1-mini", label: "GPT-4.1 mini" },
+    { id: "gpt-4o-mini", label: "GPT-4o mini" },
+  ],
+  deepseek: [
+    { id: "deepseek-chat", label: "deepseek-chat" },
+    { id: "deepseek-reasoner", label: "deepseek-reasoner" },
+  ],
+  zhipu: [
+    { id: "glm-5.1", label: "GLM-5.1" },
+    { id: "glm-5", label: "GLM-5" },
+    { id: "glm-4.7", label: "GLM-4.7" },
+    { id: "glm-4.7-flash", label: "GLM-4.7 Flash" },
+    { id: "glm-4.5-flash", label: "GLM-4.5 Flash" },
+  ],
+  qwen: [
+    { id: "qwen3-max", label: "qwen3-max" },
+    { id: "qwen-plus", label: "qwen-plus" },
+    { id: "qwen3.5-plus", label: "qwen3.5-plus" },
+    { id: "qwen-flash", label: "qwen-flash" },
+    { id: "qwen-turbo", label: "qwen-turbo" },
+  ],
+  siliconflow: [
+    { id: "Qwen/Qwen3-32B", label: "Qwen/Qwen3-32B" },
+    { id: "Qwen/Qwen3-14B", label: "Qwen/Qwen3-14B" },
+    { id: "Qwen/Qwen3-8B", label: "Qwen/Qwen3-8B" },
+    { id: "Pro/deepseek-ai/DeepSeek-V3", label: "Pro/deepseek-ai/DeepSeek-V3" },
+    { id: "Pro/deepseek-ai/DeepSeek-R1", label: "Pro/deepseek-ai/DeepSeek-R1" },
+  ],
+  anthropic: [
+    { id: "claude-opus-4-8", label: "claude-opus-4-8" },
+    { id: "claude-sonnet-4-6", label: "claude-sonnet-4-6" },
+    { id: "claude-haiku-4-5-20251001", label: "claude-haiku-4-5-20251001" },
+  ],
+  gemini: [
+    { id: "gemini-3.6-flash", label: "gemini-3.6-flash" },
+    { id: "gemini-3.5-flash", label: "gemini-3.5-flash" },
+    { id: "gemini-3.1-pro-preview", label: "gemini-3.1-pro-preview" },
+  ],
+  ollama: [
+    { id: "qwen3", label: "qwen3" },
+    { id: "deepseek-r1", label: "deepseek-r1" },
+    { id: "llama3.3", label: "llama3.3" },
+    { id: "gemma3", label: "gemma3" },
+  ],
+};
 
 export const api = {
   siteSettings: async (signal?: AbortSignal): Promise<SiteSettings> => demoMode ? {...demoSiteSettings}
@@ -451,7 +687,7 @@ export const api = {
     await pause();
     const user = users.find((candidate) => candidate.username === username && candidate.status === "ACTIVE");
     if (!user || password.length < 4) throw new Error("用户名或密码不正确");
-    return user;
+    return { ...user, canChangePasswordWithoutCurrent: user.mustChangePassword };
   },
 
   async setupOwner(input: { username: string; displayName: string; password: string }): Promise<SessionUser> {
@@ -490,13 +726,17 @@ export const api = {
     return result;
   },
 
-  async changePassword(_currentPassword: string, newPassword: string): Promise<SessionUser> {
-    if (!demoMode) return request("/auth/password", { method: "PUT", body: JSON.stringify({ currentPassword: _currentPassword, newPassword }) });
+  async changePassword(input: ChangePasswordInput): Promise<SessionUser> {
+    if (!demoMode) return request("/auth/password", { method: "PUT", body: JSON.stringify(input) });
     await pause();
-    if (newPassword.length < 12) throw new Error("新密码至少需要 12 个字符");
-    const current = users[0];
+    const current = demoSessionUser();
+    if (!current) throw new Error("请先登录。");
+    if (!(current.mustChangePassword && current.canChangePasswordWithoutCurrent) && !input.currentPassword?.trim()) {
+      throw new Error("请输入当前密码。");
+    }
+    if (input.newPassword.length < 12) throw new Error("新密码至少需要 12 个字符");
     users = users.map((user) => user.id === current.id ? { ...user, mustChangePassword: false } : user);
-    return { ...current, mustChangePassword: false };
+    return { ...current, mustChangePassword: false, canChangePasswordWithoutCurrent: false };
   },
 
   async catalogRevision(signal?: AbortSignal): Promise<{ userId: string; revision: number; readingUpdatedAt?: string | null }> {
@@ -602,7 +842,7 @@ export const api = {
   async createCategory(input: { name: string; description?: string }): Promise<CategoryDetail> {
     if (!demoMode) return request("/categories", { method: "POST", body: JSON.stringify(input) });
     await pause(70);
-    if (!canManageDemo(demoSessionUser())) throw new Error("只有主人或管理员可以维护分类");
+    if (!canManageDemo(demoSessionUser())) throw new Error("只有站点所有者或管理员可以维护分类");
     if (categories.some((category) => category.name.toLocaleLowerCase("zh-CN") === input.name.trim().toLocaleLowerCase("zh-CN"))) throw new Error("已经存在同名分类");
     const category: DemoCategory = { id: `category-${Date.now()}`, name: input.name.trim(), description: input.description?.trim() || undefined, bookIds: [] };
     categories = [...categories, category];
@@ -612,7 +852,7 @@ export const api = {
   async updateCategory(id: string, input: { name: string; description?: string }): Promise<CategoryDetail> {
     if (!demoMode) return request(`/categories/${id}`, { method: "PATCH", body: JSON.stringify(input) });
     await pause(70);
-    if (!canManageDemo(demoSessionUser())) throw new Error("只有主人或管理员可以维护分类");
+    if (!canManageDemo(demoSessionUser())) throw new Error("只有站点所有者或管理员可以维护分类");
     const index = categories.findIndex((category) => category.id === id);
     if (index < 0) throw new Error("未找到这个分类");
     categories = categories.map((category) => category.id === id ? { ...category, name: input.name.trim(), description: input.description?.trim() || undefined } : category);
@@ -622,7 +862,7 @@ export const api = {
   async deleteCategory(id: string): Promise<void> {
     if (!demoMode) return request(`/categories/${id}`, { method: "DELETE" });
     await pause(70);
-    if (!canManageDemo(demoSessionUser())) throw new Error("只有主人或管理员可以维护分类");
+    if (!canManageDemo(demoSessionUser())) throw new Error("只有站点所有者或管理员可以维护分类");
     categories = categories.filter((category) => category.id !== id);
   },
 
@@ -648,7 +888,7 @@ export const api = {
   async replaceBookCategories(bookId: string, categoryIds: string[]): Promise<CategoryList> {
     if (!demoMode) return request(`/books/${bookId}/categories`, { method: "PUT", body: JSON.stringify({ categoryIds }) });
     await pause(70);
-    if (!canManageDemo(demoSessionUser())) throw new Error("只有主人或管理员可以维护分类");
+    if (!canManageDemo(demoSessionUser())) throw new Error("只有站点所有者或管理员可以维护分类");
     const selected = new Set(categoryIds);
     categories = categories.map((category) => ({
       ...category,
@@ -719,7 +959,8 @@ export const api = {
     await pause(70);
     const user = demoSessionUser();
     if (!user) throw new Error("请先登录");
-    if (input.kind === "OFFICIAL" && !canManageDemo(user)) throw new Error("只有主人或管理员可以创建官方书单");
+    if (input.kind === "OFFICIAL" && !canManageDemo(user)) throw new Error("只有站点所有者或管理员可以创建官方书单");
+    ensureDemoBooklistTitleAvailable(user.id, input.title);
     const booklist: DemoBooklist = {
       id: `booklist-${Date.now()}`,
       ownerId: user.id,
@@ -747,6 +988,7 @@ export const api = {
       const hidden = booklist.bookIds.filter((bookId) => !displayBookIds.includes(bookId));
       if (hidden.length) throw new Error("公开书单只能包含公共书目，请先移出未公开书籍");
     }
+    ensureDemoBooklistTitleAvailable(booklist.ownerId, input.title, booklist);
     const updated: DemoBooklist = { ...booklist, title: input.title.trim(), description: input.description?.trim() || undefined, visibility: input.visibility, revision: booklist.revision + 1, updatedAt: new Date().toISOString() };
     booklists = booklists.map((candidate) => candidate.id === id ? updated : candidate);
     return demoBooklist(updated, user);
@@ -944,12 +1186,6 @@ export const api = {
     return { today, featuredBook, recentReading, stats };
   },
 
-  async getWeeklyReadingStats(): Promise<WeeklyReadingStats> {
-    if (!demoMode) return request("/reading-stats/weekly");
-    await pause(40);
-    return demoWeeklyReadingStats();
-  },
-
   async recordReadingTime(bookId: string, seconds: number): Promise<WeeklyReadingStats> {
     const normalizedSeconds = Math.max(1, Math.min(60, Math.round(seconds)));
     if (!demoMode) return trackSessionSave(request<WeeklyReadingStats>(`/books/${bookId}/reading-time`, {
@@ -1047,7 +1283,7 @@ export const api = {
     if (!demoMode) return request(`/users/${userId}/status`, { method: "PATCH" });
     await pause();
     const user = users.find((candidate) => candidate.id === userId);
-    if (!user || user.role === "OWNER") throw new Error("主人账户不能被停用");
+    if (!user || user.role === "OWNER") throw new Error("站点所有者账户不能被停用");
     const updated = { ...user, status: user.status === "ACTIVE" ? "DISABLED" as const : "ACTIVE" as const };
     users = users.map((candidate) => candidate.id === userId ? updated : candidate);
     return updated;
@@ -1057,7 +1293,7 @@ export const api = {
     if (!demoMode) return request(`/users/${userId}/temporary-password`, { method: "POST" });
     await pause();
     const user = users.find((candidate) => candidate.id === userId);
-    if (!user || user.role === "OWNER") throw new Error("不能重置主人账户");
+    if (!user || user.role === "OWNER") throw new Error("不能重置站点所有者账户");
     users = users.map((candidate) => candidate.id === userId ? { ...candidate, mustChangePassword: true } : candidate);
     return { username: user.username, temporaryPassword: "Humite-Reset-8Q4N!" };
   },
@@ -1160,11 +1396,6 @@ export const api = {
     return operation;
   },
 
-  async listFileOperationPage(page = 0, pageSize = 10): Promise<{ items: FileOperation[]; total: number }> {
-    if (!demoMode) return request(`/file-operations?page=${page}&pageSize=${pageSize}`);
-    await pause(); return { items: operations.slice(page * pageSize, (page + 1) * pageSize), total: operations.length };
-  },
-
   async listFileTaskHistoryPage(page = 0, pageSize = 10): Promise<FileTaskHistoryPage> {
     if (!demoMode) return request(`/file-task-history?page=${page}&pageSize=${pageSize}`);
     await pause();
@@ -1183,12 +1414,6 @@ export const api = {
       };
     });
     return { items: items.slice(page * pageSize, (page + 1) * pageSize), total: items.length };
-  },
-
-  async listFileOperations(): Promise<FileOperation[]> {
-    if (!demoMode) return request<{ items: FileOperation[] }>("/file-operations?limit=50").then((result) => result.items);
-    await pause();
-    return [...operations];
   },
 
   async listRecycleBin(): Promise<RecycleBinEntry[]> {
@@ -1360,6 +1585,13 @@ export const api = {
     });
     demoAiSettings = { enabled: input.enabled, autoMatch: input.autoMatch, maxCandidates: input.maxCandidates, timeoutSeconds: input.timeoutSeconds, providers };
     return structuredClone(demoAiSettings);
+  },
+
+  async listAiProviderModels(input: { id: string; type: string; baseUrl: string; apiKey?: string }): Promise<AiProviderModelsResult> {
+    if (!demoMode) return request("/ai/models", { method: "POST", body: JSON.stringify(input) });
+    await pause(80);
+    if (!input.baseUrl.trim()) return { models: [], source: "demo" };
+    return { models: [...(DEMO_AI_MODELS[input.id] ?? [])], source: "demo" };
   },
 
   async uploadBookCover(uploadId: string, cover: Blob): Promise<BookUpload> {

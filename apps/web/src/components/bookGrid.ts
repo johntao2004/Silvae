@@ -2,12 +2,12 @@
 // Real cards and skeletons share responsive grid columns, preserving empty tracks for sparse wide-screen results.
 import { tokens } from "../theme/tokens";
 
-const gridGaps = { xs: 2, sm: 3, md: 4 } as const;
+const gridGaps = { xs: 1.5, sm: 3, md: 4 } as const;
 
 export const bookGridSx = {
   display: "grid",
   gridTemplateColumns: {
-    xs: "repeat(2, minmax(0, 1fr))",
+    xs: "repeat(3, minmax(0, 1fr))",
     sm: "repeat(3, minmax(0, 1fr))",
     md: "repeat(4, minmax(0, 1fr))",
     lg: "repeat(6, minmax(0, 1fr))",
@@ -26,4 +26,16 @@ export const articleGridSx = {
     md: "repeat(3, minmax(0, 1fr))",
     xl: `repeat(auto-fill, minmax(min(100%, ${tokens.layout.bookCardMinWidth * 2}px), 1fr))`,
   },
+} as const;
+
+export const collectionGridSx = {
+  display: "grid",
+  gridTemplateColumns: {
+    xs: "repeat(2, minmax(0, 1fr))",
+    sm: "repeat(3, minmax(0, 1fr))",
+    md: "repeat(5, minmax(0, 1fr))",
+    lg: "repeat(6, minmax(0, 1fr))",
+    xl: "repeat(auto-fill, minmax(min(100%, 200px), 1fr))",
+  },
+  gap: { xs: "12px", sm: "16px", md: "20px" },
 } as const;

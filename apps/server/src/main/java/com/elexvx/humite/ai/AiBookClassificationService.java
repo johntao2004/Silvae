@@ -172,7 +172,7 @@ public class AiBookClassificationService {
             permissions.require(principal, "library.edit");
         } else {
             if (actor.role() != UserRole.OWNER && actor.role() != UserRole.ADMIN) {
-                throw ApiException.forbidden("OWNER_OR_ADMIN_REQUIRED", "只有主人或管理员可以分析上传草稿。");
+                throw ApiException.forbidden("OWNER_OR_ADMIN_REQUIRED", "只有站点所有者或管理员可以分析上传草稿。");
             }
             permissions.require(principal, "library.upload");
         }

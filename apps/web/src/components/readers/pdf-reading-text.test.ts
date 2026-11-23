@@ -114,9 +114,89 @@ describe("pdfTextToParagraphs", () => {
     ]);
 
     expect(blocks).toEqual([
-      { kind: "heading", text: "注释" },
+      { kind: "heading", text: "注 释", notesSection: true },
       { kind: "footnote", marker: "[1]", text: "参看本书第四卷《以自卫战争粉碎蒋介石的进攻》[2]。" },
     ]);
+  });
+
+  it("does not treat a bibliography section as movable footnotes", () => {
+    const blocks = pdfTextToReadingBlocks([
+      item("参考文献", 180, 561, { width: 80, height: 18, hasEOL: true }),
+      item("[1]毛泽东选集第五卷，北京：人民出版社，1977年。", 90, 538, { height: 12, hasEOL: true }),
+    ]);
+
+    expect(blocks).toEqual([
+      { kind: "heading", text: "参考文献", bibliographySection: true },
+      { kind: "footnote", marker: "[1]", text: "毛泽东选集第五卷，北京：人民出版社，1977年。" },
+    ]);
+  });
+
+  it("separates a trailing 注释 heading from the preceding sentence", () => {
+    const blocks = pdfTextToReadingBlocks([
+      item("庆贺中国人民政治协商会议的成功！", 90, 500, { width: 300, height: 16 }),
+      item("注", 390, 500, { width: 12, height: 12 }),
+      item("释", 402, 500, { width: 12, height: 12, hasEOL: true }),
+      item("* 这是对应的脚注。", 90, 470, { height: 12, hasEOL: true }),
+    ]);
+
+    expect(blocks).toEqual([
+      { kind: "paragraph", text: "庆贺中国人民政治协商会议的成功！" },
+      { kind: "heading", text: "注释", notesSection: true },
+      { kind: "footnote", marker: "*", text: "这是对应的脚注。" },
+    ]);
+  });
+
+  it("preserves an enlarged chapter title and its superscript as a page boundary", () => {
+    const blocks = pdfTextToReadingBlocks([
+      item("中国人民大团结万岁", 180.78, 569.36, { width: 234.84, height: 25.98 }),
+      item("*", 415.62, 582.38, { width: 6.51, height: 13.02 }),
+      item("（一九四九年九月三十日）", 205.44, 533.96, { width: 192.08, height: 16.02 }),
+      item("全国同胞们：中国人民政治协商会议业已胜利地完成", 122.58, 482.65, { width: 390.49, height: 16.02, hasEOL: true }),
+      item("了自己的任务。", 90, 459.61, { width: 112.05, height: 16.02, hasEOL: true }),
+    ]);
+
+    expect(blocks[0]).toEqual({ kind: "heading", text: "中国人民大团结万岁*", chapterStart: true });
+    expect(blocks.slice(1).every(block => block.kind === "paragraph")).toBe(true);
+    expect(blocks.map(block => block.text).join("")).toContain("全国同胞们：中国人民政治协商会议业已胜利地完成了自己的任务。");
+  });
+
+  it("keeps a wrapped chapter title together after preceding body text", () => {
+    const blocks = pdfTextToReadingBlocks([
+      item("前一篇的末尾仍然保留在自己的正文中，不与下一篇标题合并。", 90, 720, { width: 423, height: 16, hasEOL: true }),
+      item("为争取国家财政经济状况的", 132, 569, { width: 338, height: 26, hasEOL: true }),
+      item("基本好转而斗争*", 197, 530, { width: 208, height: 26, hasEOL: true }),
+      item("这里是新一篇的正文，原文中的两行标题只需要一个分页起点。", 90, 480, { width: 423, height: 16, hasEOL: true }),
+    ]);
+
+    expect(blocks).toEqual([
+      { kind: "paragraph", text: "前一篇的末尾仍然保留在自己的正文中，不与下一篇标题合并。" },
+      { kind: "heading", text: "为争取国家财政经济状况的基本好转而斗争*", chapterStart: true },
+      { kind: "paragraph", text: "这里是新一篇的正文，原文中的两行标题只需要一个分页起点。" },
+    ]);
+  });
+
+  it("does not force chapter breaks for smaller section titles, notes or ordinary centered text", () => {
+    const blocks = pdfTextToReadingBlocks([
+      item("一 篇内小节", 240, 720, { width: 123, height: 22, hasEOL: true }),
+      item("这是篇内小节的正文，应该保持连续阅读而不是再开始新的一页。", 90, 680, { width: 423, height: 16, hasEOL: true }),
+      item("这行正文继续原来的内容，字号也与上一行相同。", 90, 657, { width: 423, height: 16, hasEOL: true }),
+      item("居中的普通正文", 245, 634, { width: 112, height: 16, hasEOL: true }),
+      item("注释", 122, 590, { width: 48, height: 12, hasEOL: true }),
+      item("[1]这是注释，仍然附在当前篇末尾。", 122, 567, { height: 12, hasEOL: true }),
+    ]);
+
+    expect(blocks.some(block => block.kind === "heading" && block.chapterStart)).toBe(false);
+    expect(blocks).toContainEqual({ kind: "heading", text: "注释", notesSection: true });
+  });
+
+  it("does not mistake a section number for a chapter on a page dominated by smaller notes", () => {
+    const blocks = pdfTextToReadingBlocks([
+      item("二十", 275, 720, { width: 52, height: 26, hasEOL: true }),
+      item("这是篇内的一段正文。", 90, 680, { width: 423, height: 16, hasEOL: true }),
+      item("[1]这一页的大部分文字属于篇内附注，较小的注释字号不应让小节编号成为新篇章。", 90, 500, { width: 423, height: 12, hasEOL: true }),
+    ]);
+
+    expect(blocks.some(block => block.kind === "heading" && block.chapterStart)).toBe(false);
   });
 
   it("splits common Chinese footnote markers into clickable references", () => {

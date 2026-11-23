@@ -98,7 +98,7 @@ function AiAvailabilityDialog({ notice, canConfigure, onRetry, onClose }: {
       <_AntAlert type={statusError ? "error" : "warning"} showIcon description={description} />
       {!statusError && (canConfigure
         ? <span>你可以前往管理设置检查 AI 服务配置。</span>
-        : <span>请联系主人或管理员配置 AI 服务。</span>)}
+        : <span>请联系站点所有者或管理员配置 AI 服务。</span>)}
     </Stack></DialogContent>
     <DialogActions>
       {statusError

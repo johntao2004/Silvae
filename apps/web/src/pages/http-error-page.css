@@ -1,5 +1,54 @@
 .http-error-status.bk-typography {
-  font-size: var(--typography-font-size-display-lg);
-  line-height: var(--typography-line-height-display-lg);
+  margin: 0;
+  font-family: var(--typography-font-family-display);
+  font-size: clamp(4.5rem, 16vw, 7.5rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.04em;
   font-variant-numeric: lining-nums tabular-nums;
+}
+
+.http-error-heading.bk-typography {
+  margin: 0;
+  font-family: var(--typography-font-family-display);
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.http-error-label.bk-typography {
+  margin: 0;
+  font-size: var(--typography-font-size-title-sm);
+  font-weight: var(--typography-font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.http-error-subtitle.bk-typography {
+  margin: 0;
+  font-size: var(--typography-font-size-body);
+}
+
+.http-error-reason.bk-typography {
+  margin: 0;
+  max-width: 560px;
+  font-size: var(--typography-font-size-body);
+  line-height: 1.65;
+  color: var(--color-text-primary);
+}
+
+.http-error-diagnostics {
+  width: 100%;
+  max-width: 480px;
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-soft);
+  color: var(--color-text-secondary);
+}
+
+.http-error-code.bk-typography {
+  margin: 0;
+  font-family: var(--typography-font-family-code, var(--typography-font-family-mono, ui-monospace, SFMono-Regular, Menlo, monospace));
+  font-size: var(--typography-font-size-caption);
+  color: var(--color-text-secondary);
 }

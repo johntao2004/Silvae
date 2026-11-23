@@ -79,7 +79,7 @@ public class CategoryService {
 
     private HumiteUser manager(Principal principal) {
         HumiteUser actor = requiredActor(principal);
-        if (!actor.canManageFiles()) throw ApiException.forbidden("CATEGORY_MANAGEMENT_FORBIDDEN", "只有主人或管理员可以维护分类。");
+        if (!actor.canManageFiles()) throw ApiException.forbidden("CATEGORY_MANAGEMENT_FORBIDDEN", "只有站点所有者或管理员可以维护分类。");
         return actor;
     }
 

@@ -35,7 +35,7 @@ class RolePermissionsNativePersistenceTest {
         Flyway.configure().dataSource(url,user,password).schemas(schema).defaultSchema(schema).load().migrate();
         connection.createStatement().execute("set search_path to "+schema+",public"); db=DSL.using(connection,SQLDialect.POSTGRES);
         users=new UserRepository(db); var audit=new AuditService(db); permissions=new RolePermissionService(db,users,audit); roles=new UserRoleService(users,audit);
-        ownerId=users.create("owner","主人","test",UserRole.OWNER,false).id(); adminId=users.create("admin","管理员","test",UserRole.ADMIN,false).id(); memberId=users.create("member","成员","test",UserRole.MEMBER,false).id();
+        ownerId=users.create("owner","站点所有者","test",UserRole.OWNER,false).id(); adminId=users.create("admin","管理员","test",UserRole.ADMIN,false).id(); memberId=users.create("member","成员","test",UserRole.MEMBER,false).id();
     }
     @AfterEach void cleanup() throws Exception {
         SecurityContextHolder.clearContext();

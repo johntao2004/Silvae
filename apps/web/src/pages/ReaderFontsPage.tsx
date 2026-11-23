@@ -4,9 +4,7 @@ import { usePermissions } from "../auth/permissions";
 import { EmptyState } from "../ui/empty-state";
 import { PageContainer, SectionHeader } from "../components/PageHeader";
 import { Alert } from "@/ui/feedback";
-import { Box, useMediaQuery } from "@/ui/primitives";
 import { Button } from "@/ui/buttons";
-import { Chip } from "@/ui/feedback";
 import { CircularProgress } from "@/ui/feedback";
 import { FormControl } from "@/ui/primitives";
 import { InputLabel } from "@/ui/primitives";
@@ -18,20 +16,28 @@ import { Switch } from "@/ui/forms";
 import { TextField } from "@/ui/forms";
 import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { api } from "../api/client";
 import { readerFontFamily } from "../components/readers/reader-fonts";
 import type { ReaderFont } from "../domain/types";
-import { tokens } from "../theme/tokens";
+import "./settings-page.css";
 
 const allowedExtensions = new Set(["woff2", "woff", "ttf", "otf"]);
-const wideFontUploadQuery = `(min-width: ${tokens.layout.breakpointTablet}px)`;
+const cssFormatMap: Record<NonNullable<ReaderFont["format"]>, string> = {
+  WOFF2: "woff2",
+  WOFF: "woff",
+  TTF: "truetype",
+  OTF: "opentype",
+};
+
+function sanitizeCssValue(value: string): string {
+  return value.replace(/["'\\{}();\r\n]/gu, "");
+}
 
 export function ReaderFontsPage() {
   const { can } = usePermissions();
   const queryClient = useQueryClient();
   const fontsQuery = useQuery({ queryKey: ["reader-fonts", "admin"], queryFn: api.listReaderFontsForAdmin });
-  const isWideFontUpload = useMediaQuery(wideFontUploadQuery);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [kind, setKind] = useState<ReaderFont["kind"]>("SERIF");
@@ -55,7 +61,13 @@ export function ReaderFontsPage() {
     setBusy(true);
     setUploadProgress(0);
     try {
-      const created = await api.createReaderFont({ displayName: displayName.trim() || file.name.replace(/\.[^.]+$/u, ""), kind, filename: file.name, sizeBytes: file.size, licenseNote: licenseNote.trim() || undefined });
+      const created = await api.createReaderFont({
+        displayName: displayName.trim() || file.name.replace(/\.[^.]+$/u, ""),
+        kind,
+        filename: file.name,
+        sizeBytes: file.size,
+        licenseNote: licenseNote.trim() || undefined,
+      });
       await api.uploadReaderFontContent(created.id, file, setUploadProgress);
       await queryClient.invalidateQueries({ queryKey: ["reader-fonts", "admin"] });
       await queryClient.invalidateQueries({ queryKey: ["reader-fonts"] });
@@ -83,64 +95,114 @@ export function ReaderFontsPage() {
 
   return (
     <PageContainer>
-      {fonts.filter((font) => font.source === "CUSTOM" && font.contentUrl).map((font) => <style key={font.id}>{`@font-face { font-family: "${font.familyName}"; src: url("${font.contentUrl}") format("${font.format?.toLowerCase() ?? "woff2"}"); font-display: swap; }`}</style>)}
+      {fonts
+        .filter((font) => font.source === "CUSTOM" && font.contentUrl)
+        .map((font) => (
+          <style key={font.id}>
+            {`@font-face { font-family: "${sanitizeCssValue(font.familyName)}"; src: url("${sanitizeCssValue(font.contentUrl ?? "")}") format("${font.format ? cssFormatMap[font.format] : "woff2"}"); font-display: swap; }`}
+          </style>
+        ))}
 
-      <Stack className="bk-form-section" sx={{ width: "100%", minWidth: 0, maxWidth: "none", mb: `${tokens.spacing[6]}px` }}>
-        <Stack spacing={2}>
-          <SectionHeader title="上传自定义字体" action={<>
-            <input ref={inputRef} hidden type="file" accept=".woff2,.woff,.ttf,.otf" onChange={(event: any) => { const file = event.target.files?.[0]; if (file) void upload(file); }} />
-            <Button variant="contained" startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined} disabled={busy || !can("settings.fonts.edit")} onClick={() => inputRef.current?.click()}>{busy ? `上传中 ${uploadProgress}%` : "选择字体文件"}</Button>
-          </>} />
-          <Box className={`bk-reader-font-upload-grid${isWideFontUpload ? " bk-reader-font-upload-grid--wide" : ""}`}>
-            <TextField className="bk-reader-font-upload-name" label="展示名称（可选）" value={displayName} onChange={(event: any) => setDisplayName(event.target.value)} fullWidth />
-            <FormControl className="bk-reader-font-upload-kind" fullWidth>
+      <Stack className="bk-settings-stack">
+        <Stack className="bk-settings-card" spacing={2}>
+          <SectionHeader
+            title="上传自定义字体"
+            action={
+              <>
+                <input
+                  ref={inputRef}
+                  hidden
+                  type="file"
+                  accept=".woff2,.woff,.ttf,.otf"
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    const file = event.target.files?.[0];
+                    if (file) void upload(file);
+                  }}
+                />
+                <Button
+                  variant="contained"
+                  startIcon={busy ? <CircularProgress size={18} color="inherit" /> : undefined}
+                  disabled={busy || !can("settings.fonts.edit")}
+                  onClick={() => inputRef.current?.click()}
+                >
+                  {busy ? `上传中 ${uploadProgress}%` : "选择字体文件"}
+                </Button>
+              </>
+            }
+          />
+          <div className="bk-settings-field-grid">
+            <TextField
+              label="展示名称（可选）"
+              value={displayName}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setDisplayName(event.target.value)}
+              fullWidth
+            />
+            <FormControl fullWidth>
               <InputLabel id="reader-font-kind-label">字体类型</InputLabel>
-              <Select className="bk-reader-font-upload-kind-select" labelId="reader-font-kind-label" label="字体类型" value={kind} onChange={(event: any) => setKind(event.target.value as ReaderFont["kind"])}>
+              <Select
+                labelId="reader-font-kind-label"
+                label="字体类型"
+                value={kind}
+                onChange={(event: { target: { value: string } }) => setKind(event.target.value as ReaderFont["kind"])}
+              >
                 <MenuItem value="SERIF">衬线字体</MenuItem>
                 <MenuItem value="SANS">无衬线字体</MenuItem>
               </Select>
             </FormControl>
-            <TextField className="bk-reader-font-upload-license" sx={{ gridColumn: "1 / -1" }} label="来源 / 许可说明（可选）" value={licenseNote} onChange={(event: any) => setLicenseNote(event.target.value)} fullWidth />
-            <Typography className="bk-reader-font-upload-guidance" component="p" variant="caption" color="text.secondary">WOFF2 / WOFF / TTF / OTF · ≤ 25 MB</Typography>
-          </Box>
+            <TextField
+              className="bk-settings-field-full"
+              label="来源 / 许可说明（可选）"
+              value={licenseNote}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setLicenseNote(event.target.value)}
+              fullWidth
+            />
+          </div>
+          <Typography component="p" variant="caption" color="text.secondary">
+            WOFF2 / WOFF / TTF / OTF · ≤ 25 MB
+          </Typography>
         </Stack>
-      </Stack>
 
-      {fontsQuery.isSuccess && fonts.length === 0 && <EmptyState title="暂无阅读字体" />}
-      {fontsQuery.isError && <Alert severity="error" sx={{ mb: 3 }}>无法读取字体列表，请刷新后重试。</Alert>}
-      <Stack
-        sx={{
-          width: "100%",
-          minWidth: 0,
-          display: "flex",
-          gap: `${tokens.spacing[4]}px`,
-        }}
-      >
-        {fonts.map((font) => (
-          <Box className="bk-settings-row" key={font.id} sx={{ width: "100%", minWidth: 0, opacity: font.status === "ENABLED" ? 1 : 0.62 }}>
-            <Box sx={{ py: 3 }}>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ alignItems: { sm: "center" } }}>
-                <Box sx={{ minWidth: 0, flex: 1 }}>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap", gap: 0.75 }}><Typography variant="h5" sx={{ fontFamily: readerFontFamily(font) }}>{font.displayName}</Typography><Chip size="small" label={font.kind === "SERIF" ? "衬线" : "无衬线"} /><Chip size="small" variant="outlined" label={font.source === "PRESET" ? "预设" : "自定义"} color={font.status === "ENABLED" ? "success" : "default"} /></Stack>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, fontFamily: readerFontFamily(font) }}>Humite阅读正文预览：山高水长，文字应当顺着视线自然延续。</Typography>
-                  {font.licenseNote && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.5 }}>{font.licenseNote}</Typography>}
-                </Box>
-                <Switch
-                  checked={font.status === "ENABLED"}
-                  onChange={() => void toggle(font)}
-                  disabled={font.source === "PRESET" || !can("settings.fonts.edit")}
-                  slotProps={{
-                    input: {
-                      "aria-label": font.source === "PRESET"
-                        ? `${font.displayName}为预设字体，已启用`
-                        : `${font.status === "ENABLED" ? "停用" : "启用"}${font.displayName}`,
-                    },
+        <Stack className="bk-settings-card" spacing={2}>
+          <SectionHeader title="已安装字体" />
+          {fontsQuery.isError && <Alert severity="error">无法读取字体列表，请刷新后重试。</Alert>}
+          {fontsQuery.isSuccess && fonts.length === 0 && <EmptyState title="暂无阅读字体" />}
+          {fonts.length > 0 && (
+            <div className="bk-settings-toggle-list">
+              {fonts.map((font) => (
+                <Stack
+                  key={font.id}
+                  data-testid={`reader-font-card-${font.id}`}
+                  direction="row"
+                  spacing={2}
+                  className="bk-settings-toggle-row"
+                  sx={{
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    minWidth: 0,
+                    opacity: font.status === "ENABLED" ? 1 : 0.62,
                   }}
-                />
-              </Stack>
-            </Box>
-          </Box>
-        ))}
+                >
+                  <Typography variant="h5" sx={{ fontFamily: readerFontFamily(font), minWidth: 0, overflowWrap: "anywhere" }}>
+                    {font.displayName}
+                  </Typography>
+                  <Switch
+                    checked={font.status === "ENABLED"}
+                    onChange={() => void toggle(font)}
+                    disabled={font.source === "PRESET" || !can("settings.fonts.edit")}
+                    sx={{ flexShrink: 0 }}
+                    slotProps={{
+                      input: {
+                        "aria-label": font.source === "PRESET"
+                          ? `${font.displayName}为预设字体，已启用`
+                          : `${font.status === "ENABLED" ? "停用" : "启用"}${font.displayName}`,
+                      },
+                    }}
+                  />
+                </Stack>
+              ))}
+            </div>
+          )}
+        </Stack>
       </Stack>
       <Snackbar open={Boolean(error)} autoHideDuration={5000} onClose={() => setError("")}><Alert severity="error" onClose={() => setError("")}>{error}</Alert></Snackbar>
       <Snackbar open={Boolean(notice)} autoHideDuration={3500} onClose={() => setNotice("")} message={notice} />

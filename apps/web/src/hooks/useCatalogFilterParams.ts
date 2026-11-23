@@ -8,7 +8,7 @@ export function useCatalogFilterParams() {
   const format = params.get("format") ?? "ALL";
   const sortValue = params.get("sort");
   const sort: "recent" | "title" | "author" = sortValue === "title" || sortValue === "author" ? sortValue : "recent";
-  const expanded = params.get("advanced") === "1" || (params.get("advanced") !== "0" && Boolean(categoryId || subjectCode || params.get("manage") === "1"));
+  const expanded = params.get("advanced") === "1" || (params.get("advanced") !== "0" && Boolean(subjectCode));
   const updateParam = (key: string, value: string, defaultValue = "") => {
     setParams(previous => {
       const next = new URLSearchParams(previous);
@@ -22,8 +22,15 @@ export function useCatalogFilterParams() {
     ["q", "format", "category", "subject"].forEach(key => next.delete(key));
     return next;
   }, { replace: true });
-  return { categoryId, subjectCode, query, format, sort, expanded, updateParam, clearFilters,
-    manageOpen: params.get("manage") === "1",
+  return {
+    categoryId,
+    subjectCode,
+    query,
+    format,
+    sort,
+    expanded,
+    updateParam,
+    clearFilters,
     activeCount: Number(Boolean(subjectCode)) + Number(Boolean(categoryId)) + Number(Boolean(query.trim())) + Number(format !== "ALL"),
   };
 }

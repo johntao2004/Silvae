@@ -12,6 +12,8 @@ import { IconButton } from "@/ui/buttons";
 import { bookmarkIsVisible, bookmarkLabel, bookmarkTocIndex } from "../components/readers/reader-bookmarks";
 import { AutoStoriesRounded } from "@/ui/icons";
 import { CheckRounded } from "@/ui/icons";
+import { CloseRounded } from "@/ui/icons";
+import { SystemThemeOutlined } from "@/ui/icons";
 import { FontDownloadRounded } from "@/ui/icons";
 import { FormatBoldRounded } from "@/ui/icons";
 import { FormatSizeRounded } from "@/ui/icons";
@@ -47,14 +49,14 @@ import { AnnotationNoteMarkdown } from "../components/AnnotationNoteMarkdown";
 import { Tooltip } from "@/ui/feedback";
 import { Typography } from "@/ui/primitives";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type MouseEvent, type TouchEvent } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { READER_SHELL_HEIGHT, readerShellHeight } from "../components/readers/reader-layout";
 import { PageTurnShade } from "../components/readers/PageTurnShade";
 import { ReaderTopBar } from "../components/readers/ReaderTopBar";
-import { isEditableReaderTarget, isReaderSwipe } from "../components/readers/reader-navigation";
+import { classifyReaderTapZone, hasReaderTextSelection, isEditableReaderTarget, isReaderHorizontalSwipe, isReaderInteractiveTapTarget } from "../components/readers/reader-navigation";
 import { readerSelectionFromRect, type ReaderSelection, type TocItem } from "../components/readers/types";
 import { useReaderPageLayout } from "../components/readers/use-reader-page-layout";
 import { useReaderVisibleHeight } from "../components/readers/use-reader-visible-height";
@@ -67,6 +69,7 @@ import { tokens } from "../theme/tokens";
 import { useHumiteTheme } from "../theme/HumiteThemeProvider";
 import { humiteThemeOptions } from "../theme/theme";
 import { DEFAULT_READER_SETTINGS, PRESET_READER_FONTS, readReaderSettings, readerFontFamily, type ReaderSettings, type ReaderTheme } from "../components/readers/reader-fonts";
+import { useIsMobileViewport } from "../hooks/useIsMobileViewport";
 import { removeLocalPreference, saveLocalPreference } from "../utils/local-preferences";
 import { readReaderNoteDraft } from "../components/readers/reader-note-draft";
 
@@ -90,7 +93,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const { user } = useAuth();
   const { can } = usePermissions();
   const canAnnotate = can(source?.annotationPermission ?? "reader.annotate");
-  const { mode: readerTheme, setMode: setHumiteTheme } = useHumiteTheme();
+  const { mode: readerTheme, isAuto: followsSystemTheme, setMode: setHumiteTheme, followSystem } = useHumiteTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const readerLocation = useLocation();
@@ -142,6 +145,9 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const [visibleEndLocator, setVisibleEndLocator] = useState<string | undefined>();
   const [readerProgress, setReaderProgress] = useState<number | null>(null);
   const visibleHeight = useReaderVisibleHeight();
+  const isMobile = useIsMobileViewport();
+  const [chromeVisible, setChromeVisible] = useState(true);
+  const toggleChrome = useCallback(() => setChromeVisible((visible) => !visible), []);
   const currentFont = availableFonts.find((font) => font.id === readerSettings.fontId && font.status === "ENABLED") ?? PRESET_READER_FONTS[0];
   const currentTheme = humiteThemeOptions[readerTheme].reader;
   const fontSize = readerSettings.fontSize;
@@ -157,7 +163,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   useReadingTimeTracking(bookId, !source && bookQuery.isSuccess && Boolean(user));
   const readerDocument = source ?? bookQuery.data;
   const demo = !source && api.isDemo;
-  const notesTitle = source ? "阅文札记" : "本书笔记";
+  const notesTitle = source ? "本篇文章的笔记" : "本书笔记";
   const selectedAnnotationGroup = useMemo(() => selection ? annotationGroups.find(group => sameAnnotationSelection(group.annotation, { ...selection, bookId })) : undefined, [annotationGroups, bookId, selection]);
   const noteDraftKey = user && bookId ? `humite-${source ? "article-note-draft" : "note-draft"}:${user.id}:${bookId}` : undefined;
 
@@ -218,6 +224,13 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
     setNoteComposerOpen(false);
     setNote("");
     window.getSelection()?.removeAllRanges();
+    document.querySelectorAll("iframe").forEach((frame) => {
+      try {
+        frame.contentWindow?.getSelection()?.removeAllRanges();
+      } catch {
+        // Ignore cross-origin iframes.
+      }
+    });
   }, [noteDraftKey]);
 
   const dismissAnnotationTools = useCallback(() => {
@@ -245,6 +258,16 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
     focusedNoteRef.current?.focus({ preventScroll: true });
   }, []);
 
+  const invalidateAnnotationQueries = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: ["annotations"],
+      predicate: (query) => Boolean(source) || !(query.queryKey.length === 2 && query.queryKey[1] === bookId),
+    });
+    void queryClient.invalidateQueries({ queryKey: ["annotation-books"] });
+    void queryClient.invalidateQueries({ queryKey: ["notes-feed-books"] });
+    if (source) void queryClient.invalidateQueries({ queryKey: ["article-notes"] });
+  }, [bookId, queryClient, source]);
+
   const saveAnnotation = async (style: AnnotationStyle, withNote = false, color = highlightColor) => {
     if (!canAnnotate || !user || !selection || !readerDocument || annotationBusy) return;
     setAnnotationBusy(true);
@@ -262,6 +285,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
       };
       const saved = source ? await source.createAnnotation(draft) : await api.createAnnotation(draft);
       if (!source) queryClient.setQueryData<Annotation[]>(annotationQueryKey, current => [saved, ...(current ?? []).filter(item => item.id !== saved.id && !sameAnnotationSelection(item, saved))]);
+      invalidateAnnotationQueries();
       closeSelection();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "批注同步失败");
@@ -272,12 +296,15 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
 
   const removeAnnotation = async (id: string) => {
     if (!user) return;
-    if (source) await source.deleteAnnotation(id);
-    else {
+    if (source) {
+      await source.deleteAnnotation(id);
+      invalidateAnnotationQueries();
+    } else {
       await api.deleteAnnotation(id);
       queryClient.setQueryData(annotationQueryKey, (current: unknown) => Array.isArray(current)
         ? current.filter((item) => typeof item !== "object" || item === null || !("id" in item) || item.id !== id)
         : []);
+      invalidateAnnotationQueries();
     }
   };
   const removeFromNotes = async (ids: readonly string[]) => {
@@ -305,6 +332,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
         };
         const saved = source ? await source.createAnnotation(draft) : await api.createAnnotation(draft);
         if (!source) queryClient.setQueryData(annotationQueryKey, (current: unknown) => [saved, ...(Array.isArray(current) ? current : [])]);
+        invalidateAnnotationQueries();
         setNotice("本页已加入书签并同步");
       }
     } catch (error) {
@@ -322,10 +350,32 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
   const privateBook = !source && bookQuery.data && isPrivateBook(bookQuery.data) ? bookQuery.data : undefined;
   const savedProgress = source?.progress ?? (privateBook ? privateBook.progress / 100 : 0);
   const progressPercent = source ? Math.round((readerProgress ?? savedProgress) * 100) : privateBook ? (demo ? savedProgress * 100 : Math.round((readerProgress ?? savedProgress) * 100)) : 0;
-  const readerSubtitle = `${book.author} · ${privateBook && demo ? "第七章" : `${source?.label ?? book.format} · ${guest ? "只读阅读" : `已读 ${progressPercent}%`}`}`;
+  const readerStatus = privateBook && demo ? "第七章" : guest ? "只读阅读" : `已读 ${progressPercent}%`;
+  const readerSubtitle = [book.author, source?.label, readerStatus].filter(Boolean).join(" · ");
+  const showAnnotationToolbar = Boolean(canAnnotate && user && selection) && !noteComposerOpen;
+  const annotationToolbarBorder = `1px solid ${readerTheme === "NIGHT" ? "rgba(255,255,255,.14)" : "rgba(42,39,34,.12)"}`;
+  const annotationToolbarContent = (
+    <>
+      <Stack direction="row" sx={isMobile ? { justifyContent: "space-around" } : undefined}>
+        <AnnotationToolButton label="高亮＋笔记" icon={<NoteAddOutlined fontSize="small" />} disabled={annotationBusy} onClick={() => setNoteComposerOpen(true)} />
+        <AnnotationToolButton label="下划线" icon={<FormatUnderlinedRounded fontSize="small" />} disabled={annotationBusy} onClick={() => void saveAnnotation("UNDERLINE")} />
+        <AnnotationToolButton label="加粗" icon={<FormatBoldRounded fontSize="small" />} disabled={annotationBusy} onClick={() => void saveAnnotation("BOLD")} />
+      </Stack>
+      <Divider sx={{ my: 0 }} />
+      <AnnotationColorSwatches
+        value={highlightColor}
+        onChange={(color) => {
+          setHighlightColor(color);
+          void saveAnnotation("HIGHLIGHT", false, color);
+        }}
+        disabled={annotationBusy}
+        applyImmediately
+      />
+    </>
+  );
 
   return (
-    <Box data-reader-visible-height={visibleHeight || undefined} sx={{ height: readerShellHeight(visibleHeight), minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", bgcolor: "background.default", color: "text.primary", transition: "background-color 180ms ease" }}>
+    <Box data-reader-visible-height={visibleHeight || undefined} sx={{ height: readerShellHeight(visibleHeight, !isMobile), minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", bgcolor: "background.default", color: "text.primary", transition: "background-color 180ms ease" }}>
       <ReaderTopBar
         title={book.title}
         subtitle={readerSubtitle}
@@ -338,11 +388,12 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
         bookmarked={Boolean(bookmark)}
         bookmarkBusy={bookmarkBusy || !currentLocator || (!source && annotationsQuery.isPending)}
         privateActions={!guest && canAnnotate}
+        collapsed={isMobile && !chromeVisible}
         onBack={returnToLibrary}
-        backLabel={source?.backLabel ?? (libraryReturnState ? "返回书楼漫游" : user ? "返回全部书籍" : "返回书库")}
+        backLabel={source?.backLabel ?? (libraryReturnState ? "返回3D 书库" : user ? "返回全部书籍" : "返回书库")}
         onOpenTableOfContents={() => setTocOpen(true)}
         onToggleBookmark={() => void toggleBookmark()}
-        onOpenSettings={(event: any) => setSettingsAnchor(event.currentTarget)}
+        onOpenSettings={(event: MouseEvent<HTMLButtonElement>) => setSettingsAnchor(event.currentTarget)}
         onOpenNotes={() => { setFocusedNoteId(null); setNotesOpen(true); }}
       />
 
@@ -351,39 +402,60 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
         {!demo ? (
           <Suspense fallback={<Stack sx={{ height: "100%", alignItems: "center", justifyContent: "center" }}><CircularProgress /></Stack>}>
             {book.format === "PDF"
-              ? <PdfDocumentReader bookId={bookId} annotations={annotations} onAnnotationActivate={openAnnotationNotes} theme={currentTheme} fontSize={fontSize} fontFamily={fontFamily} pageTurnEnabled={readerSettings.pageTurnEnabled} fontSourceUrl={!guest && currentFont.source === "CUSTOM" ? `/api/v1/reader-fonts/${currentFont.id}/content` : undefined} contentUrl={source?.contentUrl ?? (guest ? `/api/v1/display-books/${bookId}/content` : undefined)} readOnly={Boolean(source) || guest} target={readerTarget} targetRevision={targetRevision} onNavigation={handleNavigation} onSelect={handleReaderSelection} onPosition={handlePosition} />
-              : <EpubDocumentReader onAnnotationDismiss={dismissAnnotationTools} flow={source?.flow} contentLabel={source?.label} bookId={bookId} annotations={annotations} onAnnotationActivate={openAnnotationNotes} theme={currentTheme} fontSize={fontSize} fontFamily={fontFamily} pageTurnEnabled={readerSettings.pageTurnEnabled} fontSourceUrl={!guest && currentFont.source === "CUSTOM" ? `/api/v1/reader-fonts/${currentFont.id}/content` : undefined} contentUrl={source?.contentUrl ?? (guest ? `/api/v1/display-books/${bookId}/content` : undefined)} readOnly={Boolean(source) || guest} target={readerTarget} targetRevision={targetRevision} onNavigation={handleNavigation} onSelect={handleReaderSelection} onPosition={handlePosition} />}
+              ? <PdfDocumentReader bookId={bookId} annotations={annotations} onAnnotationActivate={openAnnotationNotes} onToggleChrome={isMobile ? toggleChrome : undefined} theme={currentTheme} fontSize={fontSize} fontFamily={fontFamily} pageTurnEnabled={readerSettings.pageTurnEnabled} fontSourceUrl={!guest && currentFont.source === "CUSTOM" ? `/api/v1/reader-fonts/${currentFont.id}/content` : undefined} contentUrl={source?.contentUrl ?? (guest ? `/api/v1/display-books/${bookId}/content` : undefined)} readOnly={Boolean(source) || guest} target={readerTarget} targetRevision={targetRevision} onNavigation={handleNavigation} onSelect={handleReaderSelection} onPosition={handlePosition} />
+              : <EpubDocumentReader onAnnotationDismiss={dismissAnnotationTools} onToggleChrome={isMobile ? toggleChrome : undefined} flow={source?.flow} contentLabel={source?.label} bookId={bookId} annotations={annotations} onAnnotationActivate={openAnnotationNotes} theme={currentTheme} fontSize={fontSize} fontFamily={fontFamily} pageTurnEnabled={readerSettings.pageTurnEnabled} fontSourceUrl={!guest && currentFont.source === "CUSTOM" ? `/api/v1/reader-fonts/${currentFont.id}/content` : undefined} contentUrl={source?.contentUrl ?? (guest ? `/api/v1/display-books/${bookId}/content` : undefined)} readOnly={Boolean(source) || guest} target={readerTarget} targetRevision={targetRevision} onNavigation={handleNavigation} onSelect={handleReaderSelection} onPosition={handlePosition} />}
           </Suspense>
-        ) : <DemoPagedSurface bookTitle={book.title} format={book.format} theme={currentTheme} night={readerTheme === "NIGHT"} fontFamily={fontFamily} fontSize={fontSize} pageTurnEnabled={readerSettings.pageTurnEnabled} paragraphs={demoChapter} annotations={annotations} onAnnotationActivate={openAnnotationNotes} onMouseUp={captureSelection} />}
+        ) : <DemoPagedSurface bookTitle={book.title} format={book.format} theme={currentTheme} night={readerTheme === "NIGHT"} fontFamily={fontFamily} fontSize={fontSize} pageTurnEnabled={readerSettings.pageTurnEnabled} paragraphs={demoChapter} annotations={annotations} hasSelection={Boolean(selection)} onToggleChrome={isMobile ? toggleChrome : undefined} onAnnotationActivate={openAnnotationNotes} onMouseUp={captureSelection} />}
       </Box>
 
-      <Popover
-        open={Boolean(canAnnotate && user && selection) && !noteComposerOpen}
-        onClose={closeSelection}
-        anchorReference="anchorPosition"
-        anchorPosition={selection ? { left: Math.round(selection.x), top: Math.max(12, Math.round(selection.y)) } : undefined}
-        transformOrigin={{ vertical: selection?.placement === "BELOW" ? "top" : "bottom", horizontal: "center" }}
-        marginThreshold={8}
-        slotProps={{ paper: { sx: { bgcolor: currentTheme.background, color: currentTheme.foreground, border: `1px solid ${readerTheme === "NIGHT" ? "rgba(255,255,255,.14)" : "rgba(42,39,34,.12)"}` } } }}
-      >
-        <Stack role="toolbar" aria-label="批注工具" sx={{ p: 0.5 }}>
-          <Stack direction="row">
-            <AnnotationToolButton label="高亮＋笔记" icon={<NoteAddOutlined fontSize="small" />} disabled={annotationBusy} onClick={() => setNoteComposerOpen(true)} />
-            <AnnotationToolButton label="下划线" icon={<FormatUnderlinedRounded fontSize="small" />} disabled={annotationBusy} onClick={() => void saveAnnotation("UNDERLINE")} />
-            <AnnotationToolButton label="加粗" icon={<FormatBoldRounded fontSize="small" />} disabled={annotationBusy} onClick={() => void saveAnnotation("BOLD")} />
+      {!isMobile ? (
+        <Popover
+          open={showAnnotationToolbar}
+          onClose={closeSelection}
+          anchorReference="anchorPosition"
+          anchorPosition={selection ? { left: Math.round(selection.x), top: Math.max(12, Math.round(selection.y)) } : undefined}
+          transformOrigin={{ vertical: selection?.placement === "BELOW" ? "top" : "bottom", horizontal: "center" }}
+          marginThreshold={8}
+          slotProps={{ paper: { sx: { bgcolor: currentTheme.background, color: currentTheme.foreground, border: annotationToolbarBorder } } }}
+        >
+          <Stack role="toolbar" aria-label="批注工具" sx={{ p: 0.5 }}>
+            {annotationToolbarContent}
           </Stack>
-          <Divider sx={{ my: 0 }} />
-          <AnnotationColorSwatches
-            value={highlightColor}
-            onChange={(color) => {
-              setHighlightColor(color);
-              void saveAnnotation("HIGHLIGHT", false, color);
+        </Popover>
+      ) : (
+        showAnnotationToolbar && (
+          <Box
+            role="toolbar"
+            aria-label="批注工具"
+            sx={{
+              position: "fixed",
+              left: `${tokens.spacing[3]}px`,
+              right: `${tokens.spacing[3]}px`,
+              bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+              zIndex: 1450,
+              p: 1,
+              borderRadius: `${tokens.radius.lg}px`,
+              bgcolor: currentTheme.background,
+              color: currentTheme.foreground,
+              boxShadow: tokens.shadow.popover,
+              border: annotationToolbarBorder,
+              display: "flex",
+              flexDirection: "column",
+              gap: 0.5,
             }}
-            disabled={annotationBusy}
-            applyImmediately
-          />
-        </Stack>
-      </Popover>
+          >
+            <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", gap: 1, pl: 0.5 }}>
+              <Typography variant="caption" noWrap sx={{ flex: 1, minWidth: 0, color: currentTheme.muted }}>
+                “{selection?.quote}”
+              </Typography>
+              <IconButton aria-label="关闭批注工具" onClick={closeSelection} size="small">
+                <CloseRounded fontSize="small" />
+              </IconButton>
+            </Stack>
+            {annotationToolbarContent}
+          </Box>
+        )
+      )}
 
       <Dialog
         open={Boolean(canAnnotate && user && selection) && noteComposerOpen}
@@ -414,7 +486,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
             </MenuItem>)}
           </Stack>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 1.5, mb: 1 }}><FormatSizeRounded /><Typography sx={{ fontWeight: 700 }}>字号</Typography><Typography variant="body2" color="text.secondary" sx={{ ml: "auto" }}>{fontSize}px</Typography></Stack>
-          <Slider min={16} max={28} step={1} value={fontSize} onChange={(_: any, value: any) => setReaderSettings((current) => ({ ...current, fontSize: value as number }))} valueLabelDisplay="auto" />
+          <Slider min={16} max={28} step={1} value={fontSize} onChange={(_event: unknown, value: number | number[]) => setReaderSettings((current) => ({ ...current, fontSize: Array.isArray(value) ? value[0] : value }))} valueLabelDisplay="auto" />
           {source?.flow !== "scrolled-doc" && <Stack direction="row" sx={{ alignItems: "center", gap: 1.25, mt: 1.5 }}>
             <AutoStoriesRounded />
             <Box sx={{ minWidth: 0 }}>
@@ -425,7 +497,7 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
             </Box>
             <Switch
               checked={readerSettings.pageTurnEnabled}
-              onChange={(event: any) => setReaderSettings((current) => ({ ...current, pageTurnEnabled: event.target.checked }))}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => setReaderSettings((current) => ({ ...current, pageTurnEnabled: event.target.checked }))}
               slotProps={{ input: { "aria-label": "启用翻页效果" } }}
               sx={{ ml: "auto" }}
             />
@@ -433,7 +505,17 @@ export function ReaderWorkspace({ source }: { source?: IndependentReaderSource }
         </Box>
         <Divider />
         <Typography variant="caption" color="text.secondary" sx={{ px: 2, pt: 1.5, display: "block" }}>阅读主题</Typography>
-        {(Object.keys(humiteThemeOptions) as ReaderTheme[]).map((key) => <MenuItem key={key} selected={readerTheme === key} onClick={() => setHumiteTheme(key)}><Box sx={{ width: 24, height: 24, borderRadius: "50%", bgcolor: humiteThemeOptions[key].reader.background, border: 1, borderColor: "divider", mr: 1.5 }} />{humiteThemeOptions[key].label}{readerTheme === key && <CheckRounded sx={{ ml: "auto" }} />}</MenuItem>)}
+        <MenuItem selected={followsSystemTheme} onClick={followSystem}>
+          <Box sx={{ width: 24, display: "inline-flex", justifyContent: "center", mr: 1.5 }}><SystemThemeOutlined /></Box>
+          跟随系统{followsSystemTheme && <CheckRounded sx={{ ml: "auto" }} />}
+        </MenuItem>
+        {(Object.keys(humiteThemeOptions) as ReaderTheme[]).map((key) => {
+          const selected = !followsSystemTheme && readerTheme === key;
+          return <MenuItem key={key} selected={selected} onClick={() => setHumiteTheme(key)}>
+            <Box sx={{ width: 24, height: 24, borderRadius: "50%", bgcolor: humiteThemeOptions[key].reader.background, border: 1, borderColor: "divider", mr: 1.5 }} />
+            {humiteThemeOptions[key].label}{selected && <CheckRounded sx={{ ml: "auto" }} />}
+          </MenuItem>;
+        })}
       </Menu>
 
       <Drawer anchor="right" title={notesTitle} closeLabel={`关闭${notesTitle}`} open={notesOpen} onClose={() => setNotesOpen(false)} afterOpenChange={(opened: boolean) => { if (opened) focusCurrentNote(); }} slotProps={{ paper: { sx: { width: { xs: `calc(100vw - ${tokens.spacing[6]}px)`, sm: 390 }, maxWidth: "100vw" } } }}>
@@ -605,7 +687,7 @@ function renderAnnotatedText(paragraph: string, annotations: Annotation[], theme
   return pieces;
 }
 
-function DemoPagedSurface({ bookTitle, format, theme, night, fontFamily, fontSize, pageTurnEnabled, paragraphs, annotations, onMouseUp, onAnnotationActivate }: { bookTitle: string; format: "EPUB" | "PDF"; theme: { background: string; foreground: string; muted: string }; night: boolean; fontFamily: string; fontSize: number; pageTurnEnabled: boolean; paragraphs: string[]; annotations: Annotation[]; onMouseUp: () => void; onAnnotationActivate: (id: string, rect?: DOMRect) => void }) {
+function DemoPagedSurface({ bookTitle, format, theme, night, fontFamily, fontSize, pageTurnEnabled, paragraphs, annotations, hasSelection = false, onToggleChrome, onMouseUp, onAnnotationActivate }: { bookTitle: string; format: "EPUB" | "PDF"; theme: { background: string; foreground: string; muted: string }; night: boolean; fontFamily: string; fontSize: number; pageTurnEnabled: boolean; paragraphs: string[]; annotations: Annotation[]; hasSelection?: boolean; onToggleChrome?: () => void; onMouseUp: () => void; onAnnotationActivate: (id: string, rect?: DOMRect) => void }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!frameRef.current) return;
@@ -613,7 +695,11 @@ function DemoPagedSurface({ bookTitle, format, theme, night, fontFamily, fontSiz
   }, [annotations, onAnnotationActivate]);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCount, setPageCount] = useState(1);
-  const touchStartXRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchHadSelectionRef = useRef(false);
+  const lastTouchEndAtRef = useRef(0);
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const mouseHadSelectionRef = useRef(false);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
   const pageLayout = useReaderPageLayout(pageSurfaceRef);
   const wideSpread = pageLayout?.spread ?? false;
@@ -668,20 +754,77 @@ function DemoPagedSurface({ bookTitle, format, theme, night, fontFamily, fontSiz
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goNext, goPrevious]);
 
-  const handleTouchStart = (event: React.TouchEvent) => {
-    touchStartXRef.current = event.changedTouches[0]?.clientX ?? null;
+  const resolveTapZone = (clientX: number, fallbackElement: EventTarget | null) => {
+    const surface = pageSurfaceRef.current;
+    const surfaceRect = surface?.getBoundingClientRect();
+    if (surfaceRect && surfaceRect.width > 0) return classifyReaderTapZone(clientX, surfaceRect.left, surfaceRect.width);
+    const fallbackRect = fallbackElement instanceof Element ? fallbackElement.getBoundingClientRect() : undefined;
+    if (fallbackRect && fallbackRect.width > 0) return classifyReaderTapZone(clientX, fallbackRect.left, fallbackRect.width);
+    return classifyReaderTapZone(clientX, 0, 0);
   };
-  const handleTouchEnd = (event: React.TouchEvent) => {
-    const endX = event.changedTouches[0]?.clientX;
-    if (endX === undefined || !isReaderSwipe(touchStartXRef.current, endX)) return;
-    const startX = touchStartXRef.current;
-    touchStartXRef.current = null;
-    if (startX !== null && endX < startX) goNext();
-    else goPrevious();
+  const isReadingSurfaceTap = (target: EventTarget | null, currentTarget: EventTarget | null) => {
+    const surface = pageSurfaceRef.current;
+    if (!surface || target === currentTarget) return true;
+    const node = target as Node | null;
+    return Boolean(node && surface.contains(node));
+  };
+  const triggerTapZone = (clientX: number, target: EventTarget | null, currentTarget: EventTarget | null) => {
+    if (!onToggleChrome) return;
+    if (!isReadingSurfaceTap(target, currentTarget) || isReaderInteractiveTapTarget(target)) return;
+    const zone = resolveTapZone(clientX, currentTarget);
+    if (zone === "PREVIOUS") goPrevious();
+    else if (zone === "NEXT") goNext();
+    else onToggleChrome();
+  };
+  const handleTouchStart = (event: TouchEvent) => {
+    if (event.touches && event.touches.length > 1) {
+      touchStartRef.current = null;
+      touchHadSelectionRef.current = false;
+      return;
+    }
+    const touch = event.changedTouches[0];
+    touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    touchHadSelectionRef.current = hasSelection || hasReaderTextSelection();
+  };
+  const handleTouchEnd = (event: TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    const activeSelection = hasSelection || touchHadSelectionRef.current || hasReaderTextSelection();
+    touchHadSelectionRef.current = false;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+    lastTouchEndAtRef.current = Date.now();
+    const endX = touch.clientX;
+    const endY = touch.clientY;
+    if (isReaderHorizontalSwipe({ startX: start.x, startY: start.y, endX, endY, hasSelection: activeSelection })) {
+      if (endX < start.x) goNext();
+      else goPrevious();
+      return;
+    }
+    if (onToggleChrome && Math.hypot(endX - start.x, endY - start.y) < 10 && !activeSelection) {
+      triggerTapZone(endX, event.target, event.currentTarget);
+    }
+  };
+  const handleMouseDown = (event: MouseEvent) => {
+    if (!onToggleChrome || event.button !== 0) return;
+    mouseStartRef.current = { x: event.clientX, y: event.clientY };
+    mouseHadSelectionRef.current = hasSelection || hasReaderTextSelection();
+  };
+  const handleClick = (event: MouseEvent) => {
+    const start = mouseStartRef.current;
+    mouseStartRef.current = null;
+    const activeSelection = hasSelection || mouseHadSelectionRef.current || hasReaderTextSelection();
+    mouseHadSelectionRef.current = false;
+    if (!onToggleChrome) return;
+    if (Date.now() - lastTouchEndAtRef.current < 700) return;
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 10) return;
+    if (activeSelection) return;
+    triggerTapZone(event.clientX, event.target, event.currentTarget);
   };
 
   return (
-    <Stack className="reader-viewport" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} sx={{ height: "100%", minHeight: 0, overflow: "hidden", bgcolor: theme.background, color: theme.foreground }}>
+    <Stack className="reader-viewport" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={onToggleChrome ? handleMouseDown : undefined} onClick={onToggleChrome ? handleClick : undefined} sx={{ height: "100%", minHeight: 0, overflow: "hidden", bgcolor: theme.background, color: theme.foreground }}>
       <Stack direction="row" sx={{ ...readerWidthSx, flex: `0 0 ${tokens.layout.readerControlHeight}px`, minHeight: tokens.layout.readerControlHeight, alignItems: "center", justifyContent: "center", gap: 1, overflowX: "auto", borderBottom: 1, borderColor: "divider" }}>
         <Button color="inherit" startIcon={<NavigateBeforeRounded />} disabled={turning || pageIndex <= 0} onClick={goPrevious}>上一页</Button>
         <Typography variant="body2" sx={{ minWidth: 0, flex: "1 1 auto", textAlign: "center", whiteSpace: "nowrap", color: theme.muted }}>第 {pageIndex + 1} / {pageCount} 页</Typography>

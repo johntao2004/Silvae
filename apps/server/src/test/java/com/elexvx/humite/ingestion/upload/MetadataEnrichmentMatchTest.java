@@ -2,6 +2,7 @@ package com.elexvx.humite.ingestion.upload;
 
 import static com.elexvx.humite.ingestion.upload.BookUploadModels.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.any;
@@ -18,6 +19,9 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -31,7 +35,6 @@ class MetadataEnrichmentMatchTest {
         var settings = mock(MetadataProviderSettingsService.class);
         var wikidata = mock(WikidataMetadataProvider.class);
         when(settings.isEnabled(MetadataSource.OPEN_LIBRARY)).thenReturn(false);
-        when(settings.isEnabled(MetadataSource.GOOGLE_BOOKS)).thenReturn(false);
         when(settings.isEnabled(MetadataSource.WIKIDATA)).thenReturn(true);
         var draft = new MetadataDraft("The Example", null, List.of("An Author"), List.of(), "en", null, null,
                 null, null, null, null, List.of(), null, null, Map.of(), "An Author/The Example.epub");
@@ -40,7 +43,7 @@ class MetadataEnrichmentMatchTest {
         when(wikidata.searchWithErrors(draft, false))
                 .thenReturn(new WikidataMetadataProvider.SearchResult(List.of(wikidataCandidate), null));
         var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
-                new HumiteProperties.MetadataProviders(true, null), null);
+                new HumiteProperties.MetadataProviders(true), null);
         var service = new MetadataEnrichmentService(uploads, properties, ai, json, settings, wikidata,
                 null, Duration.ZERO, url -> { throw new AssertionError("disabled provider requested: " + url); });
 
@@ -61,7 +64,6 @@ class MetadataEnrichmentMatchTest {
         var settings = mock(MetadataProviderSettingsService.class);
         var wikidata = mock(WikidataMetadataProvider.class);
         when(settings.isEnabled(MetadataSource.OPEN_LIBRARY)).thenReturn(false);
-        when(settings.isEnabled(MetadataSource.GOOGLE_BOOKS)).thenReturn(false);
         when(settings.isEnabled(MetadataSource.WIKIDATA)).thenReturn(true);
         var draft = new MetadataDraft("The Example", null, List.of("An Author"), List.of(), "en", null, null,
                 null, null, null, null, List.of(), null, null, Map.of(), "An Author/The Example.epub");
@@ -72,7 +74,7 @@ class MetadataEnrichmentMatchTest {
         when(ai.match(draft, List.of(candidate), null, false))
                 .thenReturn(new AiMetadataService.MatchResult(List.of(), List.of(), List.of("AI 功能未启用")));
         var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
-                new HumiteProperties.MetadataProviders(false, null), null);
+                new HumiteProperties.MetadataProviders(false), null);
         var service = new MetadataEnrichmentService(uploads, properties, ai, json, settings, wikidata,
                 null, Duration.ZERO, url -> { throw new AssertionError("unexpected request: " + url); });
 
@@ -91,7 +93,6 @@ class MetadataEnrichmentMatchTest {
         var settings = mock(MetadataProviderSettingsService.class);
         var wikidata = mock(WikidataMetadataProvider.class);
         when(settings.isEnabled(MetadataSource.OPEN_LIBRARY)).thenReturn(false);
-        when(settings.isEnabled(MetadataSource.GOOGLE_BOOKS)).thenReturn(false);
         when(settings.isEnabled(MetadataSource.WIKIDATA)).thenReturn(true);
         var draft = new MetadataDraft("The Example", null, List.of("An Author"), List.of(), "en", null, null,
                 null, null, null, null, List.of(), null, null, Map.of(), "An Author/The Example.epub");
@@ -105,7 +106,7 @@ class MetadataEnrichmentMatchTest {
         when(ai.match(draft, sources, null, false))
                 .thenReturn(new AiMetadataService.MatchResult(aiCandidates, List.of("test"), List.of()));
         var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
-                new HumiteProperties.MetadataProviders(false, null), null);
+                new HumiteProperties.MetadataProviders(false), null);
         var service = new MetadataEnrichmentService(uploads, properties, ai, json, settings, wikidata,
                 null, Duration.ZERO, url -> { throw new AssertionError("unexpected request: " + url); });
 
@@ -144,12 +145,11 @@ class MetadataEnrichmentMatchTest {
         var settings = mock(MetadataProviderSettingsService.class);
         var wikidata = mock(WikidataMetadataProvider.class);
         when(settings.isEnabled(MetadataSource.OPEN_LIBRARY)).thenReturn(true);
-        when(settings.isEnabled(MetadataSource.GOOGLE_BOOKS)).thenReturn(false);
         when(settings.isEnabled(MetadataSource.WIKIDATA)).thenReturn(false);
         when(ai.match(any(MetadataDraft.class), anyList(), nullable(String.class), anyBoolean()))
                 .thenReturn(new AiMetadataService.MatchResult(List.of(), List.of(), List.of("AI 功能未启用")));
         var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
-                new HumiteProperties.MetadataProviders(true, null), null);
+                new HumiteProperties.MetadataProviders(true), null);
         var service = new MetadataEnrichmentService(uploads, properties, ai, json, settings, wikidata,
                 null, Duration.ZERO, transport);
         var draft = new MetadataDraft("The Example", null, List.of("An Author"), List.of(), "en", null, null,
@@ -179,5 +179,68 @@ class MetadataEnrichmentMatchTest {
         assertTrue(result.errorDetail().contains("AI 功能未启用"), "source candidates remain visible when AI is unavailable");
         assertEquals("The Example", draft.title());
         assertEquals("North Press", first.publisher());
+    }
+
+    @Test
+    void concurrentJsonTransportCallsDoNotSerializeOnRateLimitMonitor() throws Exception {
+        var json = new JsonMapper();
+        var uploads = mock(BookUploadRepository.class);
+        var ai = mock(AiMetadataService.class);
+        var settings = mock(MetadataProviderSettingsService.class);
+        var wikidata = mock(WikidataMetadataProvider.class);
+        when(settings.isEnabled(MetadataSource.OPEN_LIBRARY)).thenReturn(true);
+        when(settings.isEnabled(MetadataSource.WIKIDATA)).thenReturn(false);
+        var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
+                new HumiteProperties.MetadataProviders(true), null);
+
+        CountDownLatch bothInTransport = new CountDownLatch(2);
+        MetadataEnrichmentService.JsonTransport transport = url -> {
+            bothInTransport.countDown();
+            if (!bothInTransport.await(3, TimeUnit.SECONDS)) {
+                throw new AssertionError("Concurrent HTTP call blocked inside rate-limit lock for " + url);
+            }
+            return json.readTree("{\"docs\":[]}");
+        };
+        var service = new MetadataEnrichmentService(uploads, properties, ai, json, settings, wikidata,
+                null, Duration.ZERO, transport);
+        var draftA = new MetadataDraft("Book A", null, List.of("Author A"), List.of(), "en", null, null,
+                null, null, null, null, List.of(), null, null, Map.of(), "Author A/Book A.epub");
+        var draftB = new MetadataDraft("Book B", null, List.of("Author B"), List.of(), "en", null, null,
+                null, null, null, null, List.of(), null, null, Map.of(), "Author B/Book B.epub");
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> service.enrich(draftA));
+            var second = executor.submit(() -> service.enrich(draftB));
+            assertEquals("Book A", first.get(5, TimeUnit.SECONDS).draft().title());
+            assertEquals("Book B", second.get(5, TimeUnit.SECONDS).draft().title());
+        }
+    }
+
+    @Test
+    void safelyRestoresInterruptFlagAndAbortsEnrichmentWhenInterrupted() {
+        var json = new JsonMapper();
+        var uploads = mock(BookUploadRepository.class);
+        var ai = mock(AiMetadataService.class);
+        var settings = mock(MetadataProviderSettingsService.class);
+        var wikidata = mock(WikidataMetadataProvider.class);
+        when(settings.isEnabled(MetadataSource.OPEN_LIBRARY)).thenReturn(true);
+        when(settings.isEnabled(MetadataSource.WIKIDATA)).thenReturn(true);
+        var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
+                new HumiteProperties.MetadataProviders(true), null);
+        MetadataEnrichmentService.JsonTransport transport = url -> {
+            throw new InterruptedException("interrupted");
+        };
+        var service = new MetadataEnrichmentService(uploads, properties, ai, json, settings, wikidata,
+                null, Duration.ZERO, transport);
+        var draft = new MetadataDraft("Book A", null, List.of("Author A"), List.of(), "en", null, null,
+                null, null, null, null, List.of(), null, null, Map.of(), "Author A/Book A.epub");
+
+        try {
+            assertThrows(IllegalStateException.class, () -> service.enrich(draft));
+            assertTrue(Thread.currentThread().isInterrupted());
+            verify(wikidata, never()).searchWithErrors(any(), anyBoolean());
+        } finally {
+            Thread.interrupted();
+        }
     }
 }

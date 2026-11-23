@@ -6,7 +6,7 @@ import { Button } from "@/ui/buttons";
 import { PasswordRequirements, usePasswordPolicy, passwordRequirements } from "../auth/password-policy";
 import { Stack } from "@/ui/primitives";
 import { TextField } from "@/ui/forms";
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AuthFrame } from "../components/AuthFrame";
@@ -14,6 +14,7 @@ import { AuthFrame } from "../components/AuthFrame";
 export function ChangePasswordPage({ embedded = false }: { embedded?: boolean }) {
   const policy = usePasswordPolicy();
   const { changePassword, user } = useAuth();
+  const requiresCurrentPassword = !user?.mustChangePassword || !user.canChangePasswordWithoutCurrent;
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -26,6 +27,7 @@ export function ChangePasswordPage({ embedded = false }: { embedded?: boolean })
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setSuccess(false);
+    if (requiresCurrentPassword && !currentPassword.trim()) return setError("请输入当前密码。");
     if (newPassword !== confirmPassword) return setError("两次输入的新密码不一致");
     if (!policy.data || policy.isError) return setError("请先加载密码规则。");
     const missing = passwordRequirements(policy.data,newPassword).filter(rule=>!rule.met);
@@ -33,7 +35,7 @@ export function ChangePasswordPage({ embedded = false }: { embedded?: boolean })
     setLoading(true);
     setError("");
     try {
-      await changePassword(currentPassword, newPassword);
+      await changePassword(requiresCurrentPassword ? { currentPassword, newPassword } : { newPassword });
       if (embedded) { setCurrentPassword(""); setNewPassword(""); setConfirmPassword(""); setSuccess(true); }
       else navigate(user?.mustChangePassword ? "/library" : "/profile", { replace: true });
     } catch (reason) {
@@ -45,10 +47,10 @@ export function ChangePasswordPage({ embedded = false }: { embedded?: boolean })
 
   const form = (
       <Stack component="form" noValidate spacing={2.5} onSubmit={submit}>
-        <TextField label={user?.mustChangePassword ? "当前临时密码" : "当前密码"} type="password" autoComplete="current-password" value={currentPassword} onChange={(event: any) => setCurrentPassword(event.target.value)} required autoFocus={!embedded} />
-        <TextField label="新密码" type="password" autoComplete="new-password" value={newPassword} onChange={(event: any) => setNewPassword(event.target.value)} required slotProps={{ htmlInput: { maxLength: 200 } }} />
+        {requiresCurrentPassword && <TextField label={user?.mustChangePassword ? "当前临时密码" : "当前密码"} type="password" autoComplete="current-password" value={currentPassword} onChange={(event: ChangeEvent<HTMLInputElement>) => setCurrentPassword(event.target.value)} required autoFocus={!embedded} />}
+        <TextField label="新密码" type="password" autoComplete="new-password" value={newPassword} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewPassword(event.target.value)} required autoFocus={!embedded && !requiresCurrentPassword} />
         <PasswordRequirements policy={policy} value={newPassword} />
-        <TextField label="确认新密码" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event: any) => setConfirmPassword(event.target.value)} required />
+        <TextField label="确认新密码" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event: ChangeEvent<HTMLInputElement>) => setConfirmPassword(event.target.value)} required />
         {success && <Alert severity="success">登录密码已更新。</Alert>}
         {error && <Alert severity="error">{error}</Alert>}
         {embedded ? <FormActions><Button type="submit" variant="contained" disabled={loading || !policy.data || policy.isError} sx={{ width: { xs: "100%", sm: "auto" } }}>{loading ? "正在保存…" : user?.mustChangePassword ? "保存后进书库" : "保存密码"}</Button></FormActions> : <Button type="submit" variant="contained" size="large" disabled={loading || !policy.data || policy.isError} sx={{ width: { xs: "100%", sm: "auto" } }}>{loading ? "正在保存…" : user?.mustChangePassword ? "保存后进书库" : "保存密码"}</Button>}

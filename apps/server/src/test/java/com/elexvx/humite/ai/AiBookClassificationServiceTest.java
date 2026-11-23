@@ -162,7 +162,7 @@ class AiBookClassificationServiceTest {
 
     @Test void uploadRequiresManagerRoleAndCallsOwnedUploadSamplerOnlyAfterAuthorization() throws Exception {
         assertThatThrownBy(() -> service.classify(input(AiBookClassificationService.Source.UPLOAD, true), PRINCIPAL))
-                .isInstanceOf(ApiException.class).hasMessageContaining("主人或管理员");
+                .isInstanceOf(ApiException.class).hasMessageContaining("站点所有者或管理员");
         verifyNoInteractions(ai, uploads, books, texts);
 
         when(permissions.actor(PRINCIPAL)).thenReturn(user(UserRole.ADMIN));

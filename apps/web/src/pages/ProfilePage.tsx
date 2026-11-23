@@ -26,17 +26,17 @@ export function ProfilePage() {
     finally { setBusy(false); }
   }
   if (!user) return null;
-  const role = { OWNER: "主人", ADMIN: "管理员", MEMBER: "成员" }[user.role];
+  const role = { OWNER: "站点所有者", ADMIN: "管理员", MEMBER: "成员" }[user.role];
   return <PageContainer>
-    <PageHeader eyebrow="PROFILE" title="个人信息" />
+    <PageHeader title="个人信息" />
     <Stack spacing={3} sx={{ maxWidth: tokens.layout.readingMax, minWidth: 0 }}>
       <Stack component="section" className="bk-form-section" spacing={2} aria-label="账户资料">
         <Typography component="h2" variant="h4">账户资料</Typography>
         <Typography>账户角色：{role}</Typography>
         <Stack component="form" spacing={2} onSubmit={save}>
           <TextField label="用户名" value={username} required disabled={busy} helperText="3–80 位字母、数字、点、下划线或短横线；保存后使用新用户名登录。" slotProps={{htmlInput:{pattern:"[a-zA-Z0-9._-]{3,80}",maxLength:80}}} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setUsername(e.target.value)} />
-          <TextField label="账户名字" value={displayName} required disabled={busy} slotProps={{htmlInput:{maxLength:120}}} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setDisplayName(e.target.value)} />
-          <TextField label="当前密码（确认资料修改）" type="password" autoComplete="current-password" value={password} required disabled={busy} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setPassword(e.target.value)} />
+          <TextField label="显示名称" value={displayName} required disabled={busy} slotProps={{htmlInput:{maxLength:120}}} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setDisplayName(e.target.value)} />
+          <TextField label="当前密码（用于确认修改）" type="password" autoComplete="current-password" value={password} required disabled={busy} onChange={(e: React.ChangeEvent<HTMLInputElement>)=>setPassword(e.target.value)} />
           {error && <Alert severity="error">{error}</Alert>}
           {saved && <Alert severity="success">账户资料已保存。</Alert>}
           <FormActions><Button type="submit" variant="contained" disabled={busy} sx={{ width: { xs: "100%", sm: "auto" } }}>{busy ? "正在保存…" : "保存"}</Button></FormActions>
@@ -45,7 +45,7 @@ export function ProfilePage() {
       <RecoveryEmailPage />
       <Stack component="section" className="bk-form-section" spacing={2} aria-label="登录密码">
         <Typography component="h2" variant="h4">登录密码</Typography>
-        <Typography color="text.secondary">定期检查账户安全，修改密码时需要验证当前密码。</Typography>
+        <Typography color="text.secondary">修改密码时，需要输入当前密码。</Typography>
         <ChangePasswordPage embedded />
       </Stack>
     </Stack>

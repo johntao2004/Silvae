@@ -22,18 +22,19 @@ class ContentTablesNativePersistenceTest {
             try {
                 var migration = Flyway.configure().dataSource(url, user, password).schemas(schema).defaultSchema(schema)
                     .locations("classpath:db/migration").load().migrate();
-                assertThat(migration.migrationsExecuted).isEqualTo(1);
+                assertThat(migration.migrationsExecuted).isEqualTo(7);
                 try (var connection = DriverManager.getConnection(url, user, password); var setup = connection.createStatement()) {
                     setup.execute("set search_path to " + schema + ",public");
                     var db = DSL.using(connection, SQLDialect.POSTGRES);
                     for (String table : new String[]{"app_users", "books", "articles", "annotations", "reading_positions", "reading_time_daily", "vault_objects"}) {
                         assertThat(db.fetchCount(DSL.table(table))).as("empty initialization: " + table).isZero();
                     }
-                    assertThat(db.fetchCount(DSL.table("flyway_schema_history"))).isEqualTo(1);
+                    assertThat(db.fetchCount(DSL.table("flyway_schema_history"))).isEqualTo(7);
                     var recordedMigration = db.fetchOne("select version, success from flyway_schema_history order by installed_rank desc limit 1");
                     assertThat(recordedMigration).isNotNull();
-                    assertThat(recordedMigration.get("version", String.class)).isEqualTo("1");
+                    assertThat(recordedMigration.get("version", String.class)).isEqualTo("7");
                     assertThat(recordedMigration.get("success", Boolean.class)).isTrue();
+                    assertThat(db.fetchOne("select min_length from password_policy where id=1").get(0, Integer.class)).isEqualTo(8);
                     UUID owner = UUID.randomUUID(), id = UUID.randomUUID();
                     db.execute("insert into app_users(id,username,display_name,password_hash,role) values (?, 'storage-owner', '存储测试', 'test-only', 'OWNER')", owner);
                     db.execute("insert into books(id,title,sort_title) values (?, '书籍', '书籍')", id);

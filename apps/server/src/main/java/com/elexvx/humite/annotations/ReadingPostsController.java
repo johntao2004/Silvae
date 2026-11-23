@@ -19,8 +19,9 @@ public class ReadingPostsController {
 
     @GetMapping
     public ResponseEntity<ReadingPostsService.Page> mine(@RequestParam(defaultValue="ALL") ReadingPostsService.Kind kind,
+                                                         @RequestParam(required=false) UUID sourceId,
                                                          @RequestParam(required=false) String cursor, Principal principal) {
-        return response(posts.mine(kind,cursor,principal));
+        return response(posts.mine(kind,sourceId,cursor,principal));
     }
     @GetMapping("/{kind}/{id}")
     public ResponseEntity<ReadingPostsService.Post> get(@PathVariable ReadingPostsService.Kind kind,@PathVariable UUID id,Principal principal) {

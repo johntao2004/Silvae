@@ -19,6 +19,7 @@ import {
   CopyOutlined,
   DatabaseOutlined,
   DeleteOutlined as AntDeleteOutlined,
+  DesktopOutlined,
   DragOutlined,
   DownOutlined,
   EditOutlined as AntEditOutlined,
@@ -38,6 +39,7 @@ import {
   LogoutOutlined as AntLogoutOutlined,
   MenuOutlined,
   MinusOutlined,
+  MoonOutlined,
   MoreOutlined,
   PictureOutlined,
   PlayCircleOutlined,
@@ -182,10 +184,10 @@ function createIcon(Component: unknown): HumiteIcon {
 const ant = {
   AppstoreAddOutlined, AppstoreOutlined, ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined,
   BgColorsOutlined, BlockOutlined, BoldOutlined, BookFilled, BookOutlined, CheckCircleOutlined: AntCheckCircleOutlined, CheckOutlined,
-  ClockCircleOutlined, CloseOutlined, CloudUploadOutlined: AntCloudUploadOutlined, CopyOutlined, DatabaseOutlined, DeleteOutlined: AntDeleteOutlined,
+  ClockCircleOutlined, CloseOutlined, CloudUploadOutlined: AntCloudUploadOutlined, CopyOutlined, DatabaseOutlined, DeleteOutlined: AntDeleteOutlined, DesktopOutlined,
   DragOutlined, DownOutlined, EditOutlined: AntEditOutlined, EnterOutlined, ExclamationCircleOutlined, FileAddOutlined, FileOutlined,
   FileTextOutlined, FilterOutlined, FolderOpenOutlined, FolderOutlined: AntFolderOutlined, FontSizeOutlined, GlobalOutlined,
-  HomeOutlined: AntHomeOutlined, LeftOutlined, LockOutlined: AntLockOutlined, LogoutOutlined: AntLogoutOutlined, MenuOutlined, MinusOutlined, MoreOutlined,
+  HomeOutlined: AntHomeOutlined, LeftOutlined, LockOutlined: AntLockOutlined, LogoutOutlined: AntLogoutOutlined, MenuOutlined, MinusOutlined, MoonOutlined, MoreOutlined,
   PictureOutlined, PlayCircleOutlined, PlusOutlined, QuestionOutlined, ReadOutlined, ReloadOutlined, RightOutlined,
   RollbackOutlined, RotateLeftOutlined, SafetyCertificateOutlined, ScheduleOutlined, SearchOutlined, SecurityScanOutlined,
   SettingOutlined, SlidersOutlined, StarOutlined, SunOutlined, SyncOutlined, TeamOutlined, UnderlineOutlined,
@@ -271,6 +273,8 @@ export const RestoreFromTrashOutlined = icon("RollbackOutlined");
 export const ScheduleRounded = icon("ScheduleOutlined");
 export const SearchRounded = icon("SearchOutlined");
 export const SettingsBrightnessOutlined = icon("SunOutlined");
+export const DarkModeOutlined = icon("MoonOutlined");
+export const SystemThemeOutlined = icon("DesktopOutlined");
 export const SettingsOutlined = icon("SettingOutlined");
 export const StorageRounded = icon("DatabaseOutlined");
 export const SyncRounded = icon("SyncOutlined");

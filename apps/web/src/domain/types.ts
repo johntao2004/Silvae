@@ -9,8 +9,8 @@ export type AnnotationStyle = "HIGHLIGHT" | "UNDERLINE" | "BOLD";
 export type HighlightColor = "YELLOW" | "GREEN" | "PINK" | "BLUE" | "ORANGE";
 export type AnnotationColor = HighlightColor | "CORAL" | "GOLD" | "TEAL";
 export type BookUploadStatus = "RECEIVING" | "INSPECTING" | "ENRICHING" | "READY_FOR_REVIEW" | "COMMITTING" | "SUCCEEDED" | "DUPLICATE" | "FAILED" | "CANCELLED" | "EXPIRED";
-export type MetadataSource = "FILE" | "FILENAME" | "OPEN_LIBRARY" | "GOOGLE_BOOKS" | "WIKIDATA" | "AI" | "MANUAL";
-export type CoverSource = "EMBEDDED" | "PDF_FIRST_PAGE" | "OPEN_LIBRARY" | "GOOGLE_BOOKS" | "CUSTOM" | "GENERATED";
+export type MetadataSource = "FILE" | "FILENAME" | "OPEN_LIBRARY" | "WIKIDATA" | "AI" | "MANUAL";
+export type CoverSource = "EMBEDDED" | "PDF_FIRST_PAGE" | "OPEN_LIBRARY" | "CUSTOM" | "GENERATED";
 export type ReaderFontSource = "PRESET" | "CUSTOM";
 export type ReaderFontKind = "SERIF" | "SANS";
 export type ReaderFontStatus = "ENABLED" | "DISABLED";
@@ -36,6 +36,12 @@ export interface SessionUser {
   displayName: string;
   role: UserRole;
   mustChangePassword: boolean;
+  canChangePasswordWithoutCurrent?: boolean;
+}
+
+export interface ChangePasswordInput {
+  newPassword: string;
+  currentPassword?: string;
 }
 
 export interface ManagedUser extends SessionUser {
@@ -277,7 +283,7 @@ export interface AiSettingsInput {
   providers: AiProviderSettingInput[];
 }
 
-export type MetadataProviderId = "OPEN_LIBRARY" | "WIKIDATA" | "GOOGLE_BOOKS";
+export type MetadataProviderId = "OPEN_LIBRARY" | "WIKIDATA";
 export interface MetadataProviderSetting {
   id: MetadataProviderId;
   label: string;
@@ -298,6 +304,16 @@ export interface AiProviderSettingInput {
   model: string;
   apiKey?: string;
   clearApiKey: boolean;
+}
+
+export interface AiProviderModelOption {
+  id: string;
+  label: string;
+}
+
+export interface AiProviderModelsResult {
+  models: AiProviderModelOption[];
+  source: string;
 }
 
 export interface BookUpload {

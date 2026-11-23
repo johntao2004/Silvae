@@ -1,4 +1,4 @@
-// 保护统一元信息入口、回收站及加入书目动作，避免卡片菜单出现重复编辑路径。
+// 保护统一元信息入口、回收站及加入书单动作，避免卡片菜单出现重复编辑路径。
 // Protects unified metadata editing alongside separate file-move and booklist actions without duplicate edit paths.
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -29,7 +29,7 @@ describe("BookCard", () => {
     const book = demoBooks[0];
     const editMetadata = vi.fn();
     const fileOperation = vi.fn();
-    sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "主人", role: "OWNER", mustChangePassword: false }));
+    sessionStorage.setItem("humite-demo-session", JSON.stringify({ id: "owner", username: "owner", displayName: "站点所有者", role: "OWNER", mustChangePassword: false }));
 
     render(
       <TestProviders>
@@ -55,7 +55,7 @@ describe("BookCard", () => {
     expect(fileOperation).toHaveBeenCalledWith(book, "TRASH");
   });
 
-  it("从藏书卡片直接加入书目", () => {
+  it("从藏书卡片直接加入书单", () => {
     const book = demoBooks[0];
     const addToBooklist = vi.fn();
 
@@ -66,7 +66,7 @@ describe("BookCard", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: `${book.title}更多操作` }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "加入书目" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "加入书单" }));
     expect(addToBooklist).toHaveBeenCalledWith(book);
   });
 });

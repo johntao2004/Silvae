@@ -38,6 +38,6 @@ public class MetadataProviderSettingsController {
                 .toList(), principal);
     }
 
-    public record UpdateMetadataProviderSettings(@NotNull @Size(min = 1, max = 3) List<@NotNull @Valid ProviderSetting> providers) {}
+    public record UpdateMetadataProviderSettings(@NotNull @Size(min = 1, max = 2) List<@NotNull @Valid ProviderSetting> providers) {}
     public record ProviderSetting(@NotBlank String id, @NotNull Boolean enabled) {}
 }

@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Link } from 'react-router-dom';
 import { TestProviders } from '../test/TestProviders';
-import { Button, IconButton } from './buttons';
+import { Button, IconButton, RefreshButton } from './buttons';
 import { AddRounded, ArrowForwardRounded, SearchRounded } from './icons';
 import { _AntButton, TableAction } from './antd';
 
@@ -69,5 +69,14 @@ describe('shared icon buttons', () => {
     expect(onClick).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', {name: '搜索藏书'}));
     expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it('keeps short Chinese action labels compact without inserted spaces across button variants', () => {
+    render(<TestProviders>
+      <RefreshButton>刷新</RefreshButton>
+      <TableAction>恢复</TableAction>
+    </TestProviders>);
+    expect(screen.getByRole('button', { name: '刷新' })).toHaveTextContent(/^刷新$/);
+    expect(screen.getByRole('button', { name: '恢复' })).toHaveTextContent(/^恢复$/);
   });
 });

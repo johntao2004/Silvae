@@ -19,7 +19,7 @@ import { tokens } from "../../theme/tokens";
 import { readerWidthSx } from "../PageHeader";
 import { applyEpubInlineAnnotation, clearEpubInlineAnnotations, createEpubTextIndex, EPUB_INLINE_ANNOTATION_CLASS, type EpubTextIndex, findEpubArticleParagraphRange, findEpubTextRange, isEpubArticleParagraphLocator } from "./epub-annotations";
 import { bindAnnotationNoteActivation } from "./annotation-activation";
-import { isEditableReaderTarget, isReaderSwipe } from "./reader-navigation";
+import { classifyReaderTapZone, hasReaderTextSelection, isEditableReaderTarget, isReaderHorizontalSwipe, isReaderInteractiveTapTarget } from "./reader-navigation";
 import { PageTurnShade } from "./PageTurnShade";
 import { readerSelectionFromRect, type ReaderSelection, type TocItem } from "./types";
 import { useReaderPageLayout } from "./use-reader-page-layout";
@@ -30,6 +30,7 @@ interface Props {
   annotations: Annotation[];
   onAnnotationDismiss?: () => void;
   onAnnotationActivate?: (id: string, rect?: DOMRect) => void;
+  onToggleChrome?: () => void;
   theme: { background: string; foreground: string; muted: string };
   fontSize: number;
   fontFamily: string;
@@ -52,7 +53,63 @@ function renderedContents(rendition: Rendition) {
   return rendition.getContents() as unknown as Contents[];
 }
 
-export default function EpubDocumentReader({ bookId, annotations, onAnnotationActivate, onAnnotationDismiss, theme, fontSize, fontFamily, pageTurnEnabled = true, fontSourceUrl, contentUrl, contentLabel = "EPUB", flow = "paginated", readOnly = false, target, targetRevision, onNavigation, onSelect, onPosition }: Props) {
+const UNSAFE_CSS_FONT_CHARS = new Set(['"', "'", "\\", "{", "}", ";", "(", ")", "<", ">"]);
+
+function isControlChar(ch: string): boolean {
+  const code = ch.codePointAt(0) ?? 0;
+  return code <= 0x1f || code === 0x7f;
+}
+
+function stripUnsafeCssFontChars(value: string): string {
+  return [...value].filter((ch) => !isControlChar(ch) && !UNSAFE_CSS_FONT_CHARS.has(ch)).join("").trim();
+}
+
+function sanitizeCssFontFamilyToken(rawToken: string): string | null {
+  const trimmed = rawToken.trim();
+  if (!trimmed) return null;
+  const wasQuoted = (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"));
+  const unquoted = wasQuoted ? trimmed.slice(1, -1) : trimmed;
+  const cleaned = stripUnsafeCssFontChars(unquoted);
+  if (!cleaned) return null;
+  return wasQuoted || /\s/u.test(cleaned) ? `"${cleaned}"` : cleaned;
+}
+
+function sanitizeCssFontFamilyList(rawFontFamily: string): string {
+  const sanitized = rawFontFamily
+    .split(",")
+    .map(sanitizeCssFontFamilyToken)
+    .filter((token): token is string => Boolean(token));
+  return sanitized.join(", ") || "sans-serif";
+}
+
+function sanitizeCssPrimaryFontFamilyName(rawFontFamily: string): string | null {
+  const firstToken = rawFontFamily.split(",")[0]?.trim() ?? "";
+  const unquoted = firstToken.replace(/^["']|["']$/gu, "");
+  const cleaned = stripUnsafeCssFontChars(unquoted);
+  return cleaned || null;
+}
+
+function sanitizeCssFontUrl(rawUrl?: string): string | null {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed || [...trimmed].some((ch) => isControlChar(ch) || /\s/u.test(ch) || UNSAFE_CSS_FONT_CHARS.has(ch))) {
+    return null;
+  }
+  if (trimmed.startsWith("//")) return null;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const parsed = new URL(trimmed, base);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:" && parsed.protocol !== "blob:") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return trimmed;
+}
+
+export default function EpubDocumentReader({ bookId, annotations, onAnnotationActivate, onAnnotationDismiss, onToggleChrome, theme, fontSize, fontFamily, pageTurnEnabled = true, fontSourceUrl, contentUrl, contentLabel = "EPUB", flow = "paginated", readOnly = false, target, targetRevision, onNavigation, onSelect, onPosition }: Props) {
   const scrolled = flow === "scrolled-doc";
   const { mode: siteTheme } = useHumiteTheme();
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -76,6 +133,15 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
     return api.saveReadingPosition(pending.bookId, pending.locator, pending.progress).catch(() => undefined);
   }, []);
   useEffect(() => registerSessionSaver(flushPosition), [flushPosition]);
+  useEffect(() => {
+    const handlePageHide = () => {
+      void flushPosition();
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+    };
+  }, [flushPosition]);
   const [loading, setLoading] = useState(true);
   const [renditionReady, setRenditionReady] = useState(false);
   const [renderedViewRevision, setRenderedViewRevision] = useState(0);
@@ -84,7 +150,11 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
   const initialTargetRef = useRef(target);
   const currentLocatorRef = useRef<string | undefined>(target);
   const gestureCleanupsRef = useRef(new Map<Document, () => void>());
-  const touchStartXRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchHadSelectionRef = useRef(false);
+  const lastTouchEndAtRef = useRef(0);
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const mouseHadSelectionRef = useRef(false);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
   const pageLayout = useReaderPageLayout(pageSurfaceRef);
   const wideSpread = !scrolled && (pageLayout?.spread ?? false);
@@ -106,6 +176,10 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
     if (scrolled || !renditionRef.current) return;
     void turnPage("NEXT", async () => { await renditionRef.current?.next(); });
   }, [scrolled, turnPage]);
+  const gestureBindingsRef = useRef({ onToggleChrome, goPrevious, goNext });
+  useEffect(() => {
+    gestureBindingsRef.current = { onToggleChrome, goPrevious, goNext };
+  }, [onToggleChrome, goPrevious, goNext]);
 
   const installReaderFont = useEffectEvent((contents: Contents) => {
     const document = contents.document;
@@ -119,13 +193,14 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
     existing?.remove();
     const style = document.createElement("style");
     style.dataset.pageReaderFont = "true";
-    const familyName = fontFamily.match(/^"([^"]+)"/u)?.[1] ?? fontFamily.split(",")[0].trim();
+    const safeFamilyName = sanitizeCssPrimaryFontFamilyName(fontFamily);
+    const safeFontSourceUrl = sanitizeCssFontUrl(fontSourceUrl);
     style.textContent = [
       '@import url("/fonts/humite-serif.css");',
       '@font-face { font-family: "Source Han Sans SC"; src: url("/fonts/source-han-sans-sc-regular.woff2") format("woff2"); font-display: swap; }',
       '@font-face { font-family: "Alibaba PuHuiTi"; src: url("/fonts/alibaba-puhuiti-regular.woff2") format("woff2"); font-display: swap; }',
-      fontSourceUrl ? `@font-face { font-family: "${familyName}"; src: url("${fontSourceUrl}"); font-display: swap; }` : "",
-    ].join("\n");
+      safeFontSourceUrl && safeFamilyName ? `@font-face { font-family: "${safeFamilyName}"; src: url("${safeFontSourceUrl}"); font-display: swap; }` : "",
+    ].filter(Boolean).join("\n");
     document.head.append(style);
     const proseStyle = document.querySelector("style[data-article-prose]");
     proseStyle?.remove();
@@ -136,7 +211,10 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
       const colors = Object.fromEntries(Object.entries(humiteThemeOptions[siteTheme].colors).map(([name, value]) => [
         `--color-${name.replace(/[A-Z]/gu, letter => `-${letter.toLowerCase()}`)}`, value,
       ]));
-      const variables = [...new Set(Array.from(markdownProseCss.matchAll(/var\((--[a-z0-9-]+)/gu), match => match[1]))];
+      const variables = [...new Set([
+        ...Object.keys(colors),
+        ...Array.from(markdownProseCss.matchAll(/var\((--[a-z0-9-]+)/gu), match => match[1]),
+      ])];
       const prose = document.createElement("style");
       prose.dataset.articleProse = "true";
       prose.textContent = `:root {${variables.map(name => `${name}: ${colors[name] ?? parentStyle.getPropertyValue(name)};`).join("\n")}}\n${markdownProseCss}`;
@@ -146,42 +224,110 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
 
     const existingGestureCleanup = gestureCleanupsRef.current.get(document);
     existingGestureCleanup?.();
-    const onTouchStart = (event: TouchEvent) => { touchStartXRef.current = event.changedTouches[0]?.clientX ?? null; };
+    const resolveTapZone = (clientX: number) => {
+      const frameRect = (() => {
+        try {
+          return document.defaultView?.frameElement?.getBoundingClientRect();
+        } catch {
+          return undefined;
+        }
+      })() ?? hostRef.current?.querySelector("iframe")?.getBoundingClientRect();
+      const surfaceRect = (pageSurfaceRef.current ?? hostRef.current)?.getBoundingClientRect();
+      if (surfaceRect && surfaceRect.width > 0) {
+        const screenX = frameRect && frameRect.width > 0 ? frameRect.left + clientX : clientX;
+        return classifyReaderTapZone(screenX, surfaceRect.left, surfaceRect.width);
+      }
+      return classifyReaderTapZone(clientX, 0, 0);
+    };
+    const triggerTapZone = (clientX: number) => {
+      const { onToggleChrome: toggleChrome, goPrevious: prevPage, goNext: nextPage } = gestureBindingsRef.current;
+      if (!toggleChrome) return;
+      const zone = resolveTapZone(clientX);
+      if (zone === "PREVIOUS") {
+        if (!scrolled) prevPage();
+      } else if (zone === "NEXT") {
+        if (!scrolled) nextPage();
+      } else {
+        toggleChrome();
+      }
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      if (event.touches && event.touches.length > 1) {
+        touchStartRef.current = null;
+        touchHadSelectionRef.current = false;
+        return;
+      }
+      const touch = event.changedTouches[0];
+      touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+      touchHadSelectionRef.current = hasReaderTextSelection(document);
+    };
     const onTouchEnd = (event: TouchEvent) => {
-      const endX = event.changedTouches[0]?.clientX;
-      if (endX === undefined || !isReaderSwipe(touchStartXRef.current, endX)) return;
-      const startX = touchStartXRef.current;
-      touchStartXRef.current = null;
-      if (startX !== null && endX < startX) goNext();
-      else goPrevious();
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      const hadSelection = touchHadSelectionRef.current || hasReaderTextSelection(document);
+      touchHadSelectionRef.current = false;
+      const touch = event.changedTouches[0];
+      if (!start || !touch) return;
+      lastTouchEndAtRef.current = Date.now();
+      const endX = touch.clientX;
+      const endY = touch.clientY;
+      if (!scrolled && isReaderHorizontalSwipe({ startX: start.x, startY: start.y, endX, endY, hasSelection: hadSelection })) {
+        if (endX < start.x) gestureBindingsRef.current.goNext();
+        else gestureBindingsRef.current.goPrevious();
+        return;
+      }
+      if (gestureBindingsRef.current.onToggleChrome && Math.hypot(endX - start.x, endY - start.y) < 10 && !hadSelection && !isReaderInteractiveTapTarget(event.target)) {
+        triggerTapZone(endX);
+      }
+    };
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      mouseStartRef.current = { x: event.clientX, y: event.clientY };
+      mouseHadSelectionRef.current = hasReaderTextSelection(document);
+    };
+    const onClick = (event: MouseEvent) => {
+      const start = mouseStartRef.current;
+      mouseStartRef.current = null;
+      const hadSelection = mouseHadSelectionRef.current || hasReaderTextSelection(document);
+      mouseHadSelectionRef.current = false;
+      if (!gestureBindingsRef.current.onToggleChrome) return;
+      if (Date.now() - lastTouchEndAtRef.current < 700) return;
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 10) return;
+      if (hadSelection || isReaderInteractiveTapTarget(event.target)) return;
+      triggerTapZone(event.clientX);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (isEditableReaderTarget(event.target)) return;
       if (event.key === "ArrowLeft") {
         event.preventDefault();
-        goPrevious();
+        gestureBindingsRef.current.goPrevious();
       } else if (event.key === "ArrowRight") {
         event.preventDefault();
-        goNext();
+        gestureBindingsRef.current.goNext();
       }
     };
-    if (scrolled) return;
     document.addEventListener("touchstart", onTouchStart, { passive: true });
     document.addEventListener("touchend", onTouchEnd, { passive: true });
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("click", onClick);
+    if (!scrolled) document.addEventListener("keydown", onKeyDown);
     gestureCleanupsRef.current.set(document, () => {
       document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchend", onTouchEnd);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("click", onClick);
+      if (!scrolled) document.removeEventListener("keydown", onKeyDown);
     });
   });
 
   const applyRenditionStyles = (rendition: Rendition) => {
+    const safeFontFamily = sanitizeCssFontFamilyList(fontFamily);
     rendition.themes.register("page", {
       body: {
         color: `${theme.foreground} !important`,
         background: `${theme.background} !important`,
-        "font-family": `${fontFamily} !important`,
+        "font-family": `${safeFontFamily} !important`,
         "line-height": "1.9 !important",
         padding: scrolled ? `${tokens.spacing[5]}px 0 !important` : `0 ${tokens.spacing[5]}px !important`,
         "box-sizing": "border-box !important",
@@ -242,6 +388,33 @@ export default function EpubDocumentReader({ bookId, annotations, onAnnotationAc
       renditionRef.current = rendition;
       rendition.hooks.content.register((contents: Contents) => installReaderFont(contents));
       applyRenditionStyles(rendition);
+
+      const cleanupDetachedDocuments = (targetDoc?: Document) => {
+        if (targetDoc) {
+          gestureCleanupsRef.current.get(targetDoc)?.();
+          gestureCleanupsRef.current.delete(targetDoc);
+          annotationActivationCleanupsRef.current.get(targetDoc)?.();
+          annotationActivationCleanupsRef.current.delete(targetDoc);
+        }
+        if (!rendition) return;
+        const activeDocs = new Set(renderedContents(rendition).map((contents) => contents.document));
+        gestureCleanupsRef.current.forEach((cleanup, doc) => {
+          if (!activeDocs.has(doc)) {
+            cleanup();
+            gestureCleanupsRef.current.delete(doc);
+          }
+        });
+        annotationActivationCleanupsRef.current.forEach((cleanup, doc) => {
+          if (!activeDocs.has(doc)) {
+            cleanup();
+            annotationActivationCleanupsRef.current.delete(doc);
+          }
+        });
+      };
+
+      rendition.on("removed", (_section?: unknown, view?: { contents?: Contents; document?: Document }) => {
+        cleanupDetachedDocuments(view?.contents?.document ?? view?.document);
+      });
 
       rendition.on("selected", (cfiRange: string, contents: Contents) => {
         const nativeSelection = contents.window.getSelection();

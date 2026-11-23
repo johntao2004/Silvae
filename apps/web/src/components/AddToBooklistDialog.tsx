@@ -1,4 +1,4 @@
-// 加载可编辑书目并提交单本书加入操作，保存结果通过查询缓存刷新传播。
+// 加载可编辑书单并提交单本书加入操作，保存结果通过查询缓存刷新传播。
 // Loads editable booklists and submits a book addition, propagating results through query refreshes.
 import { EmptyState } from "../ui/empty-state";
 import { Alert } from "@/ui/feedback";
@@ -49,7 +49,7 @@ export function AddToBooklistDialog({ open, bookId, bookTitle, onClose, onComple
       onCompleted(`已将《${bookTitle}》加入“${booklist.title}”`);
       onClose();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "加入书目失败");
+      setError(reason instanceof Error ? reason.message : "加入书单失败");
     } finally {
       setBusyId(null);
     }
@@ -63,14 +63,14 @@ export function AddToBooklistDialog({ open, bookId, bookTitle, onClose, onComple
   return (
     <>
       <Dialog open={open && !createOpen} onClose={busyId ? undefined : onClose} fullWidth maxWidth="sm">
-        <DialogTitle>将《{bookTitle}》加入书目</DialogTitle>
+        <DialogTitle>将《{bookTitle}》加入书单</DialogTitle>
         <DialogContent>
           <Stack sx={{ gap: `${tokens.spacing[4]}px` }}>
             {error ? <Alert severity="error">{error}</Alert> : null}
             {listsQuery.isPending ? (
               <Stack sx={{ alignItems: "center", py: `${tokens.spacing[8]}px` }}><CircularProgress /></Stack>
             ) : listsQuery.isError ? (
-              <Alert severity="error">个人书目暂时无法读取，请重试。</Alert>
+              <Alert severity="error">个人书单暂时无法读取，请重试。</Alert>
             ) : personalLists.length ? (
               <List sx={{ p: 0, border: 1, borderColor: "divider", borderRadius: `${tokens.radius.lg}px`, overflow: "hidden" }}>
                 {personalLists.map((booklist, index) => (
@@ -85,10 +85,10 @@ export function AddToBooklistDialog({ open, bookId, bookTitle, onClose, onComple
               </List>
             ) : (
               <Box sx={{ textAlign: "center", py: `${tokens.spacing[8]}px` }}>
-                <EmptyState compact title="暂无可加入的个人书目" />
+                <EmptyState compact title="暂无可加入的个人书单" />
               </Box>
             )}
-            <Button variant={personalLists.length ? "outlined" : "contained"} onClick={() => setCreateOpen(true)}>新建书目</Button>
+            <Button variant={personalLists.length ? "outlined" : "contained"} onClick={() => setCreateOpen(true)}>新建书单</Button>
           </Stack>
         </DialogContent>
         <DialogActions><Button onClick={onClose} disabled={Boolean(busyId)}>取消</Button></DialogActions>

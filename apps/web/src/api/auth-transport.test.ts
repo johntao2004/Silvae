@@ -67,6 +67,16 @@ describe('real authentication transport', () => {
     expect(fetchMock.mock.calls[3][1].headers['X-XSRF-TOKEN']).toBe('new');
     expect(fetchMock.mock.calls[5][1].headers['X-XSRF-TOKEN']).toBe('logout');
   });
+  it('sends only the new password for a verified temporary login', async () => {
+    fetchMock.mockResolvedValueOnce(json({ token: 'change-password' })).mockResolvedValueOnce(json(session));
+    await expect(api.changePassword({ newPassword: 'new-password' })).resolves.toEqual(session);
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/auth/password');
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: 'PUT',
+      headers: { 'X-XSRF-TOKEN': 'change-password' },
+      body: JSON.stringify({ newPassword: 'new-password' }),
+    });
+  });
   it('times out authentication with a relevant message and does not replay login', async () => {
     vi.useFakeTimers();
     vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => {

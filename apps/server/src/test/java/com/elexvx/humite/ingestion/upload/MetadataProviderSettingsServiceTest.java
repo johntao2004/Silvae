@@ -31,37 +31,34 @@ class MetadataProviderSettingsServiceTest {
         var repository = mock(MetadataProviderSettingsRepository.class);
         var permissions = ownerPermissions();
         when(repository.findEnabled()).thenReturn(Map.of());
-        var service = service(repository, permissions, "google-key", false);
+        var service = service(repository, permissions, false);
 
         var view = service.view(OWNER);
 
         assertThat(view.providers()).extracting(MetadataProviderSettingsService.MetadataProviderView::id)
-                .containsExactly("OPEN_LIBRARY", "WIKIDATA", "GOOGLE_BOOKS");
+                .containsExactly("OPEN_LIBRARY", "WIKIDATA");
         assertThat(view.providers()).extracting(MetadataProviderSettingsService.MetadataProviderView::enabled)
-                .containsExactly(false, false, true);
+                .containsExactly(false, false);
         assertThat(view.providers()).extracting(MetadataProviderSettingsService.MetadataProviderView::available)
-                .containsExactly(true, true, true);
-        assertThat(view.providers().get(2).homepage()).isEqualTo("https://developers.google.com/books");
+                .containsExactly(true, true);
+        assertThat(view.providers().get(1).homepage()).isEqualTo("https://www.wikidata.org/");
         verify(permissions).require(OWNER, "settings.metadata.view");
         assertThat(service.isEnabled(MetadataSource.OPEN_LIBRARY)).isFalse();
         assertThat(service.isEnabled(MetadataSource.WIKIDATA)).isFalse();
-        assertThat(service.isEnabled(MetadataSource.GOOGLE_BOOKS)).isTrue();
     }
 
     @Test
-    void storedSettingsOverrideDefaultsAndMissingGoogleKeySuppressesEffectiveEnablement() {
+    void storedSettingsOverrideDefaultsForOpenLibraryAndWikidata() {
         var repository = mock(MetadataProviderSettingsRepository.class);
-        when(repository.findEnabled()).thenReturn(Map.of("OPEN_LIBRARY", false, "WIKIDATA", true, "GOOGLE_BOOKS", true));
-        var service = service(repository, ownerPermissions(), null, true);
+        when(repository.findEnabled()).thenReturn(Map.of("OPEN_LIBRARY", false, "WIKIDATA", true));
+        var service = service(repository, ownerPermissions(), true);
 
         var providers = service.view(OWNER).providers();
 
         assertThat(providers).extracting(MetadataProviderSettingsService.MetadataProviderView::enabled)
-                .containsExactly(false, true, false);
-        assertThat(providers.get(2).available()).isFalse();
-        assertThat(providers.get(2).description()).contains("Google Books API 密钥");
+                .containsExactly(false, true);
+        assertThat(service.isEnabled(MetadataSource.OPEN_LIBRARY)).isFalse();
         assertThat(service.isEnabled(MetadataSource.WIKIDATA)).isTrue();
-        assertThat(service.isEnabled(MetadataSource.GOOGLE_BOOKS)).isFalse();
     }
 
     @Test
@@ -70,7 +67,7 @@ class MetadataProviderSettingsServiceTest {
         var audit = mock(AuditService.class);
         var permissions = ownerPermissions();
         when(repository.findEnabled()).thenReturn(Map.of("WIKIDATA", true));
-        var service = service(repository, permissions, null, false, audit);
+        var service = service(repository, permissions, false, audit);
 
         var view = service.update(List.of(new MetadataProviderSettingsService.ProviderSettingInput("WIKIDATA", true)), OWNER);
 
@@ -82,19 +79,19 @@ class MetadataProviderSettingsServiceTest {
     }
 
     @Test
-    void rejectsUnknownDuplicateAndUnavailableProviderBeforeWriting() {
+    void rejectsUnknownRemovedAndDuplicateProviderBeforeWriting() {
         var repository = mock(MetadataProviderSettingsRepository.class);
         var audit = mock(AuditService.class);
-        var service = service(repository, ownerPermissions(), null, true, audit);
+        var service = service(repository, ownerPermissions(), true, audit);
 
         assertThatThrownBy(() -> service.update(List.of(new MetadataProviderSettingsService.ProviderSettingInput("CUSTOM", true)), OWNER))
+                .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("METADATA_PROVIDER_UNKNOWN"));
+        assertThatThrownBy(() -> service.update(List.of(new MetadataProviderSettingsService.ProviderSettingInput("GOOGLE_BOOKS", true)), OWNER))
                 .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("METADATA_PROVIDER_UNKNOWN"));
         assertThatThrownBy(() -> service.update(List.of(
                 new MetadataProviderSettingsService.ProviderSettingInput("WIKIDATA", true),
                 new MetadataProviderSettingsService.ProviderSettingInput("WIKIDATA", false)), OWNER))
                 .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("METADATA_PROVIDER_DUPLICATE"));
-        assertThatThrownBy(() -> service.update(List.of(new MetadataProviderSettingsService.ProviderSettingInput("GOOGLE_BOOKS", true)), OWNER))
-                .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("METADATA_PROVIDER_UNAVAILABLE"));
         verify(repository, never()).save(org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.any());
         verifyNoInteractions(audit);
     }
@@ -106,7 +103,7 @@ class MetadataProviderSettingsServiceTest {
         var member = new HumiteUser(UUID.randomUUID(), "member", "成员", "hash", UserRole.MEMBER,
                 UserStatus.ACTIVE, false, OffsetDateTime.now(), null);
         when(permissions.actor(OWNER)).thenReturn(member);
-        var service = service(repository, permissions, "", true);
+        var service = service(repository, permissions, true);
 
         assertThatThrownBy(() -> service.view(OWNER)).isInstanceOf(ApiException.class);
         assertThatThrownBy(() -> service.update(List.of(new MetadataProviderSettingsService.ProviderSettingInput("WIKIDATA", true)), OWNER))
@@ -119,21 +116,21 @@ class MetadataProviderSettingsServiceTest {
 
     private RolePermissionService ownerPermissions() {
         var permissions = mock(RolePermissionService.class);
-        var owner = new HumiteUser(OWNER_ID, "owner", "主人", "hash", UserRole.OWNER,
+        var owner = new HumiteUser(OWNER_ID, "owner", "站点所有者", "hash", UserRole.OWNER,
                 UserStatus.ACTIVE, false, OffsetDateTime.now(), null);
         when(permissions.actor(OWNER)).thenReturn(owner);
         return permissions;
     }
 
     private MetadataProviderSettingsService service(MetadataProviderSettingsRepository repository,
-            RolePermissionService permissions, String googleKey, boolean openLibraryEnabled) {
-        return service(repository, permissions, googleKey, openLibraryEnabled, mock(AuditService.class));
+            RolePermissionService permissions, boolean openLibraryEnabled) {
+        return service(repository, permissions, openLibraryEnabled, mock(AuditService.class));
     }
 
     private MetadataProviderSettingsService service(MetadataProviderSettingsRepository repository,
-            RolePermissionService permissions, String googleKey, boolean openLibraryEnabled, AuditService audit) {
+            RolePermissionService permissions, boolean openLibraryEnabled, AuditService audit) {
         var properties = new HumiteProperties(null, null, null, null, null, null, null, null, null,
-                new HumiteProperties.MetadataProviders(openLibraryEnabled, googleKey), null);
+                new HumiteProperties.MetadataProviders(openLibraryEnabled), null);
         return new MetadataProviderSettingsService(properties, repository, permissions, audit);
     }
 }

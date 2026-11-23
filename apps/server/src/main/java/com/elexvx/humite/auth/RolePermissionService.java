@@ -105,7 +105,7 @@ public class RolePermissionService {
     @Transactional
     public Policy update(Policy input, Principal principal) {
         var actor = actor(principal);
-        if (actor.role() != UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED", "只有主人可以配置角色权限。");
+        if (actor.role() != UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED", "只有站点所有者可以配置角色权限。");
         if (input.grants() == null || !input.grants().keySet().equals(Set.of(UserRole.ADMIN, UserRole.MEMBER)))
             throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "INVALID_ROLE_POLICY", "请提供管理员和成员的完整权限配置。");
         for (var entry : input.grants().entrySet()) {

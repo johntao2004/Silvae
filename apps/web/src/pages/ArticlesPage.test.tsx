@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { articles, type ArticleSummary } from "../features/content/api";
 import { TestProviders } from "../test/TestProviders";
@@ -56,7 +56,7 @@ describe("ArticlesPage shared catalog", () => {
     expect(within(list).getByRole("img", { name: "秋日书信封面" })).toHaveAttribute("src", article.cover_url);
     expect(within(list).queryByText(article.excerpt!)).not.toBeInTheDocument();
     expect(within(list).getByText(article.author)).toBeVisible();
-    expect(within(list).getByText("公开")).toBeVisible();
+    expect(within(list).getByText("书库成员可见")).toBeVisible();
     expect(get).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "编辑文章" })).not.toBeInTheDocument();
     fireEvent.click(within(list).getByRole("button", { name: "秋日书信更多操作" }));
@@ -64,7 +64,7 @@ describe("ArticlesPage shared catalog", () => {
     expect(within(await screen.findByRole("dialog")).getByRole("heading", { name: "编辑文章" })).toBeInTheDocument();
     expect(get).toHaveBeenCalledWith(article.id);
     expect(screen.getByRole("img", { name: "文章封面预览" })).toHaveAttribute("src", article.cover_url);
-    for (const label of ["文章标题", "作者", "分类 / 标签", "来源链接（可选）", "发布时间（可选）"]) {
+    for (const label of ["文章标题", "作者", "标签", "来源链接（可选）", "发布时间（可选）"]) {
       expect(within(screen.getByRole("dialog")).getByText(label, { selector: "label" })).toBeVisible();
     }
   });
@@ -89,7 +89,7 @@ describe("ArticlesPage shared catalog", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it("opens link capture only after 新增文章 and transfers a fetched draft into review", async () => {
+  it("opens link capture only after 添加文章 and transfers a fetched draft into review", async () => {
     const fetch = vi.spyOn(articles, "fetch").mockResolvedValue({
       title: "抓取文章", author: "作者", sourceUrl: article.source_url, publishedAt: "2026-10-22 09:30:00 +08:00", visibility: "PUBLIC", tags: "", html: "<p>抓取正文</p>",
     });
@@ -97,13 +97,13 @@ describe("ArticlesPage shared catalog", () => {
     await screen.findByRole("region", { name: "文章列表" });
     expect(screen.queryByRole("textbox", { name: "网页链接" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "手动导入" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "新增文章" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "添加文章" })).toBeInTheDocument();
     fireEvent.change(within(dialog).getByRole("textbox", { name: "网页链接" }), { target: { value: article.source_url } });
     fireEvent.submit(within(dialog).getByRole("textbox", { name: "网页链接" }).closest("form")!);
     expect(await screen.findByRole("heading", { name: "导入文章" })).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledWith(article.source_url);
+    expect(fetch).toHaveBeenCalledWith(article.source_url, expect.any(Function));
     expect(screen.getByRole("textbox", { name: "文章标题" })).toHaveValue("抓取文章");
     const publishedAt = screen.getByRole("textbox", { name: /^发布时间$/ });
     expect(publishedAt).toHaveValue("2026-10-22 09:30:00 +08:00");
@@ -115,7 +115,7 @@ describe("ArticlesPage shared catalog", () => {
 
   it("keeps manual import available inside the add-article drawer", async () => {
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     const capture = await screen.findByRole("dialog");
     fireEvent.click(within(capture).getByRole("button", { name: "手动导入" }));
     expect(await screen.findByRole("heading", { name: "导入文章" })).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("ArticlesPage shared catalog", () => {
     });
     const save = vi.spyOn(articles, "save").mockResolvedValue({ ...article, html: "<p>正文</p>" });
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     const input = await screen.findByRole("textbox", { name: "网页链接" });
     fireEvent.change(input, { target: { value: article.source_url } });
     fireEvent.submit(input.closest("form")!);
@@ -157,7 +157,7 @@ describe("ArticlesPage shared catalog", () => {
     const prepare = vi.spyOn(articles, "prepare").mockResolvedValue({ html: `<h1>Markdown 标题</h1><p><strong>加粗</strong></p><img src="${image}" alt="自动配图">` });
     const save = vi.spyOn(articles, "save").mockResolvedValue({ ...article, html: "<p>正文</p>" });
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     fireEvent.click(await screen.findByRole("button", { name: "手动导入" }));
     fireEvent.change(screen.getByRole("textbox", { name: "文章标题" }), { target: { value: "Markdown 文章" } });
     editBody(await screen.findByRole("textbox", { name: "文章正文" }), "# Markdown 标题\n\n**加粗**\n\n![自动配图](https://example.com/image.png)");
@@ -177,7 +177,7 @@ describe("ArticlesPage shared catalog", () => {
     const prepare = vi.spyOn(articles, "prepare").mockResolvedValue({ html: `<img src="${asset}" alt="正文配图">` });
     const save = vi.spyOn(articles, "save").mockResolvedValue({ ...article, html: "<p>正文</p>" });
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     fireEvent.click(await screen.findByRole("button", { name: "手动导入" }));
     fireEvent.change(screen.getByRole("textbox", { name: "文章标题" }), { target: { value: "带图片的文章" } });
     const editor = await screen.findByRole("textbox", { name: "文章正文" });
@@ -197,7 +197,7 @@ describe("ArticlesPage shared catalog", () => {
   it("reports invalid image uploads without losing the current Markdown", async () => {
     vi.spyOn(imageImport, "readArticleImage").mockRejectedValue(new Error("图片不能超过 5 MB。"));
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     fireEvent.click(await screen.findByRole("button", { name: "手动导入" }));
     editBody(await screen.findByRole("textbox", { name: "文章正文" }), "保留未保存正文");
     fireEvent.change(screen.getByLabelText("上传正文图片文件"), { target: { files: [new File(["test"], "配图.png", { type: "image/png" })] } });
@@ -208,9 +208,9 @@ describe("ArticlesPage shared catalog", () => {
   it("retains the entered link and capture drawer when fetching fails", async () => {
     vi.spyOn(articles, "fetch").mockRejectedValue(new Error("网页暂时不可用"));
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "新增文章" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "添加文章" })).toBeInTheDocument();
     const input = within(dialog).getByRole("textbox", { name: "网页链接" });
     fireEvent.change(input, { target: { value: article.source_url } });
     fireEvent.submit(input.closest("form")!);
@@ -222,7 +222,7 @@ describe("ArticlesPage shared catalog", () => {
     const message = "已有相同来源链接的文章，请在文章列表中查看或编辑。";
     vi.spyOn(articles, "fetch").mockRejectedValue(new Error(message));
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     const dialog = await screen.findByRole("dialog");
     const input = within(dialog).getByRole("textbox", { name: "网页链接" });
     fireEvent.change(input, { target: { value: article.source_url } });
@@ -237,7 +237,7 @@ describe("ArticlesPage shared catalog", () => {
     const save = vi.spyOn(articles, "save").mockRejectedValueOnce(new Error(message))
       .mockResolvedValueOnce({ ...article, html: "<p>不同的正文</p>" });
     render(<TestProviders><ArticlesPage /></TestProviders>);
-    fireEvent.click(screen.getByRole("button", { name: "新增文章" }));
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
     fireEvent.click(await screen.findByRole("button", { name: "手动导入" }));
     fireEvent.change(screen.getByRole("textbox", { name: "文章标题" }), { target: { value: "待导入文章" } });
     editBody(await screen.findByRole("textbox", { name: "文章正文" }), "相同正文");
@@ -270,7 +270,7 @@ describe("ArticlesPage shared catalog", () => {
     }));
     render(<TestProviders><ArticlesPage /></TestProviders>);
     await screen.findByRole("region", { name: "文章列表" });
-    expect(screen.queryByRole("button", { name: "新增文章" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "添加文章" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "手动导入" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "秋日书信更多操作" }));
     expect(await screen.findByRole("menuitem", { name: "打开文章" })).toBeInTheDocument();
@@ -284,7 +284,7 @@ describe("ArticlesPage shared catalog", () => {
     vi.mocked(articles.list).mockResolvedValue([
       { ...article, id: "z", title: "Z 文章", tags: "随笔，阅读" },
       { ...article, id: "a", title: "A 文章", tags: "阅读,艺术" },
-      { ...article, id: "b", title: "B 文章", tags: "阅读札记" },
+      { ...article, id: "b", title: "B 文章", tags: "阅读笔记" },
     ]);
     render(<TestProviders initialPath="/articles?tag=阅读&sort=title"><ArticlesPage /></TestProviders>);
     const list = await screen.findByRole("region", { name: "文章列表" });
@@ -304,11 +304,172 @@ describe("ArticlesPage shared catalog", () => {
   it("filters untagged articles and sorts recent collections by date", async () => {
     vi.mocked(articles.list).mockResolvedValue([
       { ...article, id: "older", title: "较早收藏", tags: "", created_at: "2026-10-01T00:00:00Z" },
-      { ...article, id: "newer", title: "最近收藏文章", tags: " ", created_at: "2026-10-20T00:00:00Z" },
+      { ...article, id: "newer", title: "最近添加文章", tags: " ", created_at: "2026-10-20T00:00:00Z" },
       article,
     ]);
     render(<TestProviders initialPath="/articles?tag=UNTAGGED"><ArticlesPage /></TestProviders>);
     const list = await screen.findByRole("region", { name: "文章列表" });
-    expect(within(list).getAllByRole("heading").map(item => item.textContent)).toEqual(["最近收藏文章", "较早收藏"]);
+    expect(within(list).getAllByRole("heading").map(item => item.textContent)).toEqual(["最近添加文章", "较早收藏"]);
+  });
+
+  it("enqueues each pasted URL immediately, lets users switch between fetched articles without losing edits, and saves all ready articles", async () => {
+    const fetch = vi.spyOn(articles, "fetch")
+      .mockResolvedValueOnce({
+        title: "第一篇原标题",
+        author: "作者甲",
+        sourceUrl: "https://example.com/1",
+        publishedAt: "",
+        visibility: "PRIVATE",
+        tags: "",
+        html: "<p>正文一</p>",
+      })
+      .mockResolvedValueOnce({
+        title: "第二篇原标题",
+        author: "作者乙",
+        sourceUrl: "https://example.com/2",
+        publishedAt: "",
+        visibility: "PRIVATE",
+        tags: "",
+        html: "<p>正文二</p>",
+      });
+    const save = vi.spyOn(articles, "save")
+      .mockResolvedValueOnce({ ...article, id: "saved-1", title: "第一篇新标题", html: "<p>正文一</p>" })
+      .mockResolvedValueOnce({ ...article, id: "saved-2", title: "第二篇新标题", html: "<p>正文二</p>" });
+
+    render(<TestProviders><ArticlesPage /></TestProviders>);
+    await screen.findByRole("region", { name: "文章列表" });
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const input = within(dialog).getByRole("textbox", { name: "网页链接" });
+    fireEvent.paste(input, {
+      clipboardData: { getData: () => "https://example.com/1" },
+    });
+    expect(input).toHaveValue("");
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("https://example.com/1", expect.any(Function)));
+    expect(await within(dialog).findByRole("textbox", { name: "文章标题" })).toHaveValue("第一篇原标题");
+
+    fireEvent.paste(input, {
+      clipboardData: { getData: () => "https://example.com/2" },
+    });
+    expect(input).toHaveValue("");
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("https://example.com/2", expect.any(Function)));
+
+    const queueList = within(dialog).getByRole("list", { name: "待导入文章列表" });
+    await within(queueList).findByRole("button", { name: /#2 第二篇原标题/ });
+
+    // 仍在编辑第一篇时修改标题和标签，不会被第二篇完成打断
+    expect(within(dialog).getByRole("textbox", { name: "文章标题" })).toHaveValue("第一篇原标题");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "文章标题" }), { target: { value: "第一篇新标题" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "标签" }), { target: { value: "专栏" } });
+
+    // 切换到第二篇并编辑
+    fireEvent.click(within(queueList).getByRole("button", { name: /#2 第二篇原标题/ }));
+    expect(within(dialog).getByRole("textbox", { name: "文章标题" })).toHaveValue("第二篇原标题");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "文章标题" }), { target: { value: "第二篇新标题" } });
+
+    // 切回第一篇，未保存的修改仍然保留
+    fireEvent.click(within(queueList).getByRole("button", { name: /#1 第一篇新标题/ }));
+    expect(within(dialog).getByRole("textbox", { name: "文章标题" })).toHaveValue("第一篇新标题");
+    expect(within(dialog).getByRole("textbox", { name: "标签" })).toHaveValue("专栏");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存全部（2 篇）" }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    expect(save).toHaveBeenNthCalledWith(1, expect.objectContaining({ title: "第一篇新标题", tags: "专栏" }), undefined);
+    expect(save).toHaveBeenNthCalledWith(2, expect.objectContaining({ title: "第二篇新标题" }), undefined);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("retries a failed queued URL inside the import list and opens it once ready", async () => {
+    const fetch = vi.spyOn(articles, "fetch")
+      .mockRejectedValueOnce(new Error("抓取超时"))
+      .mockResolvedValueOnce({
+        title: "重试后成功",
+        author: "作者",
+        sourceUrl: "https://example.com/retry",
+        publishedAt: "",
+        visibility: "PRIVATE",
+        tags: "",
+        html: "<p>重试正文</p>",
+      });
+
+    render(<TestProviders><ArticlesPage /></TestProviders>);
+    await screen.findByRole("region", { name: "文章列表" });
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const input = within(dialog).getByRole("textbox", { name: "网页链接" });
+    fireEvent.paste(input, {
+      clipboardData: { getData: () => "https://example.com/retry" },
+    });
+
+    const queueList = await within(dialog).findByRole("list", { name: "待导入文章列表" });
+    expect(await within(queueList).findByText("抓取超时")).toBeInTheDocument();
+
+    fireEvent.click(within(queueList).getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(await within(dialog).findByRole("textbox", { name: "文章标题" })).toHaveValue("重试后成功");
+  });
+
+  it("saves and continues adding another article from the review drawer", async () => {
+    const save = vi.spyOn(articles, "save").mockResolvedValue({ ...article, id: "article-two", title: "第二篇", html: "<p>正文</p>" });
+    render(<TestProviders><ArticlesPage /></TestProviders>);
+    await screen.findByRole("region", { name: "文章列表" });
+    fireEvent.click(screen.getByRole("button", { name: "添加文章" }));
+    fireEvent.click(await screen.findByRole("button", { name: "手动导入" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "文章标题" }), { target: { value: "第二篇" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存并继续添加" }));
+
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ title: "第二篇" }), undefined));
+    expect(await screen.findByRole("heading", { name: "添加文章" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "网页链接" })).toHaveValue("");
+  });
+
+  it("displays live request and read progress while fetching an article", async () => {
+    let resolveFetch!: (value: Awaited<ReturnType<typeof articles.fetch>>) => void;
+    let notifyProgress: ((progress: Parameters<NonNullable<Parameters<typeof articles.fetch>[1]>>[0]) => void) | undefined;
+    vi.spyOn(articles, "fetch").mockImplementation((_url, onProgress) => {
+      notifyProgress = onProgress;
+      return new Promise((resolve) => { resolveFetch = resolve; });
+    });
+    render(<TestProviders><ArticlesPage /></TestProviders>);
+    fireEvent.click(await screen.findByRole("button", { name: "添加文章" }));
+    const input = await screen.findByRole("textbox", { name: "网页链接" });
+    fireEvent.change(input, { target: { value: article.source_url } });
+    fireEvent.submit(input.closest("form")!);
+
+    const status = await screen.findByRole("status", { name: "抓取进度" });
+    expect(status).toHaveTextContent(`当前请求：${article.source_url}`);
+
+    act(() => {
+      notifyProgress?.({
+        stage: "CAPTURING_IMAGES",
+        message: "正在读取正文图片（2/5）…",
+        url: article.source_url,
+        title: "实时抓取文章",
+        author: "测试作者",
+        imageIndex: 2,
+        imageTotal: 5,
+        percent: 55,
+      });
+    });
+
+    await waitFor(() => expect(status).toHaveTextContent("55%"));
+    expect(status).toHaveTextContent("正在读取正文图片（2/5）");
+    expect(status).toHaveTextContent("已读取标题：《实时抓取文章》（测试作者）");
+    expect(status).toHaveTextContent("正文图片：2 / 5");
+
+    await act(async () => {
+      resolveFetch({
+        title: "实时抓取文章",
+        author: "测试作者",
+        sourceUrl: article.source_url,
+        publishedAt: "",
+        visibility: "PRIVATE",
+        tags: "",
+        html: "<p>正文</p>",
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "导入文章" })).toBeInTheDocument();
   });
 });

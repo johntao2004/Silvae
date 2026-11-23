@@ -2,7 +2,10 @@ package com.elexvx.humite.filemanagement;
 
 import com.elexvx.humite.catalog.BookFormat;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -35,11 +38,15 @@ public class FileInspector {
     private Inspection inspectEpub(Path path) throws IOException {
         try (ZipFile zip = new ZipFile(path.toFile(), StandardCharsets.UTF_8)) {
             long declaredBytes = 0;
+            long actualBytes = 0;
             int entries = 0;
-            long compressedSize = Math.max(1, java.nio.file.Files.size(path));
+            long compressedSize = Math.max(1L, java.nio.file.Files.size(path));
             long ratioLimit = Math.max(256L * 1024 * 1024,
                     Math.min(MAX_EPUB_UNCOMPRESSED_BYTES, compressedSize > MAX_EPUB_UNCOMPRESSED_BYTES / 250
                             ? MAX_EPUB_UNCOMPRESSED_BYTES : compressedSize * 250));
+            long maxAllowedBytes = Math.min(ratioLimit, MAX_EPUB_UNCOMPRESSED_BYTES);
+            byte[] drainBuffer = new byte[32_768];
+            boolean drm = false;
             var enumeration = zip.entries();
             while (enumeration.hasMoreElements()) {
                 var entry = enumeration.nextElement();
@@ -47,8 +54,17 @@ public class FileInspector {
                 if (entries > MAX_EPUB_ENTRIES) throw new IOException("EPUB 条目数量超过安全限制");
                 if (entry.getSize() > 0) {
                     declaredBytes = Math.addExact(declaredBytes, entry.getSize());
-                    if (declaredBytes > ratioLimit || declaredBytes > MAX_EPUB_UNCOMPRESSED_BYTES) {
+                    if (declaredBytes > maxAllowedBytes) {
                         throw new IOException("EPUB 解压大小超过安全限制");
+                    }
+                }
+                if (entry.getName().toLowerCase(Locale.ROOT).contains("rights.xml")) {
+                    drm = true;
+                }
+                if (!entry.isDirectory()) {
+                    try (InputStream input = zip.getInputStream(entry)) {
+                        actualBytes += copyBounded(input, OutputStream.nullOutputStream(),
+                                maxAllowedBytes - actualBytes, "EPUB 解压大小超过安全限制", drainBuffer);
                     }
                 }
             }
@@ -57,18 +73,49 @@ public class FileInspector {
             boolean parseable = mimetype != null && container != null;
             boolean signed = zip.getEntry("META-INF/signatures.xml") != null;
             boolean encrypted = zip.getEntry("META-INF/encryption.xml") != null;
-            boolean drm = zip.stream().anyMatch(entry -> entry.getName().toLowerCase(Locale.ROOT).contains("rights.xml"));
             if (container != null) {
                 try (var input = zip.getInputStream(container)) {
                     var factory = secureXmlFactory();
-                    byte[] bytes = input.readNBytes(MAX_XML_BYTES + 1);
-                    if (bytes.length > MAX_XML_BYTES) throw new IOException("EPUB container.xml 超过安全限制");
+                    byte[] bytes = readBounded(input, MAX_XML_BYTES, "EPUB container.xml 超过安全限制");
                     factory.newDocumentBuilder().parse(new ByteArrayInputStream(bytes));
                 } catch (Exception exception) {
                     parseable = false;
                 }
             }
             return new Inspection(parseable, encrypted, drm, signed);
+        }
+    }
+
+    static byte[] readBounded(InputStream input, int maxBytes, String exceededMessage) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+        copyBounded(input, output, maxBytes, exceededMessage, new byte[8192]);
+        return output.toByteArray();
+    }
+
+    static long copyBounded(InputStream input, OutputStream output, long maxBytes, String exceededMessage)
+            throws IOException {
+        return copyBounded(input, output, maxBytes, exceededMessage, new byte[32_768]);
+    }
+
+    private static long copyBounded(InputStream input, OutputStream output, long maxBytes, String exceededMessage,
+                                    byte[] buffer) throws IOException {
+        long total = 0;
+        while (true) {
+            int toRead = (int) Math.min(buffer.length, Math.max(0L, maxBytes - total));
+            if (toRead == 0) {
+                if (input.read() != -1) {
+                    throw new IOException(exceededMessage);
+                }
+                return total;
+            }
+            int read = input.read(buffer, 0, toRead);
+            if (read < 0) {
+                return total;
+            }
+            if (read > 0) {
+                output.write(buffer, 0, read);
+                total += read;
+            }
         }
     }
 

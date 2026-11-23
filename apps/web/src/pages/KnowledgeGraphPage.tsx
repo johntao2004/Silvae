@@ -4,18 +4,18 @@ import { usePermissions } from "../auth/permissions";
 import { type NetworkGraphOptions } from '@ant-design/graphs';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { _AntAlert as Alert, _AntButton as Button, Empty, Pagination, Skeleton, Tag } from '@/ui/antd';
 import { Typography } from '@/ui/primitives';
 import { Drawer } from '@/ui/overlays';
 import { Checkbox } from '@/ui/forms';
 import { TextField } from '@/ui/forms';
-import { SearchRounded } from '@/ui/icons';
 import { api } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useAiAvailability } from '../features/ai/useAiAvailability';
 import { PageContainer, PageHeader } from '../components/PageHeader';
 import type { BookKnowledge } from '../domain/types';
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import { tokens } from '../theme/tokens';
 import { useHumiteTheme } from '../theme/HumiteThemeProvider';
 import { buildKnowledgeGraph, filterBooksByNode, knowledgeKey, searchKnowledgeBooks } from './knowledge-graph-model';
@@ -33,7 +33,15 @@ export function KnowledgeGraphPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { mode } = useHumiteTheme();
-  const [query, setQuery] = useState('');
+  const isMobile = useIsMobileViewport();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get('q') ?? '';
+  const clearQuery = () => {
+    if (!searchParams.has('q')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('q');
+    setSearchParams(next, { replace: true });
+  };
   const [page, setPage] = useState(1);
   const [drawer, setDrawer] = useState<'analysis' | null>(null);
   const [analysisQuery, setAnalysisQuery] = useState('');
@@ -82,14 +90,14 @@ export function KnowledgeGraphPage() {
     }, state: { active: { lineWidth: 3, stroke: tokens.color.semantic.primary }, inactive: { opacity: 0.2 } } },
     edge: { style: { stroke: tokens.color.semantic.border, lineWidth: 1 }, state: { inactive: { opacity: 0.12 } } },
     layout: { type: 'd3-force', link: { distance: 100 }, collide: { radius: 38 }, manyBody: { strength: -260 }, x: {}, y: {} },
-    behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element', { type: 'hover-activate', degree: 1 }],
+    behaviors: isMobile ? ['drag-canvas', 'zoom-canvas', 'drag-element'] : ['drag-canvas', 'zoom-canvas', 'drag-element', { type: 'hover-activate', degree: 1 }],
     onReady: graph => {
       graphRef.current = graph;
       graph.on('node:click', event => { if ('target' in event && event.target && 'id' in event.target) { const id = String(event.target.id); setSelectedId(previous => previous === id ? null : id); setPage(1); } });
       graph.on('canvas:click', () => { setSelectedId(null); setPage(1); });
     },
     onDestroy: () => { graphRef.current = null; },
-  }), [data, mode]);
+  }), [data, isMobile, mode]);
 
   const analysisBooks = useMemo(() => searchKnowledgeBooks(books, [], analysisQuery), [books, analysisQuery]);
   const visibleAnalysisBooks = analysisBooks.slice(0, analysisLimit);
@@ -130,12 +138,29 @@ export function KnowledgeGraphPage() {
 
   const pending = catalog.isPending || knowledgeQuery.isPending;
   const error = catalog.isError || knowledgeQuery.isError;
+  const clearSelection = () => {
+    setSelectedId(null);
+    setPage(1);
+  };
+  const detailsBody = selected ? <>
+    <div className="bk-knowledge-selection"><Typography component="h2">{selected.data.label}</Typography><Button onClick={clearSelection}>清除筛选</Button></div>
+    <section aria-label="图谱筛选结果"><Tag>{filteredBooks.length} 本相关书籍</Tag>
+      <div className="bk-knowledge-related-books">{filteredBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(book => {
+        const analysis = knowledgeByBookId.get(book.id);
+        const evidence = analysis?.points.find(point => knowledgeKey(point.name) === selected.id);
+        return <article key={book.id} className="bk-knowledge-related-book"><Typography component="h3"><Link to={`/reader/${book.id}`}>{book.title}</Link></Typography><span>{book.author}</span>
+          {analysis && <small>已分析 {analysis.sampledSections}/{analysis.totalSections} {book.format === 'PDF' ? '页' : '章'}</small>}
+          {evidence && <blockquote><p>{evidence.quote}</p><Link to={`/reader/${book.id}?locator=${encodeURIComponent(book.format === 'PDF' ? `pdf:page=${Number(evidence.locator.replace('page:', ''))}` : evidence.locator)}`}>查看原文 · {evidence.locator}</Link></blockquote>}
+        </article>;
+      })}</div>
+      {filteredBooks.length > PAGE_SIZE && <Pagination size="small" current={currentPage} pageSize={PAGE_SIZE} total={filteredBooks.length} showSizeChanger={false} onChange={setPage} />}
+    </section>
+  </> : null;
   return <PageContainer>
-    <PageHeader eyebrow="KNOWLEDGE GRAPH" title="学脉图" action={
+    <PageHeader title="知识图谱" action={
       <div className="bk-knowledge-header-actions">
-        <div className="bk-knowledge-controls" role="group" aria-label="搜索和视图操作">
-          <TextField className="bk-knowledge-search" slotProps={{ input: { startAdornment: <SearchRounded fontSize="small" /> } }} aria-label="搜索知识点或书籍" placeholder="搜索知识点、书名或作者" allowClear value={query} onChange={event => { setQuery(event.target.value); setPage(1); setSelectedId(null); }} />
-          <Button onClick={() => { setSelectedId(null); setPage(1); void graphRef.current?.fitView(); }}>重置视图</Button>
+        <div className="bk-knowledge-controls" role="group" aria-label="视图操作">
+          <Button onClick={() => { clearSelection(); clearQuery(); void graphRef.current?.fitView(); }}>重置视图</Button>
         </div>
         {canGenerate && <Button onClick={() => setDrawer('analysis')}>{batchBusy ? '分析中…' : '分析书籍'}</Button>}
       </div>
@@ -143,29 +168,18 @@ export function KnowledgeGraphPage() {
     <section className="bk-knowledge" aria-label="正文知识网络">
       <div className={`bk-knowledge-workspace${selected ? ' has-selection' : ''}`}>
         <div className="bk-knowledge-canvas" aria-label="可拖动缩放的知识点网络">
-          {error ? <Alert type="error" showIcon title="暂时无法加载学脉图" action={<Button onClick={() => { void catalog.refetch(); void knowledgeQuery.refetch(); }}>重试</Button>} />
+          {error ? <Alert type="error" showIcon title="暂时无法加载知识图谱" action={<Button onClick={() => { void catalog.refetch(); void knowledgeQuery.refetch(); }}>重试</Button>} />
             : pending ? <Skeleton active paragraph={{ rows: 10 }} />
-            : !data.nodes.length ? <div className="bk-knowledge-empty"><Empty description={query ? '没有匹配的正文知识点' : '还没有正文知识点'} />{query ? <Button onClick={() => setQuery('')}>清除搜索</Button> : null}</div>
+            : !data.nodes.length ? <div className="bk-knowledge-empty"><Empty description={query ? '没有匹配的正文知识点' : '还没有正文知识点'} />{query ? <Button onClick={clearQuery}>清除搜索</Button> : null}</div>
             : <><Suspense fallback={<Skeleton active paragraph={{ rows: 10 }} />}><KnowledgeNetwork key={mode} options={options} /></Suspense><div className="bk-knowledge-zoom"><Button aria-label="放大图谱" onClick={() => void graphRef.current?.zoomBy(1.25)}>＋</Button><Button aria-label="缩小图谱" onClick={() => void graphRef.current?.zoomBy(0.8)}>−</Button><Button onClick={() => void graphRef.current?.fitView()}>适应</Button></div></>}
         </div>
-        {selected && <aside className="bk-knowledge-details" aria-label="知识点筛选">
-          <div className="bk-knowledge-selection"><Typography component="h2">{selected.data.label}</Typography><Button onClick={() => { setSelectedId(null); setPage(1); }}>清除筛选</Button></div>
-          <section aria-label="图谱筛选结果"><Tag>{filteredBooks.length} 本相关书籍</Tag>
-            <div className="bk-knowledge-related-books">{filteredBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE).map(book => {
-              const analysis = knowledgeByBookId.get(book.id);
-              const evidence = analysis?.points.find(point => knowledgeKey(point.name) === selected.id);
-              return <article key={book.id} className="bk-knowledge-related-book"><Typography component="h3"><Link to={`/reader/${book.id}`}>{book.title}</Link></Typography><span>{book.author}</span>
-                {analysis && <small>已分析 {analysis.sampledSections}/{analysis.totalSections} {book.format === 'PDF' ? '页' : '章'}</small>}
-                {evidence && <blockquote><p>{evidence.quote}</p><Link to={`/reader/${book.id}?locator=${encodeURIComponent(book.format === 'PDF' ? `pdf:page=${Number(evidence.locator.replace('page:', ''))}` : evidence.locator)}`}>查看原文 · {evidence.locator}</Link></blockquote>}
-              </article>;
-            })}</div>
-            {filteredBooks.length > PAGE_SIZE && <Pagination size="small" current={currentPage} pageSize={PAGE_SIZE} total={filteredBooks.length} showSizeChanger={false} onChange={setPage} />}
-          </section>
-
-        </aside>}
+        {!isMobile && selected && <aside className="bk-knowledge-details" aria-label="知识点筛选">{detailsBody}</aside>}
       </div>
       <div className="bk-knowledge-footer"><div className="bk-knowledge-summary"><div className="bk-knowledge-legend"><span><i style={{ background: tokens.color.semantic.accentTeal }} />单书知识点</span><span><i style={{ background: tokens.color.semantic.primary }} />跨书知识点</span></div><span>已分析 {completed} / {books.length} 本</span></div></div>
     </section>
+    {isMobile && <Drawer open={Boolean(selected)} onClose={clearSelection} anchor="bottom" title={selected?.data.label ?? '知识点详情'} slotProps={{ paper: { sx: { height: 'min(68dvh, 520px)', borderRadius: '16px 16px 0 0' } } }}>
+      {selected && <div className="bk-knowledge-drawer-body">{detailsBody}</div>}
+    </Drawer>}
     {canGenerate && <Drawer open={drawer === 'analysis'} onClose={() => setDrawer(null)} anchor="right" title="正文分析" slotProps={{ paper: { sx: { width: `min(100vw, ${tokens.layout.touchTarget * 10}px)` } } }}>
       <div className="bk-knowledge-drawer-body">
         <TextField aria-label="搜索待分析书籍" placeholder="搜索书名或作者" value={analysisQuery} onChange={event => { setAnalysisQuery(event.target.value); setAnalysisLimit(PAGE_SIZE); if (analysisListRef.current) analysisListRef.current.scrollTop = 0; }} />

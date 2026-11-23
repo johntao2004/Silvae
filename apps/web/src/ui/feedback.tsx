@@ -1,17 +1,46 @@
-// 集中适配提示、进度与状态组件，业务错误通过共用反馈机制展示。
-// Centralizes feedback/progress/status adapters so business errors use the shared feedback mechanism.
-import { FeedbackBubble } from "./notifications";
+// 集中适配提示、进度与状态组件，内联 Alert 保持语义展示，瞬态气泡由 notifications 提供。
+// Centralizes feedback/progress/status adapters; inline Alert keeps semantic visibility while transient notices use notifications.
+import AntAlert from "antd/es/alert";
 import AntAvatar from "antd/es/avatar";
 import AntDivider from "antd/es/divider";
 import AntProgress from "antd/es/progress";
 import AntSpin from "antd/es/spin";
 import AntTag from "antd/es/tag";
 import AntTooltip from "antd/es/tooltip";
-import type { ReactElement, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 import { cssVarPath, mergeClassNames, sxClassName, useTheme, type BoxProps, type SxProps } from "./primitives";
 
-export function Alert({ severity = "info", action, children, onClose }: BoxProps & { severity?: "error" | "info" | "success" | "warning"; action?: ReactNode; icon?: ReactNode }) {
-  return <FeedbackBubble severity={severity} action={action} onClose={onClose as (() => void) | undefined}>{children}</FeedbackBubble>;
+export function Alert({
+  severity = "info",
+  action,
+  icon,
+  sx,
+  className,
+  children,
+  onClose,
+  role,
+  ...props
+}: BoxProps & {
+  severity?: "error" | "info" | "success" | "warning";
+  action?: ReactNode;
+  icon?: ReactNode;
+}) {
+  const theme = useTheme();
+  const semanticRole = role ?? (severity === "error" || severity === "warning" ? "alert" : "status");
+  return (
+    <AntAlert
+      {...props}
+      type={severity}
+      showIcon
+      icon={icon}
+      title={children}
+      action={action}
+      closable={Boolean(onClose)}
+      onClose={onClose as ComponentProps<typeof AntAlert>["onClose"]}
+      role={semanticRole}
+      className={mergeClassNames("bk-alert", sxClassName(sx, theme), className)}
+    />
+  );
 }
 
 export function CircularProgress({ size = 32, color, ...props }: { size?: number | string; color?: string; sx?: SxProps } & Record<string, unknown>) {

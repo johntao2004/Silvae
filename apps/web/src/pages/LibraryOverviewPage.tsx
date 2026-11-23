@@ -32,7 +32,7 @@ export function LibraryOverviewPage() {
   if (!user) return null;
   const featured = overviewQuery.data?.featuredBook;
   return <PageContainer>
-    <PageHeader eyebrow="OVERVIEW" title="楼中一览" action={<Button component={Link} to="/library">全部藏书</Button>} />
+    <PageHeader title="书库概览" action={<Button component={Link} to="/library">全部藏书</Button>} />
     {overviewQuery.isError && !overviewQuery.data ? <Alert severity="error" action={<Button onClick={() => void overviewQuery.refetch()}>重试</Button>}>阅读概览暂时无法读取。</Alert> : (
         <Box
           id="library-overview"
@@ -48,16 +48,19 @@ export function LibraryOverviewPage() {
             // 宽屏单行布局中卡片保持等高，包括加载与空状态。
             // Keep equal card heights in the wide, single-row layout,
             // including loading and empty states.
-            gridAutoRows: `${tokens.spacing[24] * 3.5}px`,
-            gap: { xs: `${tokens.spacing[4]}px`, sm: `${tokens.spacing[6]}px` },
-            mb: { xs: `${tokens.spacing[6]}px`, md: `${tokens.spacing[8]}px` },
+            gridAutoRows: `${tokens.spacing[16] * 4}px`,
+            gap: { xs: `${tokens.spacing[3]}px`, sm: `${tokens.spacing[4]}px` },
+            mb: { xs: `${tokens.spacing[5]}px`, md: `${tokens.spacing[6]}px` },
             alignItems: "stretch",
-            "& .bk-typography-h4": { fontSize: { xs: `${tokens.typography.fontSize.title}px`, sm: `${tokens.typography.fontSize.headingSm}px` } },
+            "& .bk-typography-h4": {
+              fontSize: `${tokens.typography.fontSize.titleSm}px`,
+              lineHeight: tokens.typography.lineHeight.titleSm,
+            },
           }}
         >
           {overviewQuery.isPending ? Array.from({ length: 4 }, (_, index) => (
             <Box key={index} role="status" aria-label="正在加载书库概览" sx={overviewCardSx}>
-              <Skeleton active paragraph={{ rows: 4 }} />
+              <Skeleton active paragraph={{ rows: 3 }} />
             </Box>
           )) : <>
               <Box
@@ -73,8 +76,8 @@ export function LibraryOverviewPage() {
                 {featured ? <Box
                   sx={{
                     display: "grid",
-                    gridTemplateColumns: { xs: "minmax(0, 0.92fr) minmax(0, 1.08fr)", lg: `minmax(0, min(40%, ${tokens.spacing[20] * 2}px)) minmax(0, 1fr)` },
-                    gap: { xs: `${tokens.spacing[4]}px`, md: `${tokens.spacing[6]}px` },
+                    gridTemplateColumns: { xs: "minmax(0, 0.85fr) minmax(0, 1.15fr)", lg: `minmax(0, min(38%, ${tokens.spacing[16] * 2}px)) minmax(0, 1fr)` },
+                    gap: `${tokens.spacing[3]}px`,
                     flex: 1,
                     minHeight: 0,
                     mt: overviewContentSpacing,
@@ -84,9 +87,9 @@ export function LibraryOverviewPage() {
                     <BookCover src={featured.coverUrl} alt={`${featured.title}封面`} loading="eager" fetchPriority="high" sx={{ width: "min(100cqw, calc(100cqh * 3 / 4))" }} />
                   </Box>
                   <Stack sx={{ minWidth: 0, minHeight: 0, alignItems: "stretch" }}>
-                    <Typography id="featured-book-title" variant="h4" component="h3" title={featured.title} sx={{ overflowWrap: "anywhere", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 3, overflow: "hidden" }}>{featured.title}</Typography>
-                    <Typography color="text.secondary" sx={{ mt: `${tokens.spacing[2]}px` }}>{featured.author}</Typography>
-                    <Stack direction="row" sx={{ flexWrap: "wrap", gap: `${tokens.spacing[3]}px`, mt: "auto", pt: `${tokens.spacing[4]}px` }}>
+                    <Typography id="featured-book-title" variant="h4" component="h3" title={featured.title} sx={{ overflowWrap: "anywhere", display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: 2, overflow: "hidden", fontWeight: tokens.typography.fontWeight.semibold }}>{featured.title}</Typography>
+                    <Typography variant="body2" color="text.secondary" noWrap sx={{ mt: `${tokens.spacing[1]}px` }}>{featured.author}</Typography>
+                    <Stack direction="row" sx={{ flexWrap: "wrap", gap: `${tokens.spacing[2]}px`, mt: "auto", pt: `${tokens.spacing[2]}px` }}>
                       <Button fullWidth variant="contained" disabled={!can("reader.read")} onClick={() => navigate(`/reader/${featured.id}`)}>开始阅读</Button>
                     </Stack>
                   </Stack>

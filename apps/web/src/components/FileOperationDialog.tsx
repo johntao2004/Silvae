@@ -15,7 +15,7 @@ import { Divider } from "@/ui/feedback";
 import { Stack } from "@/ui/primitives";
 import { TextField } from "@/ui/forms";
 import { Typography } from "@/ui/primitives";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { api, ApiRequestError } from "../api/client";
 import type { Book, FileOperation, FileOperationPreview, FileOperationType } from "../domain/types";
 import { tokens } from "../theme/tokens";
@@ -197,7 +197,7 @@ export function FileOperationDialog({ book, type: requestedType, onClose, onComp
               label="新书名"
               value={targetPath}
               disabled={executing}
-              onChange={(event: any) => { revision.current += 1; attemptedRename.current = null; setTargetPath(event.target.value); setPreview(null); setLoading(false); setError(""); }}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => { revision.current += 1; attemptedRename.current = null; setTargetPath(event.target.value); setPreview(null); setLoading(false); setError(""); }}
               error={Boolean(renameName && renameInvalid)}
               helperText={renameName && renameInvalid ? '书名不能仅由句点组成，也不能包含斜杠、反斜杠、冒号、星号、问号、引号、尖括号或竖线。' : "只填写书名；原目录和文件格式会自动保留，无需填写路径或扩展名。"}
               fullWidth

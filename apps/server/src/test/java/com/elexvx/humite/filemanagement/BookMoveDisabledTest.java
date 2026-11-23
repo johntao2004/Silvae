@@ -32,7 +32,7 @@ class BookMoveDisabledTest {
     private final Principal actor = () -> "owner";
 
     BookMoveDisabledTest() {
-        when(users.findByUsername("owner")).thenReturn(Optional.of(new HumiteUser(actorId, "owner", "主人", "hash",
+        when(users.findByUsername("owner")).thenReturn(Optional.of(new HumiteUser(actorId, "owner", "站点所有者", "hash",
             UserRole.OWNER, UserStatus.ACTIVE, false, OffsetDateTime.now(), null)));
     }
 

@@ -2,6 +2,7 @@
 // Checks explicit selected-book analysis, member restrictions, honest empty graphs and lazy drawer loading.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { NetworkGraphOptions } from '@ant-design/graphs';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { articles } from '../features/content/api';
 import type { Book, BookKnowledge } from '../domain/types';
@@ -16,17 +17,17 @@ vi.mock('./KnowledgeNetwork', () => ({ KnowledgeNetwork: ({ options: props }: { 
 const book = (id: string): Book => ({id, title: `书籍${id}`, author: '作者', description: '', tags: ['普通标签'], format: 'PDF', coverUrl: '/cover.jpg', progress: 0, addedAt: '', libraryRoot: '', relativePath: '', fingerprint: '', status: 'AVAILABLE'});
 const points: BookKnowledge[] = [{bookId: 'a', status: 'READY', providerId: 'local', sampledSections: 1, totalSections: 10, generatedAt: '', points: [{name: '认知偏差', quote: '认知偏差会影响人们处理信息时的判断和决策。', locator: 'page:3'}]}];
 beforeEach(() => {
-  sessionStorage.setItem('humite-demo-session', JSON.stringify({id: 'owner', username: 'owner', displayName: '主人', role: 'OWNER'}));
+  sessionStorage.setItem('humite-demo-session', JSON.stringify({id: 'owner', username: 'owner', displayName: '站点所有者', role: 'OWNER'}));
   vi.spyOn(api, 'listBooks').mockResolvedValue({items: [book('a'), book('b')]});
   vi.spyOn(api, 'listBookKnowledge').mockResolvedValue(points);
   vi.spyOn(api, 'getAiServiceAvailability').mockResolvedValue({enabled: true, hasConfiguredProvider: true, hasEnabledProvider: true});
   vi.spyOn(articles, 'knowledge').mockResolvedValue([]);
 });
 afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); });
-it('keeps search and reset together and resets a selection made from a graph node', async () => {
+it('keeps view controls without local search and resets a selection made from a graph node', async () => {
   render(<TestProviders><KnowledgeGraphPage /></TestProviders>);
-  const controls = screen.getByRole('group', {name: '搜索和视图操作'});
-  expect(within(controls).getByRole('textbox', {name: '搜索知识点或书籍'})).toBeInTheDocument();
+  const controls = screen.getByRole('group', {name: '视图操作'});
+  expect(within(controls).queryByRole('textbox', {name: '搜索知识点或书籍'})).not.toBeInTheDocument();
   expect(within(controls).getByRole('button', {name: '重置视图'})).toBeInTheDocument();
   expect(within(controls).queryByRole('button', {name: '分析书籍'})).not.toBeInTheDocument();
   expect(screen.queryByRole('button', {name: /^知识点$/})).not.toBeInTheDocument();
@@ -36,6 +37,30 @@ it('keeps search and reset together and resets a selection made from a graph nod
   expect(screen.getByRole('region', {name: '图谱筛选结果'})).toBeInTheDocument();
   fireEvent.click(within(controls).getByRole('button', {name: '重置视图'}));
   expect(screen.queryByRole('region', {name: '图谱筛选结果'})).not.toBeInTheDocument();
+});
+
+it('filters by URL q parameter from global search and clears it on reset or clear-search', async () => {
+  function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="graph-search">{location.search}</output>;
+  }
+  render(<TestProviders initialPath="/knowledge-graph?q=不存在"><KnowledgeGraphPage /><LocationProbe /></TestProviders>);
+  expect(await screen.findByText('没有匹配的正文知识点')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name: '清除搜索'}));
+  expect(await screen.findByRole('button', {name: '认知偏差'})).toBeInTheDocument();
+  expect(screen.getByTestId('graph-search')).toBeEmptyDOMElement();
+});
+
+it('clears URL q filter when clicking reset view', async () => {
+  function LocationProbe() {
+    const location = useLocation();
+    return <output data-testid="graph-search">{location.search}</output>;
+  }
+  render(<TestProviders initialPath="/knowledge-graph?q=认知偏差"><KnowledgeGraphPage /><LocationProbe /></TestProviders>);
+  expect(await screen.findByRole('button', {name: '认知偏差'})).toBeInTheDocument();
+  expect(screen.getByTestId('graph-search')).toHaveTextContent(/^\?q=/);
+  fireEvent.click(screen.getByRole('button', {name: '重置视图'}));
+  expect(screen.getByTestId('graph-search')).toBeEmptyDOMElement();
 });
 
 it('keeps an empty book graph empty without requesting article knowledge', async () => {

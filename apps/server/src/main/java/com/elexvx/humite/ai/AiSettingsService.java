@@ -7,12 +7,14 @@ import com.elexvx.humite.config.HumiteProperties.AiProvider;
 import com.elexvx.humite.config.HumiteProperties.AiProviderType;
 import com.elexvx.humite.users.HumiteUser;
 import com.elexvx.humite.users.UserRepository;
+import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,7 +78,7 @@ public class AiSettingsService {
     @Transactional
     public AiSettingsView update(AiSettingsInput input, String username) {
         HumiteUser actor = users.findByUsername(username)
-                .orElseThrow(() -> ApiException.forbidden("OWNER_REQUIRED", "仅主人或管理员可以修改 AI 设置。"));
+                .orElseThrow(() -> ApiException.forbidden("OWNER_REQUIRED", "仅站点所有者或管理员可以修改 AI 设置。"));
         List<AiProviderInput> requestedProviders = input.providers() == null ? List.of() : input.providers();
         if (requestedProviders.size() > 20) throw ApiException.badRequest("AI_PROVIDER_LIMIT", "AI 平台最多配置 20 个。");
         Map<String, AiProvider> existing = effective().providers().stream().collect(java.util.stream.Collectors.toMap(AiProvider::id, value -> value, (left, right) -> left, LinkedHashMap::new));
@@ -98,14 +100,28 @@ public class AiSettingsService {
             } catch (IllegalArgumentException exception) {
                 throw ApiException.badRequest("AI_PROVIDER_TYPE_INVALID", "AI 平台类型无效。");
             }
+            String cleanBaseUrl = bounded(requested.baseUrl(), 500);
+            String requestedOrigin = normalizeBaseUrlOrigin(cleanBaseUrl);
+            String previousBaseUrl = stored.containsKey(id)
+                    ? stored.get(id).baseUrl()
+                    : (fallback == null ? "" : fallback.baseUrl());
+            String previousOrigin = safeNormalizeOrigin(previousBaseUrl);
+            boolean sameOrigin = Objects.equals(previousOrigin, requestedOrigin);
             String previousKey = fallback == null ? "" : fallback.apiKey();
             if (stored.containsKey(id)) previousKey = decrypt(stored.get(id).apiKeyCiphertext());
-            String apiKey = requested.clearApiKey() ? "" : requested.apiKey() == null || requested.apiKey().isBlank() ? previousKey : requested.apiKey().strip();
+            String apiKey;
+            if (requested.clearApiKey()) {
+                apiKey = "";
+            } else if (requested.apiKey() == null || requested.apiKey().isBlank()) {
+                apiKey = sameOrigin ? previousKey : "";
+            } else {
+                apiKey = requested.apiKey().strip();
+            }
             if (!apiKey.isBlank() && !crypto.isConfigured()) {
                 throw ApiException.conflict("AI_SETTINGS_KEY_MISSING", "保存 AI 平台密钥前必须配置 HUMITE_AI_SETTINGS_ENCRYPTION_KEY。");
             }
             providers.add(new AiSettingsRepository.ProviderSettings(id, label.isBlank() ? id : label,
-                    type, requested.enabled(), bounded(requested.baseUrl(), 500), crypto.encrypt(apiKey), bounded(requested.model(), 200)));
+                    type, requested.enabled(), cleanBaseUrl, crypto.encrypt(apiKey), bounded(requested.model(), 200)));
         }
         int maxCandidates = Math.max(1, Math.min(10, input.maxCandidates()));
         int timeoutSeconds = Math.max(5, Math.min(120, input.timeoutSeconds()));
@@ -132,8 +148,37 @@ public class AiSettingsService {
         };
     }
 
+    static String normalizeBaseUrlOrigin(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) return "";
+        URI uri;
+        try {
+            uri = URI.create(baseUrl.strip());
+        } catch (IllegalArgumentException exception) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口地址格式无效。");
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+        int port = uri.getPort();
+        if ((!"http".equals(scheme) && !"https".equals(scheme))
+                || host.isBlank()
+                || uri.getUserInfo() != null
+                || (port != -1 && (port < 1 || port > 65535))) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口地址无效，仅支持有效的 HTTP/HTTPS 地址。");
+        }
+        int effectivePort = port != -1 ? port : ("https".equals(scheme) ? 443 : 80);
+        return scheme + "://" + host + ":" + effectivePort;
+    }
+
+    static String safeNormalizeOrigin(String baseUrl) {
+        try {
+            return normalizeBaseUrlOrigin(baseUrl);
+        } catch (ApiException exception) {
+            return "";
+        }
+    }
+
     private boolean isLocal(String baseUrl) {
-        return baseUrl != null && (baseUrl.contains("localhost") || baseUrl.contains("127.0.0.1") || baseUrl.contains("::1"));
+        return AiMetadataService.isLocalBaseUrl(baseUrl);
     }
 
     private String clean(String value) { return value == null ? "" : value.strip(); }

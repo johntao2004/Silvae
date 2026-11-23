@@ -44,7 +44,7 @@ public class LibraryRootCapabilityService {
                 return;
             }
             Path real = configured.toRealPath();
-            if (content.overlaps(real)) throw new java.io.IOException("书籍书库与文章或禁书区目录重叠");
+            if (content.overlaps(real)) throw new java.io.IOException("书籍书库与文章或加密书库目录重叠");
             canonical = real.toString();
             readable = true;
             freeBytes = Files.getFileStore(real).getUsableSpace();

@@ -12,6 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ContentSecurityPolicyHeaderWriter;
 import org.springframework.security.web.header.writers.DelegatingRequestMatcherHeaderWriter;
+import org.springframework.security.web.header.writers.StaticHeadersWriter;
 import org.springframework.security.web.header.HeaderWriter;
 import org.springframework.security.web.header.writers.frameoptions.XFrameOptionsHeaderWriter;
 import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
@@ -44,8 +45,8 @@ public class SecurityConfig {
                 // Article APIs require server-side authentication even when their SPA shell loads publicly.
                 .authorizeHttpRequests(requests -> requests
                         .requestMatchers("/", "/index.html", "/login", "/recover", "/forgot-password", "/register", "/setup", "/change-password", "/library", "/library/**", "/categories", "/categories/**",
-                                "/booklists", "/booklists/**", "/settings", "/settings/display-books", "/display-books", "/recycle-bin",
-                                "/articles", "/articles/**", "/article-collections", "/article-collections/**", "/vault", "/profile", "/annotations", "/annotations/**", "/search", "/virtual-library", "/knowledge-graph", "/reader/**", "/admin/**", "/assets/**", "/covers/**", "/fonts/**", "/favicon.ico").permitAll()
+                                "/booklists", "/booklists/**", "/discover", "/discover/**", "/settings", "/settings/display-books", "/display-books", "/recycle-bin",
+                                "/articles", "/articles/**", "/article-collections", "/article-collections/**", "/vault", "/profile", "/annotations", "/annotations/**", "/search", "/virtual-library", "/knowledge-graph", "/reader/**", "/admin/**", "/assets/**", "/covers/**", "/fonts/**", "/favicon.ico", "/manifest.webmanifest").permitAll()
                         .requestMatchers("/api/v1/auth/password-policy", "/api/v1/auth/csrf", "/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/registration-status", "/api/v1/auth/setup", "/api/v1/auth/setup-status", "/actuator/health/**").permitAll()
                         .requestMatchers("/api/v1/auth/recovery/request", "/api/v1/auth/recovery/verify", "/api/v1/auth/recovery/reset").permitAll()
                         .requestMatchers(HttpMethod.HEAD, "/robots.txt").permitAll()
@@ -91,13 +92,14 @@ public class SecurityConfig {
     static List<HeaderWriter> securityHeaderWriters() {
         var mingLibraryScene = (org.springframework.security.web.util.matcher.RequestMatcher)
                 request -> request.getRequestURI().equals("/assets/ming-library/index.html");
-        String defaultCsp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'";
-        String sceneCsp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'";
+        String defaultCsp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+        String sceneCsp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'";
         return List.of(
                 new DelegatingRequestMatcherHeaderWriter(new NegatedRequestMatcher(mingLibraryScene), new ContentSecurityPolicyHeaderWriter(defaultCsp)),
                 new DelegatingRequestMatcherHeaderWriter(mingLibraryScene, new ContentSecurityPolicyHeaderWriter(sceneCsp)),
                 new DelegatingRequestMatcherHeaderWriter(new NegatedRequestMatcher(mingLibraryScene), new XFrameOptionsHeaderWriter(XFrameOptionsHeaderWriter.XFrameOptionsMode.DENY)),
-                new DelegatingRequestMatcherHeaderWriter(mingLibraryScene, new XFrameOptionsHeaderWriter(XFrameOptionsHeaderWriter.XFrameOptionsMode.SAMEORIGIN)));
+                new DelegatingRequestMatcherHeaderWriter(mingLibraryScene, new XFrameOptionsHeaderWriter(XFrameOptionsHeaderWriter.XFrameOptionsMode.SAMEORIGIN)),
+                new StaticHeadersWriter("Permissions-Policy", "camera=(), microphone=(), geolocation=()"));
     }
 
     @Bean

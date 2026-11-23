@@ -1,12 +1,42 @@
 package com.elexvx.humite.filemanagement.infrastructure;
 
 import static org.junit.jupiter.api.Assertions.*;
+import com.elexvx.humite.catalog.BookFormat;
+import com.elexvx.humite.common.ApiException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.apache.pdfbox.pdmodel.*;
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
+import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.outline.*;
 import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPageFitDestination;
 
 class BookBibliographyReaderTocTest {
+    @TempDir Path temporaryDirectory;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "reader-password"})
+    void encryptedPdfExplainsTheLimitationWithoutChangingTheSource(String password) throws Exception {
+        var path = temporaryDirectory.resolve("encrypted.pdf");
+        try (var document = new PDDocument()) {
+            document.addPage(new PDPage());
+            document.protect(new StandardProtectionPolicy("owner-password", password, new AccessPermission()));
+            document.save(path.toFile());
+        }
+        var original = Files.readAllBytes(path);
+
+        var failure = assertThrows(ApiException.class, () -> new BookBibliographyReader().read(path, BookFormat.PDF));
+
+        assertEquals(422, failure.status().value());
+        assertEquals("BIBLIOGRAPHY_PDF_ENCRYPTED", failure.code());
+        assertEquals("PDF 已加密，无法读取补充资料。", failure.getMessage());
+        assertArrayEquals(original, Files.readAllBytes(path));
+    }
+
     @Test void recognizesSourcePageIndexAndKeepsAll340Entries() throws Exception {
         try (var document = new PDDocument()) {
             var outline = new PDDocumentOutline();

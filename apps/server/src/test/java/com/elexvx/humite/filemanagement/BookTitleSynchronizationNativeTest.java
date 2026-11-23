@@ -38,7 +38,7 @@ class BookTitleSynchronizationNativeTest {
                 var db = DSL.using(new TransactionAwareDataSourceProxy(ds),SQLDialect.POSTGRES);
                 var tx = new TransactionTemplate(new DataSourceTransactionManager(ds));
                 UUID actor=UUID.randomUUID(), rootId=UUID.randomUUID(), book=UUID.randomUUID();
-                db.execute("insert into app_users(id,username,display_name,password_hash,role,status) values (?,'owner','主人','test','OWNER','ACTIVE')",actor);
+                db.execute("insert into app_users(id,username,display_name,password_hash,role,status) values (?,'owner','站点所有者','test','OWNER','ACTIVE')",actor);
                 db.execute("insert into library_roots(id,name,configured_path,canonical_path,status,can_read,can_write,can_atomic_move,can_stage) values (?,'同步书库',?,?,'ONLINE',true,true,true,true)",rootId,root.toString(),root.toString());
                 db.execute("insert into books(id,title,sort_title,primary_author) values (?,'旧书名','旧书名','作者')",book);
                 Files.createDirectories(root.resolve("作者"));
@@ -51,7 +51,7 @@ class BookTitleSynchronizationNativeTest {
                 var properties=new HumiteProperties(null,null,null,null,null,null,null,null,null,null,null);
                 var operations=new FileOperationRepository(db,properties); var leases=new FileLeaseRepository(db); var paths=new PathPolicy();
                 var users=mock(UserRepository.class);
-                when(users.findByUsername("owner")).thenReturn(Optional.of(new HumiteUser(actor,"owner","主人","hash",UserRole.OWNER,UserStatus.ACTIVE,false,OffsetDateTime.now(),null)));
+                when(users.findByUsername("owner")).thenReturn(Optional.of(new HumiteUser(actor,"owner","站点所有者","hash",UserRole.OWNER,UserStatus.ACTIVE,false,OffsetDateTime.now(),null)));
                 var permissions=mock(RolePermissionService.class); var audit=mock(AuditService.class); var recycle=mock(RecycleBinRepository.class);
                 var executor=new FileTransactionExecutor(operations,books,roots,recycle,mock(FileVersionRepository.class),leases,fingerprints,mock(FileInspector.class),mock(MetadataWriteService.class),audit,properties,paths);
                 var files=new FileOperationService(books,roots,users,operations,paths,fingerprints,leases,recycle,mock(FileVersionRepository.class),permissions);

@@ -18,7 +18,7 @@ public class PublicBookMetadataService {
             "language", "publisher", "publishedDate", "isbn", "description", "series", "seriesIndex",
             "tags", "subjectCodes", "authorBiography", "tableOfContents");
     private static final Set<String> SOURCE_VALUES = Set.of("FILE", "FILENAME", "OPEN_LIBRARY", "WIKIDATA",
-            "GOOGLE_BOOKS", "AI", "MANUAL");
+            "AI", "MANUAL");
     private final DisplayCatalogService display;
     private final BookMetadataRepository metadata;
     private final BookRepository books;

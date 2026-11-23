@@ -3,8 +3,10 @@
 import { EmptyState } from "../ui/empty-state";
 import { Alert, Chip } from "../ui/feedback";
 import { RefreshButton } from "../ui/buttons";
-import { Stack, Typography } from "../ui/primitives";
-import { DataTable } from "../ui/antd";
+import { Box, Stack, Typography } from "../ui/primitives";
+import { DataTable, Pagination, Skeleton } from "../ui/antd";
+import { MobileRecordCard, MobileRecordField, useIsMobileViewport } from "../ui/ResponsiveList";
+import { paginationControlProps, tablePaginationDefaults } from "../ui/table-pagination";
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -17,7 +19,7 @@ const operationLabels: Record<FileOperationType, string> = {
   MOVE: "移动",
   TRASH: "移入回收站",
   RESTORE: "恢复",
-  WRITE_METADATA: "写回元数据",
+  WRITE_METADATA: "将书目信息写入文件",
   PURGE: "永久清理",
 };
 
@@ -26,7 +28,7 @@ const statusMeta: Record<FileTaskHistoryStatus, { label: string; color: "default
   RUNNING: { label: "执行中", color: "warning" },
   SUCCEEDED: { label: "已完成", color: "success" },
   FAILED: { label: "失败", color: "error" },
-  ROLLED_BACK: { label: "已回滚", color: "warning" },
+  ROLLED_BACK: { label: "已撤销更改", color: "warning" },
   RECEIVING: { label: "接收中", color: "warning" },
   INSPECTING: { label: "检查中", color: "warning" },
   ENRICHING: { label: "补全中", color: "warning" },
@@ -42,7 +44,7 @@ const runningStageLabels: Record<string, string> = {
   CHECKING_SPACE: "检查空间",
   COPYING: "正在复制",
   VERIFYING_SHA256: "校验文件",
-  FINALIZING_TARGET: "正在落位",
+  FINALIZING_TARGET: "正在保存到目标位置",
   TRASHING_SOURCE: "清理源文件",
   ATOMIC_TRASH: "移入回收站",
   PREPARING_OVERWRITE: "准备写回",
@@ -57,8 +59,9 @@ const formatCreatedAt = (createdAt: string) => new Intl.DateTimeFormat("zh-CN", 
 }).format(new Date(createdAt));
 
 export function FileOperationsPage() {
+  const isMobile = useIsMobileViewport();
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(5);
   const query = useQuery({ queryKey: ["file-task-history", page, pageSize], queryFn: () => api.listFileTaskHistoryPage(page - 1, pageSize), placeholderData: keepPreviousData, refetchInterval: 5000 });
   useEffect(() => {
     if (query.data && !query.isPlaceholderData) {
@@ -66,21 +69,69 @@ export function FileOperationsPage() {
       if (page > last) setPage(last);
     }
   }, [page, pageSize, query.data, query.isPlaceholderData]);
+  const items = query.data?.items ?? [];
+  const total = query.data?.total ?? 0;
+  const getTaskLabel = (operation: FileTaskHistoryItem) =>
+    operation.type === "BOOK_UPLOAD" ? "上传书籍" : operation.action ? operationLabels[operation.action] : "文件操作";
+  const renderStatus = (operation: FileTaskHistoryItem, align: "flex-start" | "flex-end") => (
+    <Stack spacing={1} sx={{ alignItems: align }}>
+      <Chip size="small" variant="outlined" color={statusMeta[operation.status].color} label={statusMeta[operation.status].label} />
+      {operation.status === "RUNNING" && operation.stage && (
+        <Typography variant="caption" color="text.secondary">{runningStageLabels[operation.stage] ?? "正在处理"}</Typography>
+      )}
+    </Stack>
+  );
+  const handlePageChange = (next: number, size: number) => {
+    setPage(size === pageSize ? next : 1);
+    setPageSize(size);
+  };
   return <PageContainer>
     <Stack sx={{ mb: 2 }}><ActionToolbar><RefreshButton onClick={() => query.refetch()} disabled={query.isFetching}>刷新</RefreshButton></ActionToolbar></Stack>
-    {query.isError ? <Alert severity="error">无法读取操作日志，请刷新重试。</Alert> : <DataTable<FileTaskHistoryItem>
-      aria-label="操作日志列表" rowKey={(record) => `${record.type}:${record.id}`} loading={query.isFetching} dataSource={query.data?.items ?? []}
+    {query.isError ? <Alert severity="error">无法加载文件操作记录，请刷新重试。</Alert> : isMobile ? (
+      items.length === 0 && query.isPending ? <Skeleton active /> : items.length === 0 ? (
+        <Stack spacing={1}>
+          <EmptyState title="暂无文件操作记录" padded={false} />
+          <Typography color="text.secondary" sx={{ textAlign: "center" }}>书籍操作与上传任务会显示在这里。</Typography>
+        </Stack>
+      ) : (
+        <Stack spacing={2}>
+          <Stack component="section" aria-label="文件操作记录" spacing={2}>
+            {items.map((operation) => (
+              <MobileRecordCard key={`${operation.type}:${operation.id}`} aria-label={`${getTaskLabel(operation)} ${operation.title}`}>
+                <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "flex-start", gap: 1.5 }}>
+                  <Typography sx={{ fontWeight: tokens.typography.fontWeight.semibold, minWidth: 0, overflowWrap: "anywhere" }}>
+                    {getTaskLabel(operation)}
+                  </Typography>
+                  <Box sx={{ flexShrink: 0 }}>{renderStatus(operation, "flex-end")}</Box>
+                </Stack>
+                <MobileRecordField label="书籍" value={operation.title} />
+                <MobileRecordField label="时间" value={formatCreatedAt(operation.createdAt)} />
+              </MobileRecordCard>
+            ))}
+          </Stack>
+          {total > 0 && (
+            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+              <Pagination
+                {...paginationControlProps(tablePaginationDefaults)}
+                current={page}
+                pageSize={pageSize}
+                total={total}
+                disabled={query.isFetching}
+                onChange={handlePageChange}
+              />
+            </Box>
+          )}
+        </Stack>
+      )
+    ) : <DataTable<FileTaskHistoryItem>
+      aria-label="文件操作记录" rowKey={(record) => `${record.type}:${record.id}`} loading={query.isFetching} dataSource={items}
       scroll={{ x: tokens.layout.touchTarget * 16 }}
-      locale={{ emptyText: <Stack spacing={1}><EmptyState title="暂无文件任务" padded={false} /><Typography color="text.secondary">书籍操作与上传任务会显示在这里。</Typography></Stack> }}
-      pagination={{ current: page, pageSize, total: query.data?.total ?? 0, disabled: query.isFetching,
-        onChange: (next, size) => { setPage(size === pageSize ? next : 1); setPageSize(size); } }}
+      locale={{ emptyText: <Stack spacing={1}><EmptyState title="暂无文件操作记录" padded={false} /><Typography color="text.secondary">书籍操作与上传任务会显示在这里。</Typography></Stack> }}
+      pagination={{ current: page, pageSize, total, disabled: query.isFetching, onChange: handlePageChange }}
       columns={[
-        { title: "任务", key: "type", render: (_, operation) => <Typography sx={{ fontWeight: tokens.typography.fontWeight.semibold }}>{operation.type === "BOOK_UPLOAD" ? "上传书籍" : operation.action ? operationLabels[operation.action] : "文件操作"}</Typography> },
+        { title: "任务", key: "type", render: (_, operation) => <Typography sx={{ fontWeight: tokens.typography.fontWeight.semibold }}>{getTaskLabel(operation)}</Typography> },
         { title: "书籍", key: "book", render: (_, operation) => <Typography variant="body2" sx={{ overflowWrap: "anywhere" }}>{operation.title}</Typography> },
-        { title: "状态", key: "status", render: (_, operation) => <Stack spacing={1} sx={{ alignItems: "flex-start" }}>
-          <Chip size="small" variant="outlined" color={statusMeta[operation.status].color} label={statusMeta[operation.status].label} />
-          {operation.status === "RUNNING" && operation.stage && <Typography variant="caption" color="text.secondary">{runningStageLabels[operation.stage] ?? "正在处理"}</Typography>}
-        </Stack> },
+        { title: "状态", key: "status", render: (_, operation) => renderStatus(operation, "flex-start") },
         { title: "时间", key: "time", align: "right", render: (_, operation) => <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>{formatCreatedAt(operation.createdAt)}</Typography> },
       ]} />}
   </PageContainer>;

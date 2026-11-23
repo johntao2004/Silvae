@@ -36,7 +36,7 @@ import org.springframework.stereotype.Service;
 // 查询在线候选并补空缺字段；来源失败被隔离，人工值不因自动补全而强制替换。
 // Queries online candidates and fills missing fields; provider failures are isolated and manual values are not forcibly replaced.
 public class MetadataEnrichmentService {
-    private static final Set<String> COVER_HOSTS = Set.of("covers.openlibrary.org", "books.google.com", "books.googleusercontent.com");
+    private static final Set<String> COVER_HOSTS = Set.of("covers.openlibrary.org");
     private static final Pattern OPEN_LIBRARY_WORK = Pattern.compile("/works/(OL[0-9]+W)");
     private static final Pattern OPEN_LIBRARY_EDITION = Pattern.compile("/books/(OL[0-9]+M)");
     private static final int OPEN_LIBRARY_WORK_LIMIT = 3;
@@ -45,7 +45,7 @@ public class MetadataEnrichmentService {
     private static final int SOURCE_CANDIDATE_PRIORITY_LIMIT = 12;
     private static final int AI_CANDIDATE_PRIORITY_LIMIT = 3;
     private static final int MAX_METADATA_RESPONSE_BYTES = 2 * 1024 * 1024;
-    private static final Set<String> METADATA_API_HOSTS = Set.of("openlibrary.org", "www.googleapis.com");
+    private static final Set<String> METADATA_API_HOSTS = Set.of("openlibrary.org");
     private final BookUploadRepository uploads;
     private final HumiteProperties properties;
     private final AiMetadataService ai;
@@ -55,7 +55,9 @@ public class MetadataEnrichmentService {
     private final HttpClient http;
     private final JsonTransport transport;
     private final long requestIntervalNanos;
+    private final Object rateLimitLock = new Object();
     private long lastRequestAtNanos;
+    private boolean hasLastRequest;
 
     public MetadataEnrichmentService(BookUploadRepository uploads, HumiteProperties properties, AiMetadataService ai, ObjectMapper json) {
         this(uploads, properties, ai, json, null, null);
@@ -95,16 +97,12 @@ public class MetadataEnrichmentService {
         List<MetadataCandidate> candidates = new ArrayList<>();
         List<String> ignoredErrors = new ArrayList<>();
         if (enabled(MetadataSource.OPEN_LIBRARY, ignoredErrors)) candidates.addAll(safely("OPEN_LIBRARY", () -> openLibrary(local, false)));
-        if (enabled(MetadataSource.GOOGLE_BOOKS, ignoredErrors) && properties != null
-                && properties.metadataProviders().googleApiKey() != null && !properties.metadataProviders().googleApiKey().isBlank()) {
-            candidates.addAll(safely("GOOGLE_BOOKS", () -> google(local, false)));
-        }
-        if (enabled(MetadataSource.WIKIDATA, ignoredErrors) && wikidata != null) {
+        if (!Thread.currentThread().isInterrupted() && enabled(MetadataSource.WIKIDATA, ignoredErrors) && wikidata != null) {
             try { candidates.addAll(wikidata.searchWithErrors(local, false).candidates()); }
             catch (Exception ignored) { /* Provider failure does not block ordinary local correction. */ }
         }
         MetadataDraft enriched = fillBlanks(local, candidates);
-        if (includeAi && (forceAi || needsAiHelp(enriched, candidates))) {
+        if (!Thread.currentThread().isInterrupted() && includeAi && (forceAi || needsAiHelp(enriched, candidates))) {
             var result = ai.match(enriched, candidates, providerId);
             candidates.addAll(result.candidates());
             enriched = fillBlanks(enriched, result.candidates());
@@ -119,11 +117,7 @@ public class MetadataEnrichmentService {
         if (enabled(MetadataSource.OPEN_LIBRARY, errors)) {
             collect("Open Library", errors, () -> sourceCandidates.addAll(openLibrary(draft, refresh)));
         }
-        if (enabled(MetadataSource.GOOGLE_BOOKS, errors) && properties != null
-                && properties.metadataProviders().googleApiKey() != null && !properties.metadataProviders().googleApiKey().isBlank()) {
-            collect("Google Books", errors, () -> sourceCandidates.addAll(google(draft, refresh)));
-        }
-        if (enabled(MetadataSource.WIKIDATA, errors) && wikidata != null) {
+        if (!Thread.currentThread().isInterrupted() && enabled(MetadataSource.WIKIDATA, errors) && wikidata != null) {
             collect("Wikidata", errors, () -> {
                 WikidataMetadataProvider.SearchResult result = wikidata.searchWithErrors(draft, refresh);
                 if (result.candidates() != null) sourceCandidates.addAll(result.candidates());
@@ -133,14 +127,19 @@ public class MetadataEnrichmentService {
 
         List<MetadataCandidate> uniqueSources = distinctCandidates(sourceCandidates);
         AiMetadataService.MatchResult aiResult;
-        try {
-            aiResult = ai == null
-                    ? new AiMetadataService.MatchResult(List.of(), List.of(), List.of("AI 匹配服务不可用"))
-                    : ai.match(draft, balancedProviderCandidates(uniqueSources, 15), providerId, refresh);
-            errors.addAll(aiResult.errors());
-        } catch (Exception exception) {
+        if (Thread.currentThread().isInterrupted()) {
             aiResult = new AiMetadataService.MatchResult(List.of(), List.of(), List.of());
-            errors.add("AI 匹配：" + providerError(exception));
+            errors.add("AI 匹配：请求已中断，可稍后重试");
+        } else {
+            try {
+                aiResult = ai == null
+                        ? new AiMetadataService.MatchResult(List.of(), List.of(), List.of("AI 匹配服务不可用"))
+                        : ai.match(draft, balancedProviderCandidates(uniqueSources, 15), providerId, refresh);
+                errors.addAll(aiResult.errors());
+            } catch (Exception exception) {
+                aiResult = new AiMetadataService.MatchResult(List.of(), List.of(), List.of());
+                errors.add("AI 匹配：" + providerError(exception));
+            }
         }
 
         List<MetadataCandidate> uniqueAi = distinctCandidates(aiResult.candidates());
@@ -212,30 +211,6 @@ public class MetadataEnrichmentService {
         });
     }
 
-    private List<MetadataCandidate> google(MetadataDraft draft, boolean refresh) throws Exception {
-        String q = draft.isbn() != null && !draft.isbn().isBlank()
-                ? "isbn:" + draft.isbn()
-                : "intitle:" + draft.title() + (draft.authors().isEmpty() ? "" : "+inauthor:" + draft.authors().getFirst());
-        String url = "https://www.googleapis.com/books/v1/volumes?q=" + encode(q) + "&maxResults=3&key=" + encode(properties.metadataProviders().googleApiKey());
-        return cached("GOOGLE_BOOKS", url.replace(properties.metadataProviders().googleApiKey(), "[KEY]"), refresh, () -> {
-            JsonNode root = getJson(url);
-            List<MetadataCandidate> values = new ArrayList<>();
-            for (JsonNode item : root.path("items")) {
-                JsonNode node = item.path("volumeInfo");
-                String isbn = null;
-                for (JsonNode identifier : node.path("industryIdentifiers")) {
-                    if (identifier.path("type").asText().startsWith("ISBN")) { isbn = identifier.path("identifier").asText(); break; }
-                }
-                String cover = text(node.path("imageLinks"), "thumbnail");
-                values.add(new MetadataCandidate(text(item, "id"), MetadataSource.GOOGLE_BOOKS, "Google Books", text(node, "title"), text(node, "subtitle"),
-                        strings(node.path("authors")), text(node, "publisher"), text(node, "publishedDate"), isbn,
-                        text(node, "description"), strings(node.path("categories")), cover, null, null, false,
-                        text(node, "edition"), text(node, "language"), safeSourceUrl(text(node, "infoLink"))));
-            }
-            return values;
-        });
-    }
-
     MetadataDraft fillBlanks(MetadataDraft local, List<MetadataCandidate> candidates) {
         String title = local.title();
         String subtitle = local.subtitle();
@@ -294,20 +269,47 @@ public class MetadataEnrichmentService {
     }
 
     private List<MetadataCandidate> safely(String provider, CandidateSupplier supplier) {
-        try { return supplier.get(); }
-        catch (Exception ignored) { return List.of(); }
+        try {
+            return supplier.get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Metadata enrichment interrupted while querying " + provider, interrupted);
+        } catch (Exception ignored) {
+            return List.of();
+        }
     }
 
-    private synchronized JsonNode getJson(String url) throws Exception {
-        long now = System.nanoTime();
-        long waitNanos = requestIntervalNanos - (now - lastRequestAtNanos);
-        if (lastRequestAtNanos != 0 && waitNanos > 0) {
-            try { Thread.sleep(waitNanos / 1_000_000, (int) (waitNanos % 1_000_000)); }
-            catch (InterruptedException exception) { Thread.currentThread().interrupt(); throw exception; }
-        }
-        lastRequestAtNanos = System.nanoTime();
+    private JsonNode getJson(String url) throws Exception {
         URI uri = validateProviderUri(url);
+        long waitNanos = reserveRateLimitSlot();
+        if (waitNanos > 0) {
+            try {
+                Thread.sleep(waitNanos / 1_000_000L, (int) (waitNanos % 1_000_000L));
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw exception;
+            }
+        }
         return transport.get(uri.toASCIIString());
+    }
+
+    private long reserveRateLimitSlot() {
+        if (requestIntervalNanos <= 0) {
+            return 0L;
+        }
+        synchronized (rateLimitLock) {
+            long now = System.nanoTime();
+            long scheduledAt;
+            if (hasLastRequest) {
+                long earliestNext = lastRequestAtNanos + requestIntervalNanos;
+                scheduledAt = (earliestNext - now) > 0 ? earliestNext : now;
+            } else {
+                scheduledAt = now;
+            }
+            hasLastRequest = true;
+            lastRequestAtNanos = scheduledAt;
+            return Math.max(0L, scheduledAt - now);
+        }
     }
 
     private JsonNode httpGetJson(String url) throws Exception {
@@ -356,14 +358,12 @@ public class MetadataEnrichmentService {
                 return false;
             }
         }
-        return provider == MetadataSource.OPEN_LIBRARY && properties != null && properties.metadataProviders().openLibraryEnabled()
-                || provider == MetadataSource.GOOGLE_BOOKS && properties != null && properties.metadataProviders().googleApiKey() != null
-                && !properties.metadataProviders().googleApiKey().isBlank();
+        return provider == MetadataSource.OPEN_LIBRARY && properties != null && properties.metadataProviders().openLibraryEnabled();
     }
 
     private void assertCoverHost(URI uri) {
         String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || (!COVER_HOSTS.contains(host) && !host.endsWith(".googleusercontent.com"))) {
+        if (!"https".equalsIgnoreCase(uri.getScheme()) || !COVER_HOSTS.contains(host)) {
             throw new IllegalArgumentException("在线封面来源不受信任");
         }
     }
@@ -448,8 +448,14 @@ public class MetadataEnrichmentService {
     }
 
     private void collect(String provider, List<String> errors, CandidateCollector collector) {
-        try { collector.collect(); }
-        catch (Exception exception) { errors.add(provider + "：" + providerError(exception)); }
+        try {
+            collector.collect();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            errors.add(provider + "：" + providerError(interrupted));
+        } catch (Exception exception) {
+            errors.add(provider + "：" + providerError(exception));
+        }
     }
 
     private String providerError(Exception exception) {

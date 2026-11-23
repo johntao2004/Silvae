@@ -75,7 +75,7 @@ public class FileOperationService {
         var actor = users.findByUsername(principal.getName()).orElseThrow();
         requirePermission(principal, input.type());
         if (input.type() == FileOperationType.PURGE && actor.role() != UserRole.OWNER) {
-            throw ApiException.forbidden("OWNER_REQUIRED", "只有主人可以永久清理文件。");
+            throw ApiException.forbidden("OWNER_REQUIRED", "只有站点所有者可以永久清理文件。");
         }
         if (input.recycleBinEntryId() != null) return previewRecycle(input, actor.id());
         if (input.type() == FileOperationType.RESTORE || input.type() == FileOperationType.PURGE) {

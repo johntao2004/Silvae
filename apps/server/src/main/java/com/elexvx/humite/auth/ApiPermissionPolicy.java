@@ -18,10 +18,9 @@ public final class ApiPermissionPolicy {
     private static final Pattern CATEGORY_BOOKS = Pattern.compile("/categories/[^/]+/books");
     private static final Pattern BOOK_CATEGORIES = Pattern.compile("/books/[^/]+/categories");
     private static final Pattern ANNOTATIONS_BOOK_EXPORT = Pattern.compile("/annotations/books/[^/]+/export/[^/]+");
-    private static final Pattern BOOK_REVIEWS = Pattern.compile("/books/[^/]+/reviews");
-    private static final Pattern READER_BOOK_ACTION = Pattern.compile("/(books|display-books)/[^/]+/(content|position|reading-time)");
+    private static final Pattern READER_BOOK_ACTION = Pattern.compile("/(books|display-books)/[^/]+/(content|position|reading-time|excerpt)");
     private static final Pattern DISPLAY_BOOK_META = Pattern.compile("/display-books/[^/]+/(metadata|bibliography-source)");
-    private static final Pattern BOOK_META = Pattern.compile("/books/[^/]+/metadata");
+    private static final Pattern BOOK_META = Pattern.compile("/books/[^/]+/(metadata|bibliography-source)");
     private static final Pattern BOOK_ITEM = Pattern.compile("/books/[^/]+");
     private static final Pattern DISPLAY_BOOK_ITEM = Pattern.compile("/display-books/[^/]+");
 
@@ -70,8 +69,7 @@ public final class ApiPermissionPolicy {
         if (p.startsWith("/recycle-bin")) return Set.of("settings.recycle." + (read ? "view" : method.equals("DELETE") ? "purge" : "restore"));
         // Actual preview/execute action is checked against the server-side preview type by FileOperationService.
         if (p.equals("/file-task-history")) return Set.of("settings.operations.view");
-        if (p.startsWith("/file-operations")) return read && p.equals("/file-operations") ? Set.of("settings.operations.view")
-            : Set.of("library.files", "library.trash", "settings.recycle.restore", "settings.recycle.purge");
+        if (p.startsWith("/file-operations")) return Set.of("library.files", "library.trash", "settings.recycle.restore", "settings.recycle.purge");
         if (BOOK_DOWNLOAD.matcher(p).matches()) return Set.of("library.download");
         if (p.startsWith("/knowledge")) return Set.of(read ? "knowledge.view" : "knowledge.generate");
         if (p.startsWith("/article-collections")) return Set.of(read
@@ -93,8 +91,7 @@ public final class ApiPermissionPolicy {
         if (p.startsWith("/annotations")) return read
             ? Set.of(hasBookId ? "reader.read" : "notes.view") : Set.of("reader.annotate");
         if (p.startsWith("/reading-posts")) return Set.of(read ? "notes.posts.view" : "notes.edit");
-        if (p.startsWith("/book-reviews") || BOOK_REVIEWS.matcher(p).matches()) return Set.of(read ? "notes.books.view" : "notes.edit");
-        if (p.equals("/reading-overview") || p.startsWith("/reading-stats")) return Set.of("library.overview");
+        if (p.equals("/reading-overview")) return Set.of("library.overview");
         if (p.startsWith("/reader-fonts")) return read ? Set.of("reader.read", "settings.fonts.view") : Set.of("settings.fonts.edit");
         if (READER_BOOK_ACTION.matcher(p).matches()) return Set.of("reader.read");
         if (p.equals("/books") && read) return Set.of("library.query");

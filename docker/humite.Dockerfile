@@ -6,8 +6,6 @@ RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/web/package.json apps/web/package.json
 RUN pnpm install --frozen-lockfile
-COPY design design
-COPY scripts scripts
 COPY apps/web apps/web
 COPY apps/server/src/main/resources/role-permissions.json apps/server/src/main/resources/role-permissions.json
 COPY apps/server/src/main/resources/catalog apps/server/src/main/resources/catalog
@@ -29,7 +27,8 @@ RUN apt-get update \
     && chmod -R 0775 /library /var/lib/humite /tmp/humite
 WORKDIR /app
 COPY --chmod=0755 docker/entrypoint.sh /app/entrypoint.sh
-COPY --chmod=0644 --from=server-build /workspace/apps/server/target/humite-0.1.0-SNAPSHOT.jar /app/humite.jar
+COPY --chmod=0644 --from=server-build /workspace/apps/server/target/humite-1.0.0.jar /app/humite.jar
 EXPOSE 8080
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -Djava.io.tmpdir=/tmp/humite"
+USER 1000:1000
 ENTRYPOINT ["/app/entrypoint.sh"]

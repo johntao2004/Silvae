@@ -13,6 +13,7 @@ export interface MingLibraryBook {
   description: string;
   format: Book['format'];
   readUrl: string;
+  quotes?: string[];
 }
 
 export function mingLibraryCatalog(books: readonly MingLibraryCatalogBook[], origin: string): MingLibraryBook[] {

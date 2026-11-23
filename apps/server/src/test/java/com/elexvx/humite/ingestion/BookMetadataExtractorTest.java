@@ -4,11 +4,13 @@ package com.elexvx.humite.ingestion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.elexvx.humite.catalog.BookFormat;
-import java.nio.charset.StandardCharsets;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
@@ -17,6 +19,7 @@ import java.util.zip.ZipOutputStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDMetadata;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.xmpbox.XMPMetadata;
 import org.apache.xmpbox.xml.XmpSerializer;
 import org.junit.jupiter.api.Test;
@@ -167,6 +170,39 @@ class BookMetadataExtractorTest {
         }
         assertEquals("测试书籍PDF", extractor.extract(staged, BookFormat.PDF, directory, "sha256:about-blank", "测试书籍PDF").title());
         assertEquals("printed-book", extractor.extract(staged, BookFormat.PDF, directory, "sha256:about-blank-path").title());
+    }
+
+    @Test
+    void missingOpfEntryThrowsIoExceptionInsteadOfNullPointer() throws Exception {
+        Path epub = directory.resolve("missing-opf.epub");
+        try (var output = new ZipOutputStream(Files.newOutputStream(epub), StandardCharsets.UTF_8)) {
+            entry(output, "mimetype", "application/epub+zip".getBytes(StandardCharsets.UTF_8));
+            entry(output, "META-INF/container.xml", """
+                    <?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                    <rootfiles><rootfile full-path="OPS/missing.opf" media-type="application/oebps-package+xml"/></rootfiles></container>
+                    """.getBytes(StandardCharsets.UTF_8));
+        }
+        assertThrows(IOException.class, () -> extractor.extract(epub, BookFormat.EPUB, directory, "sha256:missing-opf"));
+    }
+
+    @Test
+    void scalesDownDpiForHugePdfPageDimensionsToCapBitmapAllocation() throws Exception {
+        PDRectangle huge = new PDRectangle(20_000f, 20_000f);
+        float dpi = BookMetadataExtractor.safePdfCoverDpi(huge);
+        assertTrue(dpi > 0f && dpi < 120f);
+        double scaledWidth = huge.getWidth() * (dpi / 72.0);
+        double scaledHeight = huge.getHeight() * (dpi / 72.0);
+        assertTrue(scaledWidth * scaledHeight <= 80_000_000.0);
+        assertTrue(Math.max(scaledWidth, scaledHeight) <= 12_000.0);
+
+        Path pdf = directory.resolve("huge-page.pdf");
+        try (var document = new PDDocument()) {
+            document.addPage(new PDPage(huge));
+            document.save(pdf.toFile());
+        }
+        var extracted = extractor.extract(pdf, BookFormat.PDF, directory, "sha256:huge-page");
+        assertNotNull(extracted.coverCacheKey());
+        assertTrue(Files.isRegularFile(directory.resolve(extracted.coverCacheKey())));
     }
 
     private void entry(ZipOutputStream output, String name, byte[] bytes) throws Exception {

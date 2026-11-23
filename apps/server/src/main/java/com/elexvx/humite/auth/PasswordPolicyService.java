@@ -13,11 +13,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PasswordPolicyService {
+    public static final int MAX_PASSWORD_LENGTH = 64;
+
     private final DSLContext db;
     private final UserRepository users;
     private final AuditService audit;
     public PasswordPolicyService(DSLContext db, UserRepository users, AuditService audit) { this.db=db; this.users=users; this.audit=audit; }
-    public record Policy(@Min(8) @Max(128) int minLength, @NotNull Boolean requireUppercase,
+    public record Policy(@Min(8) @Max(MAX_PASSWORD_LENGTH) int minLength, @NotNull Boolean requireUppercase,
         @NotNull Boolean requireLowercase, @NotNull Boolean requireDigit, @NotNull Boolean requireSpecial) {}
     public Policy policy() {
         var r=db.fetchOne("select * from password_policy where id=1");
@@ -27,7 +29,7 @@ public class PasswordPolicyService {
     @Transactional
     public Policy save(String username, Policy policy) {
         var actor=users.findByUsername(username).orElseThrow();
-        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅主人可修改密码规则。");
+        if(actor.role()!=UserRole.OWNER) throw ApiException.forbidden("OWNER_REQUIRED","仅站点所有者可修改密码规则。");
         db.execute("update password_policy set min_length=?,require_uppercase=?,require_lowercase=?,require_digit=?,require_special=? where id=1",
             policy.minLength(),policy.requireUppercase(),policy.requireLowercase(),policy.requireDigit(),policy.requireSpecial());
         audit.record(actor.id(),"PASSWORD_POLICY_CHANGED","SECURITY","password-policy",null,null,null,null,"SUCCEEDED","{}");
@@ -38,7 +40,9 @@ public class PasswordPolicyService {
     public void validate(String password) { validate(password,policy()); }
     static void validate(String password,Policy policy) {
         var errors=new ArrayList<String>();
-        if(password==null || password.length()<policy.minLength() || password.length()>200) errors.add("长度需为 "+policy.minLength()+"–200 个字符");
+        if (password == null || password.length() < policy.minLength() || password.length() > MAX_PASSWORD_LENGTH) {
+            errors.add("长度需为 " + policy.minLength() + "–" + MAX_PASSWORD_LENGTH + " 个字符");
+        }
         String value=password==null?"":password;
         if(value.isBlank()) errors.add("不能仅使用空白字符");
         if(policy.requireUppercase() && !value.matches("(?s).*[A-Z].*")) errors.add("包含大写字母 A–Z");

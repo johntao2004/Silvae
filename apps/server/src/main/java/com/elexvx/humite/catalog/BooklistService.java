@@ -46,7 +46,7 @@ public class BooklistService {
                                                     String title, String description, Principal principal) {
         HumiteUser actor = requiredActor(principal);
         if (kind == BooklistKind.OFFICIAL && !actor.canManageFiles()) {
-            throw ApiException.forbidden("OFFICIAL_BOOKLIST_FORBIDDEN", "只有主人或管理员可以创建官方书单。");
+            throw ApiException.forbidden("OFFICIAL_BOOKLIST_FORBIDDEN", "只有站点所有者或管理员可以创建官方书单。");
         }
         BooklistRepository.RawBooklist raw = booklists.create(actor.id(), kind, visibility,
                 cleanTitle(title), cleanDescription(description));

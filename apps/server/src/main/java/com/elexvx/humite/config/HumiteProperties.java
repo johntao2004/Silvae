@@ -29,7 +29,7 @@ public record HumiteProperties(
         worker = worker == null ? new Worker(Duration.ofSeconds(1)) : worker;
         upload = upload == null ? new Upload(2L * 1024 * 1024 * 1024, 20, Duration.ofHours(24), 20L * 1024 * 1024) : upload;
         fonts = fonts == null ? new Fonts("/var/lib/humite/fonts", 25L * 1024 * 1024) : fonts;
-        metadataProviders = metadataProviders == null ? new MetadataProviders(true, null) : metadataProviders;
+        metadataProviders = metadataProviders == null ? new MetadataProviders(true) : metadataProviders;
         ai = ai == null ? new Ai(false, true, 4, Duration.ofSeconds(20), List.of(), "") : ai;
     }
 
@@ -42,7 +42,7 @@ public record HumiteProperties(
     public record Worker(Duration pollDelay) {}
     public record Upload(long maxFileSize, int maxBatchFiles, Duration retention, long maxCoverSize) {}
     public record Fonts(String storagePath, long maxFileSize) {}
-    public record MetadataProviders(boolean openLibraryEnabled, String googleApiKey) {}
+    public record MetadataProviders(boolean openLibraryEnabled) {}
 
     public record Ai(boolean enabled, boolean autoMatch, int maxCandidates, Duration timeout, List<AiProvider> providers,
                      String settingsEncryptionKey) {

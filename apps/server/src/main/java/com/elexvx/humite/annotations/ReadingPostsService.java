@@ -13,7 +13,6 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -31,6 +30,17 @@ public class ReadingPostsService {
     public ReadingPostsService(ArticlePostRepository articles, BookReviewService books, BookRepository catalog,
                                ArticleService articleAccess, UserRepository users) {
         this.articles=articles; this.books=books; this.catalog=catalog; this.articleAccess=articleAccess; this.users=users;
+    }
+
+    @Transactional(readOnly=true)
+    public Page mine(Kind kind, UUID sourceId, String cursor, Principal principal) {
+        if (sourceId == null) return mine(kind,cursor,principal);
+        actor(principal);
+        if (kind != Kind.BOOK) throw ApiException.badRequest("UNSUPPORTED_POST_FILTER","暂仅支持按书籍筛选随笔。");
+        var rows=books.list(sourceId,principal);
+        String label=rows.isEmpty() ? null : ownedSourceTitle(Kind.BOOK,sourceId,principal);
+        var items=rows.stream().map(row -> decorate(book(row),label,true)).toList();
+        return new Page(items,null);
     }
 
     @Transactional(readOnly=true)
@@ -82,9 +92,8 @@ public class ReadingPostsService {
         var user=actor(principal);
         validate(title,markdown);
         if (kind==Kind.BOOK) {
-            var existing=books.get(id,principal);
-            var label=sourceTitle(kind,existing.bookId(),principal);
-            return decorate(book(books.update(id,title.trim(),markdown,visibility,revision,principal)),label,true);
+            var saved=books.update(id,title.trim(),markdown,visibility,revision,principal);
+            return decorate(book(saved),ownedSourceTitle(kind,saved.bookId(),principal),true);
         }
         if (kind!=Kind.ARTICLE) throw ApiException.badRequest("POST_KIND_INVALID","请选择书籍或文章。");
         var existing=articles.visible(id,user.id()).filter(post -> post.userId().equals(user.id())).orElseThrow(this::missing);

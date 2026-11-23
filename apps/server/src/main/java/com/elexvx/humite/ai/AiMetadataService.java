@@ -4,14 +4,20 @@ import static com.elexvx.humite.ingestion.upload.BookUploadModels.MetadataCandid
 import static com.elexvx.humite.ingestion.upload.BookUploadModels.MetadataDraft;
 import static com.elexvx.humite.ingestion.upload.BookUploadModels.MetadataSource;
 
+import com.elexvx.humite.articles.PublicWebFetcher;
+import com.elexvx.humite.common.ApiException;
 import com.elexvx.humite.config.HumiteProperties;
 import com.elexvx.humite.config.HumiteProperties.AiProvider;
 import com.elexvx.humite.config.HumiteProperties.AiProviderType;
 import com.elexvx.humite.ingestion.upload.BookUploadRepository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,13 +31,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import org.apache.hc.core5.net.InetAddressUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
-// 书目建议的服务端 AI 适配器：仅发送已提取元数据与简短候选摘要，不发送暂存 EPUB/PDF 二进制；结果由主人或管理员审核应用。
+// 书目建议的服务端 AI 适配器：仅发送已提取元数据与简短候选摘要，不发送暂存 EPUB/PDF 二进制；结果由站点所有者或管理员审核应用。
 /**
  * Server-side AI adapter for bibliographic suggestions.
  *
@@ -54,30 +63,52 @@ public class AiMetadataService {
             {"candidates":[{"title":"...","subtitle":null,"authors":["..."],"publisher":null,"publishedDate":null,"isbn":null,"edition":null,"language":null,"sourceUrl":null,"description":null,"tags":[],"confidence":0.0,"reason":"..."}]}
             """;
 
+    private static final int MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
+
+    @FunctionalInterface
+    interface DnsResolver {
+        InetAddress[] resolve(String host) throws UnknownHostException;
+    }
+
     private final Supplier<HumiteProperties.Ai> configuration;
     private final BookUploadRepository uploads;
     private final ObjectMapper json;
     private final HttpClient http;
+    private final DnsResolver dnsResolver;
 
     @org.springframework.beans.factory.annotation.Autowired
     public AiMetadataService(AiSettingsService settings, BookUploadRepository uploads, ObjectMapper json) {
-        this(settings::effective, uploads, json, HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build());
+        this(settings::effective, uploads, json, defaultHttpClient(), InetAddress::getAllByName);
     }
 
     public AiMetadataService(HumiteProperties properties, BookUploadRepository uploads, ObjectMapper json) {
-        this(properties::ai, uploads, json, HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).build());
+        this(properties::ai, uploads, json, defaultHttpClient(), InetAddress::getAllByName);
     }
 
     AiMetadataService(HumiteProperties properties, BookUploadRepository uploads, ObjectMapper json, HttpClient http) {
-        this(properties::ai, uploads, json, http);
+        this(properties::ai, uploads, json, http, null);
+    }
+
+    AiMetadataService(HumiteProperties properties, BookUploadRepository uploads, ObjectMapper json,
+                      HttpClient http, DnsResolver dnsResolver) {
+        this(properties::ai, uploads, json, http, dnsResolver);
     }
 
     private AiMetadataService(Supplier<HumiteProperties.Ai> configuration, BookUploadRepository uploads,
-                              ObjectMapper json, HttpClient http) {
+                              ObjectMapper json, HttpClient http, DnsResolver dnsResolver) {
         this.configuration = configuration;
         this.uploads = uploads;
         this.json = json;
         this.http = http;
+        this.dnsResolver = dnsResolver;
+    }
+
+    private static HttpClient defaultHttpClient() {
+        return HttpClient.newBuilder()
+                .followRedirects(HttpClient.Redirect.NEVER)
+                .connectTimeout(CONNECT_TIMEOUT)
+                .build();
     }
 
     public List<ProviderInfo> providers() {
@@ -141,6 +172,11 @@ public class AiMetadataService {
                     String key = candidate.provider().name() + "|" + candidate.id();
                     if (seen.add(key)) candidates.add(candidate);
                 }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                errors.add(provider.label() + "：请求已中断");
+                log.warn("AI metadata provider {} interrupted", provider.id(), exception);
+                break;
             } catch (Exception exception) {
                 String message = safeMessage(exception);
                 errors.add(provider.label() + "：" + message);
@@ -235,6 +271,227 @@ public class AiMetadataService {
     public record KnowledgePassage(String locator, String text) {}
     public record KnowledgePoint(String name, String quote, String locator) {}
     public record KnowledgeResult(String providerId, List<KnowledgePoint> points) {}
+
+    public ModelListResult listModels(FetchModelsInput input) {
+        if (input == null) {
+            throw ApiException.badRequest("AI_PROVIDER_INVALID", "AI 平台参数无效。");
+        }
+        String id = input.id() == null ? "" : input.id().strip();
+        if (id.isBlank()) {
+            throw ApiException.badRequest("AI_PROVIDER_INVALID", "AI 平台标识不能为空。");
+        }
+        AiProviderType type;
+        try {
+            type = AiProviderType.valueOf(input.type() == null ? "" : input.type().strip());
+        } catch (IllegalArgumentException exception) {
+            throw ApiException.badRequest("AI_PROVIDER_TYPE_INVALID", "AI 平台类型无效。");
+        }
+        String rawBaseUrl = input.baseUrl() == null ? "" : input.baseUrl().strip();
+        if (!rawBaseUrl.isBlank()) {
+            AiSettingsService.normalizeBaseUrlOrigin(rawBaseUrl);
+        }
+        String effectiveBaseUrl = defaultValue(rawBaseUrl, defaultBaseUrl(type));
+        String apiKey = resolveModelDiscoveryKey(id, rawBaseUrl, input.apiKey());
+        return switch (type) {
+            case OPENAI_COMPATIBLE -> fetchOpenAiModels(effectiveBaseUrl, apiKey);
+            case ANTHROPIC -> fetchAnthropicModels(effectiveBaseUrl, apiKey);
+            case GEMINI -> fetchGeminiModels(effectiveBaseUrl, apiKey);
+        };
+    }
+
+    private ModelListResult fetchOpenAiModels(String baseUrl, String apiKey) {
+        HttpRequest.Builder builder = getRequest(join(baseUrl, "/models"));
+        if (!apiKey.isBlank()) {
+            builder.header("Authorization", "Bearer " + apiKey);
+        }
+        HttpResult result = executeModelRequest(builder.build());
+        if (result.statusCode() == 404 && isLocal(baseUrl)) {
+            HttpRequest.Builder tagsRequest = getRequest(originOf(baseUrl) + "/api/tags");
+            if (!apiKey.isBlank()) {
+                tagsRequest.header("Authorization", "Bearer " + apiKey);
+            }
+            HttpResult tagsResult = executeModelRequest(tagsRequest.build());
+            if (tagsResult.statusCode() >= 200 && tagsResult.statusCode() < 300) {
+                return new ModelListResult(parseOllamaTags(tagsResult.body()), "ollama");
+            }
+            throw modelFetchFailed(tagsResult.statusCode());
+        }
+        if (result.statusCode() < 200 || result.statusCode() >= 300) {
+            throw modelFetchFailed(result.statusCode());
+        }
+        return new ModelListResult(parseOpenAiModels(result.body()), "live");
+    }
+
+    private ModelListResult fetchAnthropicModels(String baseUrl, String apiKey) {
+        HttpRequest.Builder builder = getRequest(originOf(baseUrl) + "/v1/models")
+                .header("anthropic-version", "2023-06-01");
+        if (!apiKey.isBlank()) {
+            builder.header("x-api-key", apiKey);
+        }
+        HttpResult result = executeModelRequest(builder.build());
+        if (result.statusCode() < 200 || result.statusCode() >= 300) {
+            throw modelFetchFailed(result.statusCode());
+        }
+        return new ModelListResult(parseAnthropicModels(result.body()), "live");
+    }
+
+    private ModelListResult fetchGeminiModels(String baseUrl, String apiKey) {
+        HttpRequest.Builder builder = getRequest(join(baseUrl, "/models"));
+        if (!apiKey.isBlank()) {
+            builder.header("x-goog-api-key", apiKey);
+        }
+        HttpResult result = executeModelRequest(builder.build());
+        if (result.statusCode() < 200 || result.statusCode() >= 300) {
+            throw modelFetchFailed(result.statusCode());
+        }
+        return new ModelListResult(parseGeminiModels(result.body()), "live");
+    }
+
+    private HttpRequest.Builder getRequest(String endpoint) {
+        return HttpRequest.newBuilder(URI.create(endpoint))
+                .timeout(configuration.get().timeout())
+                .header("Accept", "application/json")
+                .GET();
+    }
+
+    private HttpResult executeModelRequest(HttpRequest request) {
+        try {
+            return sendRaw(request);
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_FETCH_FAILED", "获取模型列表已中断，请重试。");
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_FETCH_FAILED", "无法从该接口获取模型列表，请检查接口地址、密钥或网络后重试。");
+        }
+    }
+
+    private static ApiException modelFetchFailed(int statusCode) {
+        return new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_FETCH_FAILED",
+                "获取模型列表失败（HTTP " + statusCode + "）。");
+    }
+
+    private List<ModelOption> parseOpenAiModels(String body) {
+        try {
+            JsonNode root = json.readTree(body);
+            JsonNode data = root.path("data");
+            if (data.isArray()) {
+                Map<String, ModelOption> options = new LinkedHashMap<>();
+                for (JsonNode node : data) {
+                    String modelId = text(node, "id");
+                    if (modelId == null) continue;
+                    String label = firstNonBlank(text(node, "display_name"), text(node, "name"), modelId);
+                    options.putIfAbsent(modelId, new ModelOption(modelId, label));
+                }
+                return List.copyOf(options.values());
+            }
+            if (root.path("models").isArray()) {
+                return parseOllamaTags(body);
+            }
+            return List.of();
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_INVALID", "AI 平台返回的模型列表格式无效。");
+        }
+    }
+
+    private List<ModelOption> parseOllamaTags(String body) {
+        try {
+            JsonNode root = json.readTree(body);
+            JsonNode models = root.path("models");
+            if (!models.isArray()) return List.of();
+            Map<String, ModelOption> options = new LinkedHashMap<>();
+            for (JsonNode node : models) {
+                String modelId = firstNonBlank(text(node, "model"), text(node, "name"), text(node, "id"));
+                if (modelId == null) continue;
+                String label = firstNonBlank(text(node, "name"), modelId);
+                options.putIfAbsent(modelId, new ModelOption(modelId, label));
+            }
+            return List.copyOf(options.values());
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_INVALID", "AI 平台返回的模型列表格式无效。");
+        }
+    }
+
+    private List<ModelOption> parseAnthropicModels(String body) {
+        try {
+            JsonNode root = json.readTree(body);
+            JsonNode data = root.path("data");
+            if (!data.isArray()) return List.of();
+            Map<String, ModelOption> options = new LinkedHashMap<>();
+            for (JsonNode node : data) {
+                String modelId = text(node, "id");
+                if (modelId == null) continue;
+                String label = firstNonBlank(text(node, "display_name"), modelId);
+                options.putIfAbsent(modelId, new ModelOption(modelId, label));
+            }
+            return List.copyOf(options.values());
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_INVALID", "AI 平台返回的模型列表格式无效。");
+        }
+    }
+
+    private List<ModelOption> parseGeminiModels(String body) {
+        try {
+            JsonNode root = json.readTree(body);
+            JsonNode models = root.path("models");
+            if (!models.isArray()) return List.of();
+            Map<String, ModelOption> options = new LinkedHashMap<>();
+            for (JsonNode node : models) {
+                String rawName = text(node, "name");
+                if (rawName == null) continue;
+                String modelId = rawName.startsWith("models/") ? rawName.substring("models/".length()) : rawName;
+                if (modelId.isBlank()) continue;
+                String label = firstNonBlank(text(node, "displayName"), modelId);
+                options.putIfAbsent(modelId, new ModelOption(modelId, label));
+            }
+            return List.copyOf(options.values());
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "AI_MODELS_INVALID", "AI 平台返回的模型列表格式无效。");
+        }
+    }
+
+    private String resolveModelDiscoveryKey(String id, String rawBaseUrl, String suppliedKey) {
+        if (suppliedKey != null && !suppliedKey.isBlank()) {
+            return suppliedKey.strip();
+        }
+        if (rawBaseUrl.isBlank()) {
+            return "";
+        }
+        String requestedOrigin = AiSettingsService.normalizeBaseUrlOrigin(rawBaseUrl);
+        return configuration.get().providers().stream()
+                .filter(provider -> id.equals(provider.id()))
+                .findFirst()
+                .filter(provider -> !requestedOrigin.isEmpty()
+                        && Objects.equals(requestedOrigin, AiSettingsService.safeNormalizeOrigin(provider.baseUrl())))
+                .map(AiProvider::apiKey)
+                .orElse("");
+    }
+
+    private static String defaultBaseUrl(AiProviderType type) {
+        return switch (type) {
+            case OPENAI_COMPATIBLE -> "https://api.openai.com/v1";
+            case ANTHROPIC -> "https://api.anthropic.com";
+            case GEMINI -> "https://generativelanguage.googleapis.com/v1beta";
+        };
+    }
+
+    private static String originOf(String baseUrl) {
+        URI uri = URI.create(baseUrl.strip());
+        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+        String host = uri.getHost();
+        int port = uri.getPort();
+        return port != -1 ? scheme + "://" + host + ":" + port : scheme + "://" + host;
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return null;
+    }
 
     /** Shared bounded, non-persistent gateway. Callers authorize and minimize source data first. */
     public StructuredResult generateStructured(String systemPrompt, Map<String, Object> input) throws Exception {
@@ -352,12 +609,163 @@ public class AiMetadataService {
     }
 
     private String send(HttpRequest request) throws Exception {
-        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("AI 平台请求失败（HTTP " + response.statusCode() + "）");
+        HttpResult result = sendRaw(request);
+        if (result.statusCode() < 200 || result.statusCode() >= 300) {
+            throw new IllegalStateException("AI 平台请求失败（HTTP " + result.statusCode() + "）");
         }
-        return response.body();
+        return result.body();
     }
+
+    private HttpResult sendRaw(HttpRequest request) throws Exception {
+        validateOutboundUri(request.uri());
+        HttpResponse<?> response;
+        try {
+            response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw exception;
+        }
+        Object rawBody = response.body();
+        byte[] bodyBytes;
+        if (rawBody instanceof InputStream stream) {
+            try (stream) {
+                bodyBytes = readBounded(stream, MAX_RESPONSE_BYTES);
+            }
+        } else if (rawBody instanceof String text) {
+            bodyBytes = text.getBytes(StandardCharsets.UTF_8);
+            if (bodyBytes.length > MAX_RESPONSE_BYTES) {
+                throw new IllegalStateException("AI 平台响应超过大小限制");
+            }
+        } else {
+            bodyBytes = new byte[0];
+        }
+        return new HttpResult(response.statusCode(), new String(bodyBytes, StandardCharsets.UTF_8));
+    }
+
+    private static byte[] readBounded(InputStream stream, int maxBytes) throws IOException {
+        byte[] bytes = stream.readNBytes(maxBytes + 1);
+        if (bytes.length > maxBytes) {
+            throw new IllegalStateException("AI 平台响应超过大小限制");
+        }
+        return bytes;
+    }
+
+    void validateOutboundUri(URI uri) {
+        if (uri == null) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口地址无效。");
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+        if ((!"http".equals(scheme) && !"https".equals(scheme)) || uri.getUserInfo() != null) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口地址无效，仅支持无凭据的 HTTP/HTTPS 地址。");
+        }
+        int port = uri.getPort();
+        if (port != -1 && (port < 1 || port > 65535)) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口端口无效。");
+        }
+        String rawHost = uri.getHost();
+        if (rawHost == null || rawHost.isBlank()) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口主机名无效。");
+        }
+        String host = stripIpv6Brackets(rawHost);
+        if (host.contains("%")) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口主机名不允许使用该地址格式。");
+        }
+        boolean ipv6Literal = rawHost.startsWith("[") && rawHost.endsWith("]") && InetAddressUtils.isIPv6Address(host);
+        boolean ipv4Literal = !ipv6Literal && InetAddressUtils.isIPv4Address(host);
+        if (ipv4Literal || ipv6Literal) {
+            try {
+                InetAddress address = InetAddress.getByName(host);
+                if (address.isLoopbackAddress()) {
+                    return;
+                }
+                if (!"https".equals(scheme)) {
+                    throw ApiException.badRequest("AI_BASE_URL_INVALID", "非本地 AI 平台地址必须使用 HTTPS。");
+                }
+                PublicWebFetcher.validateAddress(address);
+                return;
+            } catch (UnknownHostException exception) {
+                throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台目标地址不允许访问。");
+            }
+        }
+        if (looksLikeNonStandardNumericAddress(host)) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台接口主机名不允许使用该地址格式。");
+        }
+        if ("localhost".equalsIgnoreCase(host)) {
+            if (dnsResolver != null) {
+                try {
+                    InetAddress[] addresses = dnsResolver.resolve(host);
+                    if (addresses == null || addresses.length == 0) {
+                        throw ApiException.badRequest("AI_BASE_URL_INVALID", "无法解析本地主机地址。");
+                    }
+                    for (InetAddress address : addresses) {
+                        if (!address.isLoopbackAddress()) {
+                            throw ApiException.badRequest("AI_BASE_URL_INVALID", "localhost 必须解析为本地回环地址。");
+                        }
+                    }
+                } catch (UnknownHostException exception) {
+                    throw ApiException.badRequest("AI_BASE_URL_INVALID", "无法解析本地主机地址。");
+                }
+            }
+            return;
+        }
+        if (!"https".equals(scheme)) {
+            throw ApiException.badRequest("AI_BASE_URL_INVALID", "非本地 AI 平台地址必须使用 HTTPS。");
+        }
+        if (dnsResolver != null) {
+            try {
+                InetAddress[] addresses = dnsResolver.resolve(host);
+                if (addresses == null || addresses.length == 0) {
+                    throw ApiException.badRequest("AI_BASE_URL_INVALID", "无法解析 AI 平台主机域名。");
+                }
+                for (InetAddress address : addresses) {
+                    PublicWebFetcher.validateAddress(address);
+                }
+            } catch (UnknownHostException exception) {
+                throw ApiException.badRequest("AI_BASE_URL_INVALID", "AI 平台域名解析失败或指向不允许访问的地址。");
+            }
+        }
+    }
+
+    private static String stripIpv6Brackets(String host) {
+        return host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+    }
+
+    private static boolean looksLikeNonStandardNumericAddress(String host) {
+        return host.matches("[0-9.]+")
+                || host.matches("(?i)(?:0x[0-9a-f]+|[0-9]+)(?:\\.(?:0x[0-9a-f]+|[0-9]+))*");
+    }
+
+    static boolean isLoopbackHost(String rawHost) {
+        if (rawHost == null || rawHost.isBlank()) return false;
+        String host = stripIpv6Brackets(rawHost.strip());
+        if (host.contains("%")) return false;
+        if ("localhost".equalsIgnoreCase(host)) return true;
+        boolean ipv6Literal = rawHost.strip().startsWith("[") && rawHost.strip().endsWith("]")
+                && InetAddressUtils.isIPv6Address(host);
+        boolean ipv4Literal = !ipv6Literal && InetAddressUtils.isIPv4Address(host);
+        if (ipv4Literal || ipv6Literal) {
+            try {
+                return InetAddress.getByName(host).isLoopbackAddress();
+            } catch (UnknownHostException exception) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    static boolean isLocalBaseUrl(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) return false;
+        try {
+            URI uri = URI.create(baseUrl.strip());
+            String scheme = uri.getScheme();
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) return false;
+            return isLoopbackHost(uri.getHost());
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
+    }
+
+    private record HttpResult(int statusCode, String body) {}
 
     private List<MetadataCandidate> parseCandidates(String raw, AiProvider provider, MetadataDraft draft) throws Exception {
         String value = extractJson(raw);
@@ -432,7 +840,7 @@ public class AiMetadataService {
     }
 
     private boolean isLocal(String baseUrl) {
-        return baseUrl != null && (baseUrl.contains("localhost") || baseUrl.contains("127.0.0.1") || baseUrl.contains("::1"));
+        return isLocalBaseUrl(baseUrl);
     }
 
     private String cacheProvider(AiProvider provider) {
@@ -545,4 +953,10 @@ public class AiMetadataService {
                                boolean available, String model) {}
 
     public record MatchResult(List<MetadataCandidate> candidates, List<String> attemptedProviders, List<String> errors) {}
+
+    public record FetchModelsInput(String id, String type, String baseUrl, String apiKey) {}
+
+    public record ModelOption(String id, String label) {}
+
+    public record ModelListResult(List<ModelOption> models, String source) {}
 }

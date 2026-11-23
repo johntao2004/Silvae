@@ -74,7 +74,7 @@ public class BookController {
         String lower = cover.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
         MediaType type = lower.endsWith(".png") ? MediaType.IMAGE_PNG
                 : lower.endsWith(".webp") ? MediaType.parseMediaType("image/webp") : MediaType.IMAGE_JPEG;
-        return ResponseEntity.ok().contentType(type).cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(30)).cachePublic())
+        return ResponseEntity.ok().contentType(type).cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(30)).cachePrivate())
                 .body(new FileSystemResource(cover));
     }
 

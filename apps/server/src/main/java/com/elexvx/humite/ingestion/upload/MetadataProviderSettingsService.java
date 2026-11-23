@@ -22,8 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class MetadataProviderSettingsService {
     private static final List<ProviderDefinition> PROVIDERS = List.of(
             new ProviderDefinition("OPEN_LIBRARY", "Open Library", "公开书目服务，无需部署密钥。", "https://openlibrary.org/"),
-            new ProviderDefinition("WIKIDATA", "Wikidata", "官方书目数据，可补充版本、作者、出版社、ISBN 与语言信息。", "https://www.wikidata.org/"),
-            new ProviderDefinition("GOOGLE_BOOKS", "Google Books", "通过 Google Books 检索书目与版本候选。", "https://developers.google.com/books"));
+            new ProviderDefinition("WIKIDATA", "Wikidata", "官方书目数据，可补充版本、作者、出版社、ISBN 与语言信息。", "https://www.wikidata.org/"));
     private static final Set<String> PROVIDER_IDS = PROVIDERS.stream().map(ProviderDefinition::id).collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     private final HumiteProperties properties;
@@ -62,9 +61,6 @@ public class MetadataProviderSettingsService {
             if (setting.enabled() == null || seen.putIfAbsent(id, setting.enabled()) != null) {
                 throw ApiException.badRequest("METADATA_PROVIDER_DUPLICATE", "元数据来源必须唯一且包含启用状态。");
             }
-            if (setting.enabled() && !available(id)) {
-                throw ApiException.conflict("METADATA_PROVIDER_UNAVAILABLE", "Google Books 未配置部署 API 密钥，不能启用。");
-            }
             changes.add(new MetadataProviderSettingsRepository.ProviderSetting(id, setting.enabled()));
         }
 
@@ -74,37 +70,35 @@ public class MetadataProviderSettingsService {
         return view(repository.findEnabled());
     }
 
-    /** Returns the effective state used by metadata matching, including live key availability. */
+    /** Returns the effective state used by metadata matching. */
     public boolean isEnabled(MetadataSource source) {
         if (source == null) return false;
         String id = switch (source) {
             case OPEN_LIBRARY -> "OPEN_LIBRARY";
             case WIKIDATA -> "WIKIDATA";
-            case GOOGLE_BOOKS -> "GOOGLE_BOOKS";
             default -> null;
         };
-        if (id == null || !available(id)) return false;
+        if (id == null) return false;
         return enabled(repository.findEnabled(), id);
     }
 
     private HumiteUser authorize(Principal principal, String permission) {
         HumiteUser actor = permissions.actor(principal);
         if (actor.role() != UserRole.OWNER && actor.role() != UserRole.ADMIN) {
-            throw ApiException.forbidden("ACCESS_DENIED", "只有主人或管理员可以管理元数据来源。");
+            throw ApiException.forbidden("ACCESS_DENIED", "只有站点所有者或管理员可以管理书目信息来源。");
         }
         permissions.require(principal, permission);
         return actor;
     }
 
     private MetadataProviderSettingsView view(Map<String, Boolean> stored) {
-        List<MetadataProviderView> result = PROVIDERS.stream().map(provider -> {
-            boolean available = available(provider.id());
-            String description = provider.id().equals("GOOGLE_BOOKS") && !available
-                    ? "需要配置 Google Books API 密钥后才能启用。"
-                    : provider.description();
-            return new MetadataProviderView(provider.id(), provider.label(), enabled(stored, provider.id()) && available,
-                    available, description, provider.homepage());
-        }).toList();
+        List<MetadataProviderView> result = PROVIDERS.stream().map(provider -> new MetadataProviderView(
+                provider.id(),
+                provider.label(),
+                enabled(stored, provider.id()),
+                true,
+                provider.description(),
+                provider.homepage())).toList();
         return new MetadataProviderSettingsView(result);
     }
 
@@ -112,16 +106,9 @@ public class MetadataProviderSettingsService {
         if (stored.containsKey(id)) return Boolean.TRUE.equals(stored.get(id));
         return switch (id) {
             case "OPEN_LIBRARY" -> properties.metadataProviders().openLibraryEnabled();
-            case "GOOGLE_BOOKS" -> available(id);
             case "WIKIDATA" -> false;
             default -> false;
         };
-    }
-
-    private boolean available(String id) {
-        if (!id.equals("GOOGLE_BOOKS")) return true;
-        String key = properties.metadataProviders().googleApiKey();
-        return key != null && !key.isBlank();
     }
 
     private String auditDetail(List<MetadataProviderSettingsRepository.ProviderSetting> changes) {

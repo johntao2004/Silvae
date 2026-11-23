@@ -21,12 +21,14 @@ afterEach(() => vi.restoreAllMocks());
 describe("reading-note navigation and data views", () => {
   it("opens book notes directly and fetches book posts only when their tab is selected", async () => {
     render(<TestProviders><ReadingNotesPage kind="BOOK" /></TestProviders>);
-    expect(screen.getByRole("tab", { name: "札记", selected: true })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "笔记与摘录", selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "搜索笔记" })).not.toBeInTheDocument();
+    expect(screen.queryByText("搜索笔记")).not.toBeInTheDocument();
     expect(await screen.findByText("书籍想法")).toBeInTheDocument();
     expect(readingPosts.list).not.toHaveBeenCalled();
     expect(articleNotesApi.list).not.toHaveBeenCalled();
     expect(articles.list).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("tab", { name: "随笔" }));
+    fireEvent.click(screen.getByRole("tab", { name: "阅读随笔" }));
     expect(await screen.findByRole("heading", { name: "暂无随笔" })).toBeInTheDocument();
     expect(readingPosts.list).toHaveBeenCalledWith("BOOK", undefined);
     expect(screen.queryByText("书籍想法")).not.toBeInTheDocument();

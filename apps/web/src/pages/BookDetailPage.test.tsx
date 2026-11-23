@@ -1,5 +1,6 @@
 // Covers direct book details, return navigation, role-gated actions and the library-card route.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { api, ApiRequestError } from "../api/client";
@@ -7,7 +8,7 @@ import { demoBooks } from "../data/demo";
 import type { BookMetadata, FileOperationPreview } from "../domain/types";
 import { TestProviders } from "../test/TestProviders";
 import { LibraryPage } from "./LibraryPage";
-import { bookReviews } from "../features/reviews/api";
+import { readingPosts } from "../features/notes/posts-api";
 import { BookDetailPage } from "./BookDetailPage";
 import * as permissionHooks from "../auth/permissions";
 
@@ -71,7 +72,7 @@ function renderDetail(initialPath: string, user = owner) {
 describe("BookDetailPage", () => {
   beforeEach(() => {
     sessionStorage.clear();
-    vi.spyOn(bookReviews, "list").mockResolvedValue([]);
+    vi.spyOn(readingPosts, "listBySource").mockResolvedValue({ items: [], nextCursor: null });
     vi.spyOn(api, "getBookMetadata").mockImplementation(async id => {
       const book = demoBooks.find(candidate => candidate.id === id);
       if (!book) throw new Error("未找到这本书");
@@ -98,8 +99,18 @@ describe("BookDetailPage", () => {
     const getBook = vi.spyOn(api, "getBook").mockResolvedValue(book);
     renderDetail(`/library/books/${book.id}`);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "书籍详情" })).toBeInTheDocument();
+    const titleHeading = await screen.findByRole("heading", { level: 1, name: "书籍详情" });
+    expect(titleHeading).toBeInTheDocument();
+    const titleClass = Array.from(titleHeading.classList).find((name) => name.startsWith("bk-sx-"));
+    expect(titleClass).toBeDefined();
+    const titleStyles = Array.from(document.head.querySelectorAll("style[data-humite-sx]"))
+      .map((el) => el.textContent ?? "")
+      .join("\n");
+    expect(titleStyles).toContain(`@media (min-width: 0px){.${titleClass}{line-height: 32px;font-size: 26px;}}`);
+    expect(titleStyles).toContain(`@media (min-width: 768px){.${titleClass}{line-height: 36px;font-size: 32px;}}`);
     const returnButton = screen.getByRole("button", { name: "返回书库" });
+    expect(returnButton).toHaveClass("bk-back-button");
+    expect(returnButton.textContent?.trim()).toBe("");
     expect(returnButton.compareDocumentPosition(screen.getByRole("heading", { level: 1, name: "书籍详情" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(returnButton.closest(".bk-action-toolbar")).toBeNull();
     expect(await screen.findByRole("heading", { level: 2, name: book.title })).toBeInTheDocument();
@@ -181,16 +192,16 @@ describe("BookDetailPage", () => {
     const getBookMetadata = vi.mocked(api.getBookMetadata);
     renderDetail(`/library/books/${book.id}`, member);
 
-    fireEvent.click(await screen.findByRole("button", { name: "加入书目" }));
+    fireEvent.click(await screen.findByRole("button", { name: "加入书单" }));
 
-    expect(await screen.findByText(`将《${book.title}》加入书目`)).toBeInTheDocument();
+    expect(await screen.findByText(`将《${book.title}》加入书单`)).toBeInTheDocument();
     expect(getBookMetadata).toHaveBeenCalledWith(book.id);
     expect(screen.queryByRole("button", { name: "编辑元信息" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "管理文件" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "删除书籍" })).not.toBeInTheDocument();
   });
 
-  it("edits metadata in place and cancels without navigating or changing saved content", async () => {
+  it("routes metadata editing to the dedicated edit page with detail return state", async () => {
     const book = demoBooks[0];
     vi.spyOn(api, "getBook").mockResolvedValue(book);
     const updateMetadata = vi.spyOn(api, "updateBookMetadata");
@@ -199,37 +210,28 @@ describe("BookDetailPage", () => {
     const edit = await screen.findByRole("button", { name: "编辑元信息" });
     await waitFor(() => expect(edit).toBeEnabled());
     fireEvent.click(edit);
-    const titleInput = await screen.findByRole("textbox", { name: "书名" });
-    expect(titleInput).toHaveValue(book.title);
-    expect(screen.getByTestId("route-location")).toHaveTextContent(`/library/books/${book.id}?from=library`);
-    expect(screen.queryByText("编辑目标")).not.toBeInTheDocument();
-    fireEvent.change(titleInput, { target: { value: "未保存的修改" } });
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
-    expect(await screen.findByRole("heading", { level: 2, name: book.title })).toBeInTheDocument();
+    expect(await screen.findByText("编辑目标")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "书名" })).not.toBeInTheDocument();
     expect(updateMetadata).not.toHaveBeenCalled();
-    expect(screen.getByTestId("route-location")).toHaveTextContent(`/library/books/${book.id}?from=library`);
+    expect(screen.getByTestId("route-location")).toHaveTextContent(`/library/books/${encodeURIComponent(book.id)}/edit`);
+    expect(screen.getByTestId("route-location")).toHaveTextContent(`"bookDetailReturnTo":"/library/books/${book.id}"`);
+    expect(screen.getByTestId("route-location")).toHaveTextContent('"bookReturnTo":"/library/all"');
   });
 
-  it("saves inline changes and renders the persisted metadata on the same detail route", async () => {
-    const book = demoBooks[0];
+  it("preserves both catalog and detail return state when editing from a filtered catalog", async () => {
+    const book = demoBooks[1];
+    vi.spyOn(api, "listBooks").mockResolvedValue({ items: [book] });
     vi.spyOn(api, "getBook").mockResolvedValue(book);
-    const savedMetadata = { ...metadataForBook(book), publisher: "更新后的出版社", title: "更新后的书名" };
-    const updateMetadata = vi.spyOn(api, "updateBookMetadata").mockResolvedValue({ metadata: savedMetadata });
-    renderDetail(`/library/books/${book.id}`);
+    renderDetail("/library/all?q=夜航&format=PDF");
 
-    const edit = await screen.findByRole("button", { name: "编辑元信息" });
-    await waitFor(() => expect(edit).toBeEnabled());
-    fireEvent.click(edit);
-    fireEvent.change(await screen.findByRole("textbox", { name: "书名" }), { target: { value: savedMetadata.title } });
-    fireEvent.change(screen.getByRole("textbox", { name: "出版社" }), { target: { value: savedMetadata.publisher } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(await screen.findByRole("button", { name: `${book.title}封面` }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑元信息" }));
 
-    expect(await screen.findByRole("heading", { level: 2, name: savedMetadata.title })).toBeInTheDocument();
-    expect(screen.getByText(savedMetadata.publisher)).toBeInTheDocument();
-    expect(updateMetadata).toHaveBeenCalledWith(book, expect.objectContaining({ title: savedMetadata.title, publisher: savedMetadata.publisher, writeBack: false, manualFields: expect.arrayContaining(["title", "publisher"]) }));
-    expect(screen.queryByRole("textbox", { name: "书名" })).not.toBeInTheDocument();
-    expect(screen.getByTestId("route-location")).toHaveTextContent(`/library/books/${book.id}`);
+    expect(await screen.findByText("编辑目标")).toBeInTheDocument();
+    expect(screen.getByTestId("route-location")).toHaveTextContent(`/library/books/${encodeURIComponent(book.id)}/edit`);
+    expect(screen.getByTestId("route-location")).toHaveTextContent(`"bookDetailReturnTo":"/library/books/${book.id}"`);
+    expect(screen.getByTestId("route-location")).toHaveTextContent('"bookReturnTo":"/library/all?q=夜航&format=PDF"');
   });
 
   it("omits saved and source TOC fields and does not read the source just for a TOC", async () => {
@@ -244,7 +246,7 @@ describe("BookDetailPage", () => {
     expect(source).not.toHaveBeenCalled();
   });
 
-  it("keeps source biography and a manually saved table of contents consistent when editing in place", async () => {
+  it("keeps source biography and hides manually saved table of contents before navigating to edit", async () => {
     const book = demoBooks[0];
     vi.spyOn(api, "getBook").mockResolvedValue(book);
     vi.mocked(api.getBookMetadata).mockResolvedValue({ ...metadataForBook(book), tableOfContents: "人工目录", sources: { tableOfContents: "MANUAL" } });
@@ -254,10 +256,32 @@ describe("BookDetailPage", () => {
     expect(await screen.findByText("原书作者介绍")).toBeInTheDocument();
     expect(screen.queryByText("人工目录")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "编辑元信息" }));
-    expect(await screen.findByRole("textbox", { name: "作者介绍" })).toHaveValue("原书作者介绍");
-    expect(screen.queryByRole("textbox", { name: "目录" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
-    expect(screen.queryByText("人工目录")).not.toBeInTheDocument();
+    expect(await screen.findByText("编辑目标")).toBeInTheDocument();
+    expect(screen.getByTestId("route-location")).toHaveTextContent(`"bookDetailReturnTo":"/library/books/${book.id}"`);
+  });
+
+  it("invalidates file task history after a file operation completes", async () => {
+    const book = demoBooks[0];
+    vi.spyOn(api, "getBook").mockResolvedValue(book);
+    const usePermissions = permissionHooks.usePermissions;
+    vi.spyOn(permissionHooks, "usePermissions").mockImplementation(() => {
+      const permissions = usePermissions();
+      return { ...permissions, can: code => code !== "library.edit" && permissions.can(code) };
+    });
+    const preview = { previewToken: "detail-rename", type: "RENAME" as const, sourcePath: book.relativePath,
+      targetPath: "重命名.epub", requiredBytes: 0, expectedFingerprint: book.fingerprint,
+      expiresAt: new Date(Date.now() + 300000).toISOString(), warnings: [], conflicts: [] };
+    vi.spyOn(api, "previewFileOperation").mockResolvedValue(preview);
+    vi.spyOn(api, "executeFileOperation").mockResolvedValue({ id: "rename-job", type: "RENAME", status: "SUCCEEDED", sourcePath: book.relativePath, createdAt: new Date().toISOString() });
+    const invalidate = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    renderDetail(`/library/books/${book.id}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "重命名原文件" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "新书名" }), { target: { value: "重命名" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "确认重命名" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "确认重命名" }));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["file-task-history"] }));
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["file-operations"] });
   });
 
   it("keeps one metadata-editing entry without a separate file-management button", async () => {
@@ -383,6 +407,10 @@ describe("BookDetailPage", () => {
     renderDetail(`/library/books/${book.id}`, member);
 
     const bibliography = await screen.findByRole("region", { name: "书目资料" });
+    const fieldsList = bibliography.querySelector("dl");
+    expect(fieldsList).not.toBeNull();
+    expect(getComputedStyle(fieldsList!).display).toBe("grid");
+    expect(fieldsList!.querySelectorAll("dt")).toHaveLength(10);
     for (const value of [
       "译者丙", "中文", "示例出版社",
       "2025年03月", "978-7-0000-0000-0", "测试系列", "3", "文学、藏书",
@@ -415,6 +443,30 @@ describe("BookDetailPage", () => {
     expect(within(bibliography).getAllByText("—")).toHaveLength(10);
     const description = await screen.findByRole("region", { name: "内容简介" });
     expect(within(description).getByText("—")).toBeInTheDocument();
+  });
+
+  it("does not display the encrypted PDF source banner in detail body for signed-in readers", async () => {
+    const book = demoBooks[0];
+    const reason = "PDF 已加密，无法读取补充资料。";
+    vi.spyOn(api, "getBook").mockResolvedValue(book);
+    vi.spyOn(api, "getBookBibliographySource").mockRejectedValue(new ApiRequestError(reason, 422, "BIBLIOGRAPHY_PDF_ENCRYPTED"));
+    renderDetail(`/library/books/${book.id}`, member);
+
+    expect(await screen.findByRole("heading", { name: book.title, level: 2 })).toBeInTheDocument();
+    await waitFor(() => expect(api.getBookBibliographySource).toHaveBeenCalledWith(book.id, expect.any(AbortSignal)));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText(reason)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试原书信息" })).not.toBeInTheDocument();
+  });
+
+  it("offers retry on transient bibliography source errors such as FILE_LEASE_BUSY", async () => {
+    const book = demoBooks[0];
+    vi.spyOn(api, "getBook").mockResolvedValue(book);
+    vi.spyOn(api, "getBookBibliographySource").mockRejectedValue(new ApiRequestError("原书文件正忙，请稍后重试。", 409, "FILE_LEASE_BUSY"));
+    renderDetail(`/library/books/${book.id}`, member);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("原书文件正忙");
+    expect(screen.getByRole("button", { name: "重试原书信息" })).toBeInTheDocument();
   });
 
   it("retries failed metadata independently from the book request", async () => {

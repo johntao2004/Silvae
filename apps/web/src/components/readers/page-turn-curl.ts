@@ -150,6 +150,83 @@ uniform float pageTextureMotionOpacity;`,
   return backgroundUniform;
 }
 
+type PooledRendererEntry = {
+  canvas: HTMLCanvasElement;
+  renderer: WebGLRenderer;
+  wasConnected: boolean;
+  onContextLost: () => void;
+  observer?: IntersectionObserver;
+};
+
+let pooledEntry: PooledRendererEntry | null = null;
+let pageHideListenerAttached = false;
+
+function releasePooledEntry(entry: PooledRendererEntry) {
+  if (pooledEntry === entry) pooledEntry = null;
+  entry.observer?.disconnect();
+  entry.canvas.removeEventListener("webglcontextlost", entry.onContextLost);
+  entry.renderer.renderLists.dispose();
+  entry.renderer.dispose();
+  try {
+    entry.renderer.forceContextLoss();
+  } catch {
+    // Ignore environments where WEBGL_lose_context is unavailable.
+  }
+}
+
+export function disposePageCurlRendererPool() {
+  if (pooledEntry) releasePooledEntry(pooledEntry);
+}
+
+function acquirePageCurlRenderer(canvas: HTMLCanvasElement) {
+  if (pooledEntry && pooledEntry.canvas !== canvas) {
+    releasePooledEntry(pooledEntry);
+  }
+  if (pooledEntry && pooledEntry.canvas === canvas) {
+    const context = pooledEntry.renderer.getContext();
+    if (!context || context.isContextLost()) {
+      releasePooledEntry(pooledEntry);
+    } else {
+      return { renderer: pooledEntry.renderer, wasConnected: pooledEntry.wasConnected };
+    }
+  }
+  const renderer = new WebGLRenderer({
+    canvas,
+    alpha: true,
+    antialias: true,
+    powerPreference: "high-performance",
+    premultipliedAlpha: true,
+  });
+  const wasConnected = canvas.isConnected;
+  const entry: PooledRendererEntry = {
+    canvas,
+    renderer,
+    wasConnected,
+    onContextLost: () => {
+      if (pooledEntry === entry) pooledEntry = null;
+      entry.observer?.disconnect();
+      entry.canvas.removeEventListener("webglcontextlost", entry.onContextLost);
+    },
+  };
+  canvas.addEventListener("webglcontextlost", entry.onContextLost);
+  if (wasConnected && typeof IntersectionObserver !== "undefined") {
+    entry.observer = new IntersectionObserver(() => {
+      if (!entry.canvas.isConnected) releasePooledEntry(entry);
+    });
+    entry.observer.observe(canvas);
+  }
+  if (!pageHideListenerAttached && typeof window !== "undefined") {
+    pageHideListenerAttached = true;
+    window.addEventListener("pagehide", () => {
+      if (pooledEntry && (!pooledEntry.wasConnected || !pooledEntry.canvas.isConnected)) {
+        releasePooledEntry(pooledEntry);
+      }
+    });
+  }
+  pooledEntry = entry;
+  return { renderer, wasConnected };
+}
+
 export function createPageCurlRenderer({
   canvas,
   frontSnapshot,
@@ -164,13 +241,7 @@ export function createPageCurlRenderer({
   const bounds = canvas.getBoundingClientRect();
   if (bounds.width < 1 || bounds.height < 1) throw new Error("翻页画布没有可用尺寸");
 
-  const renderer = new WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: true,
-    powerPreference: "high-performance",
-    premultipliedAlpha: true,
-  });
+  const { renderer, wasConnected } = acquirePageCurlRenderer(canvas);
   renderer.setPixelRatio(pageTurnPixelRatio(window.devicePixelRatio || 1));
   renderer.setSize(bounds.width, bounds.height, false);
   renderer.setClearColor(new Color(tokens.color.primitive.black), 0);
@@ -326,7 +397,16 @@ export function createPageCurlRenderer({
       shadowMaterial.dispose();
       shadowReceiver.geometry.dispose();
       geometry.dispose();
-      renderer.dispose();
+      keyLight.shadow.map?.dispose();
+      if (pooledEntry?.renderer === renderer) {
+        renderer.renderLists.dispose();
+        renderer.clear();
+        if (wasConnected && !canvas.isConnected) {
+          releasePooledEntry(pooledEntry);
+        }
+      } else {
+        renderer.dispose();
+      }
     },
   };
 }

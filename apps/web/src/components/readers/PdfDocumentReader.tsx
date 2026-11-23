@@ -2,28 +2,26 @@ import { NavigateBeforeRounded } from "@/ui/icons";
 import { NavigateNextRounded } from "@/ui/icons";
 import { Alert } from "@/ui/feedback";
 import { Box } from "@/ui/primitives";
-import { Button } from "@/ui/buttons";
-import { ButtonBase } from "@/ui/buttons";
 import { CircularProgress } from "@/ui/feedback";
 import { IconButton } from "@/ui/buttons";
-import { Popover } from "@/ui/primitives";
 import { Stack } from "@/ui/primitives";
 import { Typography } from "@/ui/primitives";
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy, type PDFDataRangeTransport } from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "pdfjs-dist/web/pdf_viewer.css";
-import { Fragment, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode, type RefObject, type TouchEvent } from "react";
+import { Fragment, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject, type TouchEvent } from "react";
 import { api } from "../../api/client";
+import { persistenceUserId, registerSessionSaver } from "../../auth/session-save";
 import type { Annotation } from "../../domain/types";
 import { tokens } from "../../theme/tokens";
 import { readerWidthSx } from "../PageHeader";
 import { bindAnnotationNoteActivation } from "./annotation-activation";
 import { applyPdfTextAnnotations } from "./pdf-annotations";
-import { pdfNavigation } from "./pdf-navigation";
+import { pdfNavigation, pdfPrintedTocNavigation } from "./pdf-navigation";
 import { PdfImageSpread } from "./PdfImageSpread";
 import { pdfPageBoundarySeparator, pdfTextToReadingBlocks, shouldJoinPdfPageBoundaryParagraphs, splitPdfInlineFootnoteReferences, type PdfReadingBlock } from "./pdf-reading-text";
 import type { ReaderPageLayout } from "./reader-layout";
-import { isEditableReaderTarget, isReaderSwipe } from "./reader-navigation";
+import { classifyReaderTapZone, hasReaderTextSelection, isEditableReaderTarget, isReaderHorizontalSwipe, isReaderInteractiveTapTarget } from "./reader-navigation";
 import { PageTurnShade } from "./PageTurnShade";
 import { readerSelectionFromRect, type ReaderSelection, type TocItem } from "./types";
 import { useReaderPageLayout } from "./use-reader-page-layout";
@@ -31,29 +29,166 @@ import { usePageTurnTransition } from "./use-page-turn-transition";
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
-interface ActivePdfFootnote {
-  marker: string;
-  anchor: HTMLElement;
-  loading: boolean;
-  text?: string;
-  sourcePage?: number;
-}
-
-interface PdfFootnoteResult {
-  text: string;
-  pageNumber: number;
-}
-
 export interface PdfSourceBlock {
   block?: PdfReadingBlock;
   pageNumber: number;
   imagePage?: boolean;
+  chapterIndex?: number;
+  footnoteTargetKey?: string;
+  referenceTargetKey?: string;
 }
 
 interface IndexedPdfSourceBlock {
   source: PdfSourceBlock;
   index: number;
   sourceStart: boolean;
+}
+
+function pdfFootnoteTargetId(targetKey: string) {
+  return `pdf-footnote-${targetKey}`;
+}
+
+interface PdfChapterSourceBlocks {
+  chapterIndex: number;
+  content: PdfSourceBlock[];
+  footnotes: PdfSourceBlock[];
+  references: PdfSourceBlock[];
+  notesHeading?: PdfSourceBlock;
+  bibliographyHeading?: PdfSourceBlock;
+  appendixOrder: Array<"notes" | "bibliography">;
+  inNotesSection: boolean;
+  inBibliographySection: boolean;
+  lastContentPage?: number;
+}
+
+export function pdfFootnoteTargetKey(chapterIndex: number, marker: string) {
+  return `${chapterIndex}-${footnoteMarkerKey(marker)}`;
+}
+
+export function pdfReferenceTargetKey(chapterIndex: number, marker: string) {
+  return `${chapterIndex}-reference-${footnoteMarkerKey(marker)}`;
+}
+
+function recordPdfAppendixSection(chapter: PdfChapterSourceBlocks, section: "notes" | "bibliography") {
+  if (!chapter.appendixOrder.includes(section)) chapter.appendixOrder.push(section);
+}
+
+export function movePdfFootnotesToChapterEnd(blocks: PdfSourceBlock[]) {
+  const chapters: PdfChapterSourceBlocks[] = [];
+  let chapterIndex = 0;
+  let current = createPdfChapterSourceBlocks(chapterIndex);
+  const finishChapter = () => {
+    chapters.push(current);
+    chapterIndex += 1;
+    current = createPdfChapterSourceBlocks(chapterIndex);
+  };
+
+  blocks.forEach((source) => {
+    const block = source.block;
+    if (block?.kind === "heading" && block.chapterStart && (current.content.length || current.footnotes.length || current.references.length || current.notesHeading || current.bibliographyHeading)) finishChapter();
+    if (block?.kind === "heading" && block.notesSection) {
+      current.inBibliographySection = false;
+      current.notesHeading = source;
+      current.inNotesSection = true;
+      recordPdfAppendixSection(current, "notes");
+      return;
+    }
+    if (block?.kind === "heading" && block.bibliographySection) {
+      current.inBibliographySection = true;
+      current.inNotesSection = false;
+      current.bibliographyHeading = source;
+      recordPdfAppendixSection(current, "bibliography");
+      return;
+    }
+    if (block?.kind === "heading") {
+      current.inBibliographySection = false;
+      current.inNotesSection = false;
+    }
+    if (current.inBibliographySection && block && block.kind !== "heading") {
+      const referenceBlock = block.kind === "footnote"
+        ? { kind: "reference" as const, marker: block.marker, text: block.text }
+        : block;
+      current.references.push({ ...source, block: referenceBlock, chapterIndex });
+      return;
+    }
+    const isFootnote = block?.kind === "footnote";
+    const isNotesParagraph = current.inNotesSection && block?.kind === "paragraph";
+    if (isFootnote || isNotesParagraph) {
+      const noteBlock = isFootnote ? block : { kind: "footnote" as const, marker: "", text: block.text };
+      current.footnotes.push({ ...source, block: noteBlock, chapterIndex });
+      recordPdfAppendixSection(current, "notes");
+      return;
+    }
+    current.content.push({ ...source, chapterIndex });
+    if (source.pageNumber > 0) current.lastContentPage = source.pageNumber;
+  });
+  if (current.content.length || current.footnotes.length || current.references.length || current.notesHeading || current.bibliographyHeading || chapters.length === 0) finishChapter();
+
+  return chapters.flatMap((chapter) => {
+    const output = [...chapter.content];
+    const appendixPageNumber = chapter.lastContentPage
+      ?? chapter.content[0]?.pageNumber
+      ?? chapter.footnotes[0]?.pageNumber
+      ?? chapter.references[0]?.pageNumber
+      ?? 1;
+    const referenceMarkers = new Set(chapter.content.flatMap(({ block }) => block && "text" in block
+      ? splitPdfInlineFootnoteReferences(block.text).flatMap((part) => part.kind === "footnote-reference" ? [part.marker] : [])
+      : []));
+    const claimedTargets = new Set<string>();
+    const footnotes = chapter.footnotes.map((source) => {
+      const marker = source.block?.kind === "footnote" ? source.block.marker : "";
+      const targetKey = marker && referenceMarkers.has(marker) ? pdfFootnoteTargetKey(chapter.chapterIndex, marker) : undefined;
+      const uniqueTargetKey = targetKey && !claimedTargets.has(targetKey) ? targetKey : undefined;
+      if (uniqueTargetKey) claimedTargets.add(uniqueTargetKey);
+      return {
+        ...source,
+        pageNumber: appendixPageNumber,
+        chapterIndex: chapter.chapterIndex,
+        footnoteTargetKey: uniqueTargetKey,
+      };
+    });
+    const referenceMarkersInBibliography = new Set(chapter.references.flatMap(({ block }) => block?.kind === "reference" ? [block.marker] : []));
+    const claimedReferenceTargets = new Set<string>();
+    const references = chapter.references.map((source) => {
+      const marker = source.block?.kind === "reference" ? source.block.marker : "";
+      const footnoteTarget = marker ? pdfFootnoteTargetKey(chapter.chapterIndex, marker) : "";
+      const targetKey = marker && referenceMarkers.has(marker) && !claimedTargets.has(footnoteTarget) && referenceMarkersInBibliography.has(marker)
+        ? pdfReferenceTargetKey(chapter.chapterIndex, marker)
+        : undefined;
+      const uniqueTargetKey = targetKey && !claimedReferenceTargets.has(targetKey) ? targetKey : undefined;
+      if (uniqueTargetKey) claimedReferenceTargets.add(uniqueTargetKey);
+      return {
+        ...source,
+        pageNumber: appendixPageNumber,
+        chapterIndex: chapter.chapterIndex,
+        referenceTargetKey: uniqueTargetKey,
+      };
+    });
+    chapter.appendixOrder.forEach((section) => {
+      if (section === "notes") {
+        if (!chapter.notesHeading && footnotes.length === 0) return;
+        const headingSource = chapter.notesHeading;
+        output.push({
+          pageNumber: appendixPageNumber,
+          chapterIndex: chapter.chapterIndex,
+          block: { kind: "heading", text: headingSource?.block?.kind === "heading" ? headingSource.block.text : "注释", notesSection: true },
+        }, ...footnotes);
+        return;
+      }
+      if (!chapter.bibliographyHeading && references.length === 0) return;
+      const headingSource = chapter.bibliographyHeading;
+      output.push({
+        pageNumber: appendixPageNumber,
+        chapterIndex: chapter.chapterIndex,
+        block: { kind: "heading", text: headingSource?.block?.kind === "heading" ? headingSource.block.text : "参考文献", bibliographySection: true },
+      }, ...references);
+    });
+    return output;
+  });
+}
+
+function createPdfChapterSourceBlocks(chapterIndex: number): PdfChapterSourceBlocks {
+  return { chapterIndex, content: [], footnotes: [], references: [], appendixOrder: [], inNotesSection: false, inBibliographySection: false };
 }
 
 export function groupPdfSourceBlocks(blocks: PdfSourceBlock[]) {
@@ -129,6 +264,15 @@ function pdfSourcePageVirtualCount(sourcePageStarts: ReadonlyMap<number, number>
   return Math.max(1, (sourcePageStarts.get(sourcePage + 1) ?? totalCount) - start);
 }
 
+function publishPrintedPdfNavigation(document: PDFDocumentProxy, pages: ReadonlyMap<number, readonly PdfReadingBlock[]>, onNavigation: (items: TocItem[]) => void, signatureRef: { current: string }) {
+  const items = pdfPrintedTocNavigation(pages, document.numPages);
+  if (items.length === 0) return;
+  const signature = items.map(item => `${item.locator}:${item.label}`).join("|");
+  if (signature === signatureRef.current) return;
+  signatureRef.current = signature;
+  onNavigation(items);
+}
+
 export function pdfTurnPositionAt(
   cursor: { pageNumber: number; virtualPageIndex: number; virtualPageCount: number },
   direction: "PREVIOUS" | "NEXT",
@@ -150,7 +294,40 @@ export function remapPdfSourceTarget(
     : { ...target, virtualPageIndex: Math.min(Math.max(0, totalCount - 1), start + target.offset) };
 }
 
-export default function PdfDocumentReader({ bookId, annotations, theme, fontSize, fontFamily, pageTurnEnabled = true, fontSourceUrl, contentUrl, dataRange, readOnly = false, target, targetRevision, onNavigation, onAnnotationActivate, onSelect, onPosition }: {
+const UNSAFE_CSS_FONT_CHARS = new Set(['"', "'", "\\", "{", "}", ";", "(", ")", "<", ">"]);
+
+function isControlChar(ch: string): boolean {
+  const code = ch.codePointAt(0) ?? 0;
+  return code <= 0x1f || code === 0x7f;
+}
+
+function sanitizeCssFontFamilyName(rawFontFamily: string): string | null {
+  const firstToken = rawFontFamily.split(",")[0]?.trim() ?? "";
+  const unquoted = firstToken.replace(/^["']|["']$/gu, "");
+  const cleaned = [...unquoted].filter((ch) => !isControlChar(ch) && !UNSAFE_CSS_FONT_CHARS.has(ch)).join("").trim();
+  return cleaned || null;
+}
+
+function sanitizeCssFontUrl(rawUrl?: string): string | null {
+  if (!rawUrl) return null;
+  const trimmed = rawUrl.trim();
+  if (!trimmed || [...trimmed].some((ch) => isControlChar(ch) || /\s/u.test(ch) || UNSAFE_CSS_FONT_CHARS.has(ch))) {
+    return null;
+  }
+  if (trimmed.startsWith("//")) return null;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const parsed = new URL(trimmed, base);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:" && parsed.protocol !== "blob:") {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return trimmed;
+}
+
+export default function PdfDocumentReader({ bookId, annotations, theme, fontSize, fontFamily, pageTurnEnabled = true, fontSourceUrl, contentUrl, dataRange, readOnly = false, target, targetRevision, onNavigation, onAnnotationActivate, onToggleChrome, onSelect, onPosition }: {
   bookId: string;
   annotations: Annotation[];
   theme: { background: string; foreground: string; muted: string };
@@ -165,6 +342,7 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
   targetRevision?: number;
   onNavigation?: (items: TocItem[]) => void;
   onAnnotationActivate?: (id: string, rect?: DOMRect) => void;
+  onToggleChrome?: () => void;
   onSelect: (selection: ReaderSelection) => void;
   onPosition: (locator: string, progress: number) => void;
 }) {
@@ -172,8 +350,40 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
   const annotationsRef = useRef(annotations);
   const annotationCallbackRef = useRef(onAnnotationActivate);
   const annotatedSourcePagesRef = useRef(new Set<number>());
-  annotationsRef.current = annotations;
-  annotationCallbackRef.current = onAnnotationActivate;
+  useLayoutEffect(() => {
+    annotationsRef.current = annotations;
+    annotationCallbackRef.current = onAnnotationActivate;
+  }, [annotations, onAnnotationActivate]);
+  const activeReadOnlyRef = useRef(readOnly);
+  useLayoutEffect(() => {
+    activeReadOnlyRef.current = readOnly;
+  }, [readOnly]);
+  const pendingPositionRef = useRef<{ bookId: string; locator: string; progress: number; persistenceUser: string | null } | null>(null);
+  const lastPersistedPositionRef = useRef<{ bookId: string; locator: string; progress: number } | null>(null);
+  const saveTimerRef = useRef<number | undefined>(undefined);
+  const flushPosition = useCallback(() => {
+    if (saveTimerRef.current !== undefined) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = undefined;
+    }
+    const pending = pendingPositionRef.current;
+    if (!pending) return Promise.resolve();
+    pendingPositionRef.current = null;
+    if (activeReadOnlyRef.current || pending.persistenceUser !== persistenceUserId()) return Promise.resolve();
+    lastPersistedPositionRef.current = { bookId: pending.bookId, locator: pending.locator, progress: pending.progress };
+    return api.saveReadingPosition(pending.bookId, pending.locator, pending.progress).catch(() => undefined);
+  }, []);
+  useEffect(() => registerSessionSaver(flushPosition), [flushPosition]);
+  useEffect(() => {
+    const handlePageHide = () => {
+      void flushPosition();
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      void flushPosition();
+    };
+  }, [bookId, flushPosition]);
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   // PDF 原始页与重排后的虚拟页分开管理；locator 的 offset 指向原始页内分页。
@@ -187,20 +397,23 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
   const [error, setError] = useState("");
   const readingTextRef = useRef<HTMLDivElement | null>(null);
   const textCacheRef = useRef(new Map<number, PdfReadingBlock[]>());
+  const footnoteOriginRef = useRef(new Map<string, string>());
+  const outlineNavigationRef = useRef<TocItem[] | null>(null);
+  const printedNavigationSignatureRef = useRef("");
   const initialTargetPageRef = useRef(1);
   const parsedThroughRef = useRef(0);
   const hasDisplayedTextRef = useRef(false);
-  const footnoteCacheRef = useRef(new Map<string, PdfFootnoteResult | null>());
-  const footnoteRequestRef = useRef(0);
-  const footnoteOriginRef = useRef(new Map<string, string>());
-  const [activeFootnote, setActiveFootnote] = useState<ActivePdfFootnote | null>(null);
   const [displayedPosition, setDisplayedPosition] = useState({
     pageNumber: 1,
     virtualPageIndex: 0,
     virtualPageCount: 1,
   });
   const initialTargetRef = useRef(target);
-  const touchStartXRef = useRef<number | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const touchHadSelectionRef = useRef(false);
+  const lastTouchEndAtRef = useRef(0);
+  const mouseStartRef = useRef<{ x: number; y: number } | null>(null);
+  const mouseHadSelectionRef = useRef(false);
   const readingSurfaceRef = useRef<HTMLDivElement | null>(null);
   const pageLayout = useReaderPageLayout(readingSurfaceRef);
   const wideSpread = pageLayout?.spread ?? false;
@@ -210,11 +423,13 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
     virtualPageIndex,
     virtualPageCount,
   });
-  latestCursorRef.current = {
-    pageNumber,
-    virtualPageIndex,
-    virtualPageCount,
-  };
+  useLayoutEffect(() => {
+    latestCursorRef.current = {
+      pageNumber,
+      virtualPageIndex,
+      virtualPageCount,
+    };
+  }, [pageNumber, virtualPageIndex, virtualPageCount]);
   const sourcePageStartsRef = useRef(new Map<number, number>());
   const pendingSourceTargetRef = useRef<{ pageNumber: number; offset: number } | null>(null);
   const restoredSourceTargetRef = useRef<{ pageNumber: number; offset: number; virtualPageIndex: number } | null>(null);
@@ -256,6 +471,9 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
   useEffect(() => {
     let disposed = false;
     textCacheRef.current.clear();
+    outlineNavigationRef.current = null;
+    printedNavigationSignatureRef.current = "";
+    footnoteOriginRef.current.clear();
     sourcePageStartsRef.current.clear();
     pendingSourceTargetRef.current = null;
     restoredSourceTargetRef.current = null;
@@ -263,10 +481,7 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
     parsedThroughRef.current = 0;
     hasDisplayedTextRef.current = false;
     setSourcePageStartRevision((revision) => revision + 1);
-    footnoteCacheRef.current.clear();
-    footnoteOriginRef.current.clear();
     annotatedSourcePagesRef.current.clear();
-    setActiveFootnote(null);
     setDocument(null);
     setPageNumber(1);
     setVirtualPageIndex(0);
@@ -292,6 +507,7 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
     }).catch((reason) => { if (!disposed) setError(reason instanceof Error ? reason.message : "无法打开 PDF"); });
     return () => {
       disposed = true;
+      textCacheRef.current.clear();
       void task.destroy();
     };
   }, [bookId, contentUrl, dataRange, readOnly]);
@@ -324,12 +540,27 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
   useEffect(() => {
     if (!document || !onNavigation) return;
     let disposed = false;
+    outlineNavigationRef.current = null;
     void (async () => {
       const items = await pdfNavigation(document);
-      if (!disposed) onNavigation(items);
-    })().catch(() => { if (!disposed) onNavigation([]); });
+      if (disposed) return;
+      outlineNavigationRef.current = items;
+      onNavigation(items);
+    })().catch(() => {
+      if (disposed) return;
+      outlineNavigationRef.current = [];
+      onNavigation([]);
+      publishPrintedPdfNavigation(document, textCacheRef.current, onNavigation, printedNavigationSignatureRef);
+    });
     return () => { disposed = true; };
   }, [document, onNavigation]);
+
+  useEffect(() => {
+    if (!document || !onNavigation) return;
+    const outline = outlineNavigationRef.current;
+    if (outline === null || outline.length > 0) return;
+    publishPrintedPdfNavigation(document, textCacheRef.current, onNavigation, printedNavigationSignatureRef);
+  }, [document, onNavigation, readingBlocks]);
 
   useEffect(() => {
     if (!document) return;
@@ -345,11 +576,18 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
           let blocks = textCacheRef.current.get(sourcePage);
           if (!blocks) {
             const page = await document.getPage(sourcePage);
-            if (disposed) return;
-            const content = await page.getTextContent();
-            if (disposed) return;
-            blocks = pdfTextToReadingBlocks(content.items);
-            textCacheRef.current.set(sourcePage, blocks);
+            if (disposed) {
+              page.cleanup?.();
+              return;
+            }
+            try {
+              const content = await page.getTextContent();
+              if (disposed) return;
+              blocks = pdfTextToReadingBlocks(content.items);
+              textCacheRef.current.set(sourcePage, blocks);
+            } finally {
+              page.cleanup?.();
+            }
           }
           allBlocks.push(...(blocks.length
             ? blocks.map((block) => ({ block, pageNumber: sourcePage }))
@@ -359,7 +597,7 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
         parsedThroughRef.current = lastPage;
         if (lastPage >= initialTargetPageRef.current || lastPage === document.numPages) {
           hasDisplayedTextRef.current = true;
-          setReadingBlocks([...allBlocks]);
+          setReadingBlocks(movePdfFootnotesToChapterEnd(allBlocks));
           setTextLoading(false);
         }
         firstPage = lastPage + 1;
@@ -410,8 +648,23 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
     const sourceCount = pdfSourcePageVirtualCount(sourcePageStartsRef.current, position.pageNumber, virtualPageCount);
     const progress = Math.max(0, Math.min(1, (position.pageNumber - 1 + (position.offset + 0.5) / sourceCount) / document.numPages));
     onPosition(locator, progress);
-    if (!readOnly) void api.saveReadingPosition(bookId, locator, progress).catch(() => undefined);
-  }, [bookId, document, onPosition, pageNumber, readOnly, sourcePageStartRevision, turning, virtualPageCount, virtualPageIndex]);
+    if (!readOnly) {
+      const alreadyPersisted = lastPersistedPositionRef.current
+        && lastPersistedPositionRef.current.bookId === bookId
+        && lastPersistedPositionRef.current.locator === locator
+        && Math.abs(lastPersistedPositionRef.current.progress - progress) < 1e-6;
+      if (!alreadyPersisted) {
+        if (saveTimerRef.current !== undefined) window.clearTimeout(saveTimerRef.current);
+        const pending = { bookId, locator, progress, persistenceUser: persistenceUserId() };
+        pendingPositionRef.current = pending;
+        const timer = window.setTimeout(() => {
+          if (saveTimerRef.current === timer) saveTimerRef.current = undefined;
+          if (pendingPositionRef.current === pending) void flushPosition();
+        }, 350);
+        saveTimerRef.current = timer;
+      }
+    }
+  }, [bookId, document, flushPosition, onPosition, pageNumber, readOnly, sourcePageStartRevision, turning, virtualPageCount, virtualPageIndex]);
 
   const captureSelection = (fallbackPageNumber = pageNumber) => {
     const nativeSelection = window.getSelection();
@@ -425,43 +678,44 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
     onSelect(readerSelectionFromRect({ quote, locator: `pdf:page=${sourcePage}&offset=${sourceOffset}`, rect }));
   };
 
-  const openFootnote = (marker: string, anchor: HTMLElement, originId: string, sourcePageNumber: number, sourceBlocks: PdfReadingBlock[]) => {
-    footnoteOriginRef.current.set(marker, originId);
-    const local = sourceBlocks.find((block): block is Extract<PdfReadingBlock, { kind: "footnote" }> => block.kind === "footnote" && block.marker === marker);
-    if (local) {
-      setActiveFootnote({ marker, anchor, loading: false, text: local.text, sourcePage: sourcePageNumber });
+  const jumpToPdfElement = useCallback((element: HTMLElement, sourcePageNumber: number) => {
+    const frame = readingTextRef.current;
+    const currentLayout = pageLayout;
+    if (!frame || !currentLayout?.columnWidth) {
+      element.focus({ preventScroll: true });
       return;
     }
+    const frameLeft = frame.getBoundingClientRect().left;
+    const localX = element.getBoundingClientRect().left - frameLeft;
+    const targetIndex = Math.min(
+      Math.max(0, virtualPageCount - 1),
+      pdfSourceVirtualPageIndex(localX, currentLayout.pagePadding, currentLayout.columnWidth, currentLayout.columnGap, currentLayout.visibleColumns),
+    );
+    const sourceStart = sourcePageStartsRef.current.get(sourcePageNumber);
+    const offset = sourceStart === undefined ? 0 : Math.max(0, targetIndex - sourceStart);
+    restoredSourceTargetRef.current = { pageNumber: sourcePageNumber, offset, virtualPageIndex: targetIndex };
+    setPageNumber(sourcePageNumber);
+    setVirtualPageIndex(targetIndex);
+    window.requestAnimationFrame(() => element.focus({ preventScroll: true }));
+  }, [pageLayout, virtualPageCount]);
 
-    const cacheKey = `${sourcePageNumber}:${marker}`;
-    if (footnoteCacheRef.current.has(cacheKey)) {
-      const cached = footnoteCacheRef.current.get(cacheKey);
-      setActiveFootnote({ marker, anchor, loading: false, text: cached?.text, sourcePage: cached?.pageNumber });
-      return;
-    }
+  const openFootnote = useCallback((targetKey: string, anchor: HTMLElement) => {
+    footnoteOriginRef.current.set(targetKey, anchor.id);
+    const note = window.document.getElementById(pdfFootnoteTargetId(targetKey));
+    if (note) jumpToPdfElement(note, Number(note.dataset.pdfSourcePage) || pageNumber);
+  }, [jumpToPdfElement, pageNumber]);
 
-    setActiveFootnote({ marker, anchor, loading: true, sourcePage: sourcePageNumber });
-    const requestId = footnoteRequestRef.current + 1;
-    footnoteRequestRef.current = requestId;
-    void findPdfFootnote(document, sourcePageNumber, marker, textCacheRef.current).then((result) => {
-      footnoteCacheRef.current.set(cacheKey, result);
-      if (footnoteRequestRef.current !== requestId) return;
-      setActiveFootnote({ marker, anchor, loading: false, text: result?.text, sourcePage: result?.pageNumber });
-    }).catch(() => {
-      if (footnoteRequestRef.current === requestId) setActiveFootnote({ marker, anchor, loading: false });
-    });
-  };
-
-  const returnToFootnoteReference = (marker: string) => {
-    const referenceId = footnoteOriginRef.current.get(marker);
+  const returnToFootnoteReference = useCallback((targetKey: string) => {
+    const referenceId = footnoteOriginRef.current.get(targetKey);
     const reference = referenceId ? window.document.getElementById(referenceId) : null;
-    reference?.focus({ preventScroll: true });
-  };
+    if (reference) jumpToPdfElement(reference, Number(reference.dataset.pdfSourcePage) || pageNumber);
+  }, [jumpToPdfElement, pageNumber]);
 
   const handleVirtualPageCountChange = useCallback((count: number, sourcePageStarts: Array<[number, number]>) => {
+    const { pageNumber: currentPageNumber, virtualPageIndex: currentVirtualPageIndex } = latestCursorRef.current;
     const nextCount = Math.max(1, count);
-    const previousStart = sourcePageStartsRef.current.get(pageNumber);
-    const previousOffset = previousStart === undefined ? null : Math.max(0, virtualPageIndex - previousStart);
+    const previousStart = sourcePageStartsRef.current.get(currentPageNumber);
+    const previousOffset = previousStart === undefined ? null : Math.max(0, currentVirtualPageIndex - previousStart);
     const nextStarts = new Map(sourcePageStarts);
     const currentStarts = sourcePageStartsRef.current;
     const startsChanged = currentStarts.size !== nextStarts.size
@@ -490,13 +744,13 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
           setVirtualPageIndex(remappedTarget.virtualPageIndex);
         }
       } else {
-        const nextStart = nextStarts.get(pageNumber);
+        const nextStart = nextStarts.get(currentPageNumber);
         if (nextStart !== undefined && previousOffset !== null) setVirtualPageIndex(Math.min(nextCount - 1, nextStart + previousOffset));
       }
     }
     setVirtualPageCount(nextCount);
     setVirtualPageIndex((current) => Math.min(current, nextCount - 1));
-  }, [pageNumber, virtualPageIndex]);
+  }, []);
 
   const canPrevious = virtualPageIndex > 0;
   const canNext = Boolean(document) && virtualPageIndex < virtualPageCount - 1;
@@ -538,23 +792,87 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [goNext, goPrevious]);
 
+  const resolveTapZone = (clientX: number, fallbackElement: EventTarget | null) => {
+    const surface = readingSurfaceRef.current;
+    const surfaceRect = surface?.getBoundingClientRect();
+    if (surfaceRect && surfaceRect.width > 0) return classifyReaderTapZone(clientX, surfaceRect.left, surfaceRect.width);
+    const fallbackRect = fallbackElement instanceof Element ? fallbackElement.getBoundingClientRect() : undefined;
+    if (fallbackRect && fallbackRect.width > 0) return classifyReaderTapZone(clientX, fallbackRect.left, fallbackRect.width);
+    return classifyReaderTapZone(clientX, 0, 0);
+  };
+  const isReadingSurfaceTap = (target: EventTarget | null, currentTarget: EventTarget | null) => {
+    const surface = readingSurfaceRef.current;
+    if (!surface || target === currentTarget) return true;
+    const node = target as Node | null;
+    return Boolean(node && surface.contains(node));
+  };
+  const triggerTapZone = (clientX: number, target: EventTarget | null, currentTarget: EventTarget | null) => {
+    if (!onToggleChrome) return;
+    if (!isReadingSurfaceTap(target, currentTarget) || isReaderInteractiveTapTarget(target)) return;
+    const zone = resolveTapZone(clientX, currentTarget);
+    if (zone === "PREVIOUS") goPrevious();
+    else if (zone === "NEXT") goNext();
+    else onToggleChrome();
+  };
   const handleTouchStart = (event: TouchEvent) => {
-    touchStartXRef.current = event.changedTouches[0]?.clientX ?? null;
+    if (event.touches && event.touches.length > 1) {
+      touchStartRef.current = null;
+      touchHadSelectionRef.current = false;
+      return;
+    }
+    const touch = event.changedTouches[0];
+    touchStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    touchHadSelectionRef.current = hasReaderTextSelection();
   };
   const handleTouchEnd = (event: TouchEvent) => {
-    const endX = event.changedTouches[0]?.clientX;
-    if (endX === undefined || !isReaderSwipe(touchStartXRef.current, endX)) return;
-    const startX = touchStartXRef.current;
-    touchStartXRef.current = null;
-    if (startX !== null && endX < startX) goNext();
-    else goPrevious();
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    const hadSelection = touchHadSelectionRef.current || hasReaderTextSelection();
+    touchHadSelectionRef.current = false;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+    lastTouchEndAtRef.current = Date.now();
+    const endX = touch.clientX;
+    const endY = touch.clientY;
+    if (isReaderHorizontalSwipe({ startX: start.x, startY: start.y, endX, endY, hasSelection: hadSelection })) {
+      if (endX < start.x) goNext();
+      else goPrevious();
+      return;
+    }
+    if (onToggleChrome && Math.hypot(endX - start.x, endY - start.y) < 10 && !hadSelection) {
+      triggerTapZone(endX, event.target, event.currentTarget);
+    }
   };
+  const handleMouseDown = (event: MouseEvent) => {
+    if (!onToggleChrome || event.button !== 0) return;
+    mouseStartRef.current = { x: event.clientX, y: event.clientY };
+    mouseHadSelectionRef.current = hasReaderTextSelection();
+  };
+  const handleClick = (event: MouseEvent) => {
+    const start = mouseStartRef.current;
+    mouseStartRef.current = null;
+    const hadSelection = mouseHadSelectionRef.current || hasReaderTextSelection();
+    mouseHadSelectionRef.current = false;
+    if (!onToggleChrome) return;
+    if (Date.now() - lastTouchEndAtRef.current < 700) return;
+    if (event.defaultPrevented || event.button !== 0) return;
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 10) return;
+    if (hadSelection) return;
+    triggerTapZone(event.clientX, event.target, event.currentTarget);
+  };
+
+  const customFontFaceRule = useMemo(() => {
+    const safeUrl = sanitizeCssFontUrl(fontSourceUrl);
+    const safeFamily = sanitizeCssFontFamilyName(fontFamily);
+    if (!safeUrl || !safeFamily) return null;
+    return `@font-face { font-family: "${safeFamily}"; src: url("${safeUrl}"); font-display: swap; }`;
+  }, [fontFamily, fontSourceUrl]);
 
   if (error) return <Stack ref={annotationActivationRootRef} className="reader-viewport" sx={{ height: "100%", alignItems: "center", justifyContent: "center", p: 3 }}><Alert severity="error">{error}</Alert></Stack>;
 
   return (
-    <Stack ref={annotationActivationRootRef} className="reader-viewport" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} sx={{ height: "100%", minHeight: 0, overflow: "hidden", bgcolor: theme.background, color: theme.foreground }}>
-      {fontSourceUrl && <style>{`@font-face { font-family: ${fontFamily.split(",")[0]}; src: url("${fontSourceUrl}"); font-display: swap; }`}</style>}
+    <Stack ref={annotationActivationRootRef} className="reader-viewport" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onMouseDown={onToggleChrome ? handleMouseDown : undefined} onClick={onToggleChrome ? handleClick : undefined} sx={{ height: "100%", minHeight: 0, overflow: "hidden", bgcolor: theme.background, color: theme.foreground }}>
+      {customFontFaceRule && <style>{customFontFaceRule}</style>}
       {textError && <Alert severity="warning">{textError}</Alert>}
       <Box ref={readingSurfaceRef} className="reader-page-turn-surface" data-reader-spread={wideSpread} sx={{ position: "relative", ...readerWidthSx, flex: "1 1 auto", minHeight: 0, overflow: "hidden", bgcolor: theme.background, backfaceVisibility: "hidden", transformStyle: "preserve-3d", willChange: turning ? "transform, opacity, filter, clip-path" : "auto" }}>
         <PdfReadingClipFrame width={readingBlocks.length === 0 ? undefined : pageLayout?.articleWidth}>
@@ -569,28 +887,6 @@ export default function PdfDocumentReader({ bookId, annotations, theme, fontSize
         <Typography variant="body2" sx={{ minWidth: 0, flex: "1 1 auto", textAlign: "center", whiteSpace: "nowrap", color: theme.muted }}>{document ? `第 ${displayedPosition.pageNumber} 页 · 共 ${document.numPages} 页` : "正在打开 PDF…"}</Typography>
         <IconButton color="inherit" aria-label="PDF 下一页" disabled={turning || !canNext} onClick={goNext} sx={{ width: tokens.layout.touchTarget, height: tokens.layout.touchTarget }}><NavigateNextRounded /></IconButton>
       </Stack>
-      <Popover
-        open={Boolean(activeFootnote)}
-        anchorEl={activeFootnote?.anchor}
-        onClose={() => setActiveFootnote(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
-        marginThreshold={tokens.spacing[2]}
-        slotProps={{ paper: { sx: { width: tokens.layout.breakpointMobile - tokens.spacing[24], maxWidth: `calc(100vw - ${tokens.spacing[8]}px)`, borderRadius: `${tokens.radius.xl}px`, boxShadow: tokens.shadow.popover } } }}
-      >
-        <Box role="note" aria-label={activeFootnote ? `文中注释 ${activeFootnote.marker}` : "文中注释"} sx={{ p: `${tokens.spacing[5]}px` }}>
-          <Stack direction="row" sx={{ alignItems: "baseline", justifyContent: "space-between", gap: `${tokens.spacing[4]}px`, mb: `${tokens.spacing[3]}px` }}>
-            <Typography variant="overline" sx={{ color: "primary.main", fontWeight: tokens.typography.fontWeight.semibold }}>文中注释 {activeFootnote?.marker}</Typography>
-            {activeFootnote?.sourcePage && <Typography variant="caption" color="text.secondary">原注释第 {activeFootnote.sourcePage} 页</Typography>}
-          </Stack>
-          <Box aria-live="polite" sx={{ minHeight: tokens.spacing[6] }}>
-            {activeFootnote?.loading
-              ? <Stack direction="row" sx={{ alignItems: "center", gap: `${tokens.spacing[3]}px` }}><CircularProgress size={tokens.spacing[5]} /><Typography variant="body2">正在查找对应注释…</Typography></Stack>
-              : <Typography sx={{ fontFamily: tokens.typography.fontFamily.display, fontSize: tokens.typography.fontSize.body, lineHeight: tokens.typography.lineHeight.body }}>{activeFootnote?.text ?? "未在后续页面找到对应注释。"}</Typography>}
-          </Box>
-          <Stack direction="row" sx={{ justifyContent: "flex-end", mt: `${tokens.spacing[4]}px` }}><Button size="small" onClick={() => setActiveFootnote(null)}>返回原文</Button></Stack>
-        </Box>
-      </Popover>
     </Stack>
   );
 }
@@ -612,26 +908,27 @@ export function PdfPagedText({ textRef, document, blocks, sourcePageStarts, page
   pageIndex: number;
   turning: boolean;
   onPageCountChange: (count: number, sourcePageStarts: Array<[number, number]>) => void;
-  onOpenFootnote: (marker: string, anchor: HTMLElement, originId: string, sourcePageNumber: number, sourceBlocks: PdfReadingBlock[]) => void;
-  onReturnToReference: (marker: string) => void;
+  onOpenFootnote: (targetKey: string, anchor: HTMLElement) => void;
+  onReturnToReference: (targetKey: string) => void;
   onCaptureSelection: () => void;
 }) {
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const onPageCountChangeRef = useRef(onPageCountChange);
+  useLayoutEffect(() => {
+    onPageCountChangeRef.current = onPageCountChange;
+  }, [onPageCountChange]);
   const visibleColumns = layout?.visibleColumns ?? 1;
   const columnWidth = layout?.columnWidth ?? null;
   const columnGap = layout?.columnGap ?? tokens.layout.readerPageGap;
   const pagePadding = layout?.pagePadding ?? tokens.spacing[5];
-  const blocksBySourcePage = useMemo(() => {
-    const grouped = new Map<number, PdfReadingBlock[]>();
-    blocks.forEach(({ block, pageNumber: sourcePage }) => {
-      if (!block) return;
-      const sourceBlocks = grouped.get(sourcePage) ?? [];
-      sourceBlocks.push(block);
-      grouped.set(sourcePage, sourceBlocks);
-    });
-    return grouped;
-  }, [blocks]);
-  const renderGroups = useMemo(() => groupPdfSourceBlocks(blocks), [blocks]);
+  const displayBlocks = blocks;
+  const footnoteTargetKeys = useMemo(() => new Set(
+    displayBlocks.flatMap(({ block, footnoteTargetKey }) => block?.kind === "footnote" && footnoteTargetKey ? [footnoteTargetKey] : []),
+  ), [displayBlocks]);
+  const referenceTargetKeys = useMemo(() => new Set(
+    displayBlocks.flatMap(({ block, referenceTargetKey }) => block?.kind === "reference" && referenceTargetKey ? [referenceTargetKey] : []),
+  ), [displayBlocks]);
+  const renderGroups = useMemo(() => groupPdfSourceBlocks(displayBlocks), [displayBlocks]);
 
   useEffect(() => {
     if (turning) return;
@@ -661,7 +958,7 @@ export function PdfPagedText({ textRef, document, blocks, sourcePageStarts, page
           const localX = (firstLeft ?? span.getBoundingClientRect().left) - frameLeft;
           sourcePageStarts.set(sourcePage, pdfSourceVirtualPageIndex(localX, pagePadding, columnWidth, columnGap, visibleColumns));
         });
-        onPageCountChange(Math.max(1, Math.ceil(totalColumns / visibleColumns)), [...sourcePageStarts.entries()]);
+        onPageCountChangeRef.current(Math.max(1, Math.ceil(totalColumns / visibleColumns)), [...sourcePageStarts.entries()]);
       });
     };
     measure();
@@ -669,7 +966,7 @@ export function PdfPagedText({ textRef, document, blocks, sourcePageStarts, page
     const observer = new ResizeObserver(measure);
     observer.observe(frame);
     return () => { observer.disconnect(); window.cancelAnimationFrame(animationFrame); };
-  }, [blocks, columnGap, columnWidth, fontFamily, fontSize, layout?.articleWidth, onPageCountChange, turning, visibleColumns]);
+  }, [displayBlocks, columnGap, columnWidth, fontFamily, fontSize, layout?.articleWidth, pagePadding, turning, visibleColumns]);
 
   const pageStride = layout?.pageStride ?? 0;
 
@@ -714,7 +1011,7 @@ export function PdfPagedText({ textRef, document, blocks, sourcePageStarts, page
         fontSize,
         lineHeight: tokens.typography.lineHeight.body,
         "& > *": { breakInside: "auto" },
-        "& h2, & aside": { breakInside: "avoid" },
+        "& h2, & h3, & aside": { breakInside: "avoid" },
       }}
     >
       {renderGroups.map((group) => {
@@ -728,7 +1025,7 @@ export function PdfPagedText({ textRef, document, blocks, sourcePageStarts, page
               const sourcePage = part.source.pageNumber;
               const text = part.source.block!.text;
               return <Fragment key={`${sourcePage}-${part.index}`}>
-                <PdfInlineText text={text} pageNumber={sourcePage} blockIndex={part.index} sourceStart={part.sourceStart} onOpenFootnote={(marker, anchor, originId) => onOpenFootnote(marker, anchor, originId, sourcePage, blocksBySourcePage.get(sourcePage) ?? [])} />
+                <PdfInlineText text={text} pageNumber={sourcePage} blockIndex={part.index} chapterIndex={part.source.chapterIndex ?? 0} sourceStart={part.sourceStart} footnoteTargetKeys={footnoteTargetKeys} referenceTargetKeys={referenceTargetKeys} onOpenFootnote={onOpenFootnote} />
                 {partIndex < group.length - 1 && pdfPageBoundarySeparator(text, group[partIndex + 1]!.source.block!.text)}
               </Fragment>;
             })}
@@ -743,17 +1040,30 @@ export function PdfPagedText({ textRef, document, blocks, sourcePageStarts, page
         return <Fragment key={`${sourcePageNumber}-${index}`}>
           {imagePage
             ? <Box data-pdf-source-page={sourcePageNumber} data-pdf-image-page="" data-pdf-source-marker={sourceStart ? "" : undefined} sx={{ height: "100%", minHeight: "100%", breakInside: "avoid" }}>{imageIsNearViewport && <PdfImageSpread document={document} pageNumber={sourcePageNumber} spread={false} muted={theme.muted} />}</Box>
-            : <PdfReadingBlockView block={block!} index={index} pageNumber={sourcePageNumber} sourceStart={sourceStart} readingBlocks={blocksBySourcePage.get(sourcePageNumber) ?? []} onOpenFootnote={onOpenFootnote} onReturnToReference={onReturnToReference} />}
+            : <PdfReadingBlockView source={source} block={block!} index={index} pageNumber={sourcePageNumber} sourceStart={sourceStart} footnoteTargetKeys={footnoteTargetKeys} referenceTargetKeys={referenceTargetKeys} onOpenFootnote={onOpenFootnote} onReturnToReference={onReturnToReference} />}
         </Fragment>;
       })}
     </Box>
   );
 }
 
-function PdfReadingBlockView({ block, index, pageNumber, sourceStart, readingBlocks, onOpenFootnote, onReturnToReference }: { block: PdfReadingBlock; index: number; pageNumber: number; sourceStart: boolean; readingBlocks: PdfReadingBlock[]; onOpenFootnote: (marker: string, anchor: HTMLElement, originId: string, sourcePageNumber: number, sourceBlocks: PdfReadingBlock[]) => void; onReturnToReference: (marker: string) => void }) {
-  const inlineText = (text: string) => <PdfInlineText text={text} pageNumber={pageNumber} blockIndex={index} sourceStart={sourceStart} onOpenFootnote={(marker, anchor, originId) => onOpenFootnote(marker, anchor, originId, pageNumber, readingBlocks)} />;
+function PdfReadingBlockView({ source, block, index, pageNumber, sourceStart, footnoteTargetKeys, referenceTargetKeys, onOpenFootnote, onReturnToReference }: { source: PdfSourceBlock; block: PdfReadingBlock; index: number; pageNumber: number; sourceStart: boolean; footnoteTargetKeys: ReadonlySet<string>; referenceTargetKeys: ReadonlySet<string>; onOpenFootnote: (targetKey: string, anchor: HTMLElement) => void; onReturnToReference: (targetKey: string) => void }) {
+  const chapterIndex = source.chapterIndex ?? 0;
+  const inlineText = (text: string) => <PdfInlineText text={text} pageNumber={pageNumber} blockIndex={index} chapterIndex={chapterIndex} sourceStart={sourceStart} footnoteTargetKeys={footnoteTargetKeys} referenceTargetKeys={referenceTargetKeys} onOpenFootnote={onOpenFootnote} />;
+  if (block.kind === "footnote") {
+    const targetKey = source.footnoteTargetKey;
+    return <Box component="aside" role="note" tabIndex={-1} id={targetKey ? pdfFootnoteTargetId(targetKey) : undefined} data-pdf-footnote-key={targetKey} data-pdf-source-page={pageNumber} data-pdf-source-marker={sourceStart ? "" : undefined} sx={{ mt: `${tokens.spacing[6]}px`, pt: `${tokens.spacing[4]}px`, minWidth: 0, maxWidth: "100%", borderTop: 1, borderColor: "divider", scrollMargin: `${tokens.spacing[6]}px`, breakInside: "avoid", overflowWrap: "anywhere" }}>
+      <Stack direction="row" sx={{ alignItems: "flex-start", gap: `${tokens.spacing[3]}px`, minWidth: 0, maxWidth: "100%" }}>
+        {block.marker && (targetKey
+          ? <Box component="button" type="button" aria-label={`返回正文引用 ${block.marker}`} onClick={() => onReturnToReference(targetKey)} sx={{ appearance: "none", background: "none", border: 0, borderRadius: 0, p: 0, m: 0, boxShadow: "none", cursor: "pointer", flexShrink: 0, color: "primary.main", fontFamily: "inherit", fontSize: tokens.typography.fontSize.bodySm, fontWeight: tokens.typography.fontWeight.semibold, lineHeight: tokens.typography.lineHeight.body, "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" } }}>{block.marker}</Box>
+          : <Box component="span" sx={{ flexShrink: 0, color: "text.secondary", fontSize: tokens.typography.fontSize.bodySm, lineHeight: tokens.typography.lineHeight.body }}>{block.marker}</Box>)}
+        <Typography component="p" sx={{ m: 0, minWidth: 0, maxWidth: "100%", flex: "1 1 auto", color: "text.secondary", fontFamily: "inherit", fontSize: tokens.typography.fontSize.bodySm, lineHeight: tokens.typography.lineHeight.body, overflowWrap: "anywhere", wordBreak: "break-word" }}>{block.text}</Typography>
+      </Stack>
+    </Box>;
+  }
   if (block.kind === "heading") {
-    return <Typography component="h2" data-pdf-source-page={pageNumber} sx={{ m: 0, mb: `${tokens.spacing[8]}px`, color: "inherit", fontFamily: "inherit", fontSize: "inherit", fontWeight: tokens.typography.fontWeight.semibold, lineHeight: tokens.typography.lineHeight.heading, textAlign: "center" }}>{inlineText(block.text)}</Typography>;
+    const appendixHeading = block.notesSection || block.bibliographySection;
+    return <Typography component={appendixHeading ? "h3" : "h2"} data-pdf-source-page={pageNumber} data-pdf-chapter-start={block.chapterStart ? "" : undefined} data-pdf-notes-section={block.notesSection ? "" : undefined} data-pdf-bibliography-section={block.bibliographySection ? "" : undefined} sx={{ m: 0, mb: `${tokens.spacing[8]}px`, breakBefore: block.chapterStart || appendixHeading ? "column" : "auto", breakAfter: "avoid-column", color: "inherit", fontFamily: "inherit", fontSize: appendixHeading ? tokens.typography.fontSize.bodySm : "inherit", fontWeight: tokens.typography.fontWeight.semibold, lineHeight: tokens.typography.lineHeight.heading, textAlign: appendixHeading ? "left" : "center", textTransform: "none" }}>{appendixHeading ? block.text : inlineText(block.text)}</Typography>;
   }
   if (block.kind === "toc-entry") {
     return (
@@ -764,57 +1074,47 @@ function PdfReadingBlockView({ block, index, pageNumber, sourceStart, readingBlo
       </Box>
     );
   }
-  if (block.kind === "footnote") {
-    return (
-      <Box component="aside" role="note" id={`pdf-footnote-${pageNumber}-${footnoteMarkerKey(block.marker)}`} data-pdf-source-page={pageNumber} sx={{ mt: `${tokens.spacing[6]}px`, pt: `${tokens.spacing[4]}px`, borderTop: 1, borderColor: "divider" }}>
-        <Stack direction="row" sx={{ alignItems: "flex-start", gap: `${tokens.spacing[3]}px` }}>
-          <ButtonBase aria-label={`返回文中注释 ${block.marker}`} onClick={() => onReturnToReference(block.marker)} sx={{ flexShrink: 0, color: "primary.main", fontSize: tokens.typography.fontSize.bodySm, fontWeight: tokens.typography.fontWeight.semibold, lineHeight: tokens.typography.lineHeight.body }}>{block.marker}</ButtonBase>
-          <Typography component="p" sx={{ m: 0, color: "text.secondary", fontFamily: "inherit", fontSize: tokens.typography.fontSize.bodySm, lineHeight: tokens.typography.lineHeight.body }}>{inlineText(block.text)}</Typography>
-        </Stack>
-      </Box>
-    );
+  if (block.kind === "reference") {
+    const targetKey = source.referenceTargetKey;
+    return <Box component="aside" role="doc-biblioentry" tabIndex={targetKey ? -1 : undefined} id={targetKey ? pdfFootnoteTargetId(targetKey) : undefined} data-pdf-reference-key={targetKey} data-pdf-source-page={pageNumber} sx={{ display: "flex", alignItems: "flex-start", gap: `${tokens.spacing[3]}px`, mt: `${tokens.spacing[3]}px`, minWidth: 0, maxWidth: "100%", scrollMargin: `${tokens.spacing[6]}px`, breakInside: "avoid", overflowWrap: "anywhere" }}>
+      {block.marker && (targetKey
+        ? <Box component="button" type="button" aria-label={`返回正文引用 ${block.marker}`} onClick={() => onReturnToReference(targetKey)} sx={{ appearance: "none", background: "none", border: 0, borderRadius: 0, p: 0, m: 0, boxShadow: "none", cursor: "pointer", flexShrink: 0, color: "primary.main", fontFamily: "inherit", fontSize: tokens.typography.fontSize.bodySm, fontWeight: tokens.typography.fontWeight.semibold, lineHeight: tokens.typography.lineHeight.body, "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" } }}>{block.marker}</Box>
+        : <Box component="span" sx={{ flexShrink: 0, color: "text.secondary", fontSize: tokens.typography.fontSize.bodySm, lineHeight: tokens.typography.lineHeight.body }}>{block.marker}</Box>)}
+      <Typography component="p" sx={{ m: 0, minWidth: 0, maxWidth: "100%", flex: "1 1 auto", color: "text.secondary", fontFamily: "inherit", fontSize: tokens.typography.fontSize.bodySm, lineHeight: tokens.typography.lineHeight.body, overflowWrap: "anywhere", wordBreak: "break-word" }}>{block.text}</Typography>
+    </Box>;
   }
   return <Typography component="p" data-pdf-source-page={pageNumber} sx={{ m: 0, mb: `${tokens.spacing[5]}px`, color: "inherit", fontFamily: "inherit", fontSize: "inherit", lineHeight: tokens.typography.lineHeight.body, textAlign: "justify", textIndent: index === 0 ? 0 : "2em" }}>{inlineText(block.text)}</Typography>;
 }
 
-function PdfInlineText({ text, pageNumber, blockIndex, sourceStart = false, onOpenFootnote }: { text: string; pageNumber: number; blockIndex: number; sourceStart?: boolean; onOpenFootnote: (marker: string, anchor: HTMLElement, originId: string) => void }) {
+function PdfInlineText({ text, pageNumber, blockIndex, chapterIndex = 0, sourceStart = false, footnoteTargetKeys, referenceTargetKeys, onOpenFootnote }: { text: string; pageNumber: number; blockIndex: number; chapterIndex?: number; sourceStart?: boolean; footnoteTargetKeys: ReadonlySet<string>; referenceTargetKeys: ReadonlySet<string>; onOpenFootnote: (targetKey: string, anchor: HTMLElement) => void }) {
   return splitPdfInlineFootnoteReferences(text).map((part, partIndex) => {
     if (part.kind === "text") return <Box component="span" data-pdf-text data-pdf-source-page={pageNumber} data-pdf-source-marker={sourceStart && partIndex === 0 ? "" : undefined} key={`${partIndex}-${part.text}`}>{part.text}</Box>;
-    const id = `pdf-footnote-ref-${pageNumber}-${footnoteMarkerKey(part.marker)}-${blockIndex}-${partIndex}`;
+    const footnoteKey = pdfFootnoteTargetKey(chapterIndex, part.marker);
+    const referenceKey = pdfReferenceTargetKey(chapterIndex, part.marker);
+    const isFootnoteReference = footnoteTargetKeys.has(footnoteKey);
+    const targetKey = isFootnoteReference ? footnoteKey : referenceTargetKeys.has(referenceKey) ? referenceKey : undefined;
+    const id = `pdf-footnote-ref-${pageNumber}-${targetKey}-${blockIndex}-${partIndex}`;
+    if (!targetKey) return <Box component="span" data-pdf-source-page={pageNumber} data-pdf-source-marker={sourceStart && partIndex === 0 ? "" : undefined} key={id} sx={{ fontSize: "0.72em", lineHeight: 1, verticalAlign: "super" }}>{part.marker}</Box>;
     return (
-      <ButtonBase
+      <Box
         component="button"
+        type="button"
         data-pdf-source-page={pageNumber}
         data-pdf-source-marker={sourceStart && partIndex === 0 ? "" : undefined}
         id={id}
-        aria-label={`查看文中注释 ${part.marker}`}
-        onClick={(event: any) => onOpenFootnote(part.marker, event.currentTarget, id)}
+        data-pdf-footnote-reference={isFootnoteReference ? targetKey : undefined}
+        data-pdf-reference-citation={isFootnoteReference ? undefined : targetKey}
+        aria-label={isFootnoteReference ? `查看文中注释 ${part.marker}` : `查看参考文献 ${part.marker}`}
+        onClick={(event: MouseEvent<HTMLButtonElement>) => onOpenFootnote(targetKey, event.currentTarget)}
         key={id}
-        sx={{ display: "inline-flex", minWidth: 0, color: "primary.main", fontFamily: tokens.typography.fontFamily.body, fontSize: tokens.typography.fontSize.caption, fontWeight: tokens.typography.fontWeight.semibold, lineHeight: tokens.typography.lineHeight.tight, verticalAlign: "super", borderBottom: 1, borderColor: "currentColor", "&:focus-visible": { boxShadow: tokens.shadow.focus } }}
+        sx={{ appearance: "none", background: "none", border: 0, borderRadius: 0, display: "inline", minWidth: 0, p: 0, m: 0, boxShadow: "none", cursor: "pointer", color: "inherit", fontFamily: "inherit", fontSize: "0.72em", fontWeight: "inherit", lineHeight: 1, verticalAlign: "super", textIndent: 0, textDecoration: "none", "&:hover": { textDecoration: "underline" }, "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" } }}
       >
         {part.marker}
-      </ButtonBase>
+      </Box>
     );
   });
 }
 
 function footnoteMarkerKey(marker: string) {
   return marker === "*" ? "star" : marker.replace(/\D/gu, "");
-}
-
-async function findPdfFootnote(document: PDFDocumentProxy | null, startPage: number, marker: string, textCache: Map<number, PdfReadingBlock[]>): Promise<PdfFootnoteResult | null> {
-  if (!document) return null;
-  const lastPage = Math.min(document.numPages, startPage + 80);
-  for (let candidatePage = startPage + 1; candidatePage <= lastPage; candidatePage += 1) {
-    let blocks = textCache.get(candidatePage);
-    if (!blocks) {
-      const page = await document.getPage(candidatePage);
-      const content = await page.getTextContent();
-      blocks = pdfTextToReadingBlocks(content.items);
-      textCache.set(candidatePage, blocks);
-    }
-    const match = blocks.find((block): block is Extract<PdfReadingBlock, { kind: "footnote" }> => block.kind === "footnote" && block.marker === marker);
-    if (match) return { text: match.text, pageNumber: candidatePage };
-  }
-  return null;
 }

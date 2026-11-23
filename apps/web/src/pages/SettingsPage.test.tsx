@@ -112,9 +112,24 @@ it("separates security monitoring from user administration and groups external p
   renderSettings("/settings#users/sessions");
   expect(await screen.findByText("会话面板")).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "登录与安全" })).toHaveAttribute("aria-selected", "true");
-  expect(within(screen.getByRole("region", { name: "登录与安全" })).getAllByRole("tab").map(tab => tab.textContent)).toEqual(["安全策略", "在线会话", "登录日志"]);
+  expect(within(screen.getByRole("region", { name: "登录与安全" })).getAllByRole("tab").map(tab => tab.textContent)).toEqual(["安全策略", "登录会话", "登录日志"]);
   fireEvent.click(screen.getByRole("tab", { name: "外部服务" }));
   expect(await screen.findByText("AI 面板")).toBeInTheDocument();
-  expect(within(screen.getByRole("region", { name: "外部服务" })).getAllByRole("tab").map(tab => tab.textContent)).toEqual(["AI 服务", "元数据来源", "邮件服务"]);
+  expect(within(screen.getByRole("region", { name: "外部服务" })).getAllByRole("tab").map(tab => tab.textContent)).toEqual(["AI 服务", "书目信息来源", "邮件服务"]);
   expect(screen.queryByText("网站面板")).not.toBeInTheDocument();
+});
+
+it("supports arrow-key navigation on desktop group and subsection tabs", async () => {
+  renderSettings("/settings#catalog/library-roots");
+  const catalogTab = await screen.findByRole("tab", { name: "馆藏与文件" });
+  fireEvent.keyDown(catalogTab, { key: "ArrowDown" });
+  expect(await screen.findByText("用户面板")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "用户与权限" })).toHaveAttribute("aria-selected", "true");
+
+  fireEvent.keyDown(screen.getByRole("tab", { name: "用户与权限" }), { key: "ArrowDown" });
+  expect(await screen.findByText("安全面板")).toBeInTheDocument();
+  const subTab = screen.getByRole("tab", { name: "安全策略" });
+  fireEvent.keyDown(subTab, { key: "ArrowRight" });
+  expect(await screen.findByText("会话面板")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "登录会话" })).toHaveAttribute("aria-selected", "true");
 });

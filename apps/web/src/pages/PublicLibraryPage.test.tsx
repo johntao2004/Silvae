@@ -87,3 +87,30 @@ it("keeps manual empty bibliography fields instead of replacing them with source
   expect(api.getDisplayBookBibliographySource).not.toHaveBeenCalled();
   expect(screen.queryByText("公开内容简介")).not.toBeInTheDocument();
 });
+
+it("does not display the encrypted PDF source banner on public book details", async () => {
+  const reason = "PDF 已加密，无法读取补充资料。";
+  vi.mocked(api.getDisplayBookBibliographySource).mockRejectedValue(new ApiRequestError(reason, 422, "BIBLIOGRAPHY_PDF_ENCRYPTED"));
+  renderPublic("/library/books/public-1");
+
+  await waitFor(() => expect(api.getDisplayBookBibliographySource).toHaveBeenCalledWith("public-1", expect.any(AbortSignal)));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.queryByText(reason)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "重试原书信息" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: book.title, level: 2 })).toBeInTheDocument();
+  expect(screen.getByText(book.description)).toBeInTheDocument();
+});
+
+it("shows a temporary source failure reason and retries only the source request", async () => {
+  const source = vi.mocked(api.getDisplayBookBibliographySource)
+    .mockRejectedValueOnce(new ApiRequestError("书籍文件正在使用，请稍后重试。", 409, "FILE_LEASE_BUSY"))
+    .mockResolvedValueOnce({ authorBiography: "重试后读取到的作者介绍" });
+  renderPublic("/library/books/public-1");
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("书籍文件正在使用，请稍后重试。");
+  fireEvent.click(screen.getByRole("button", { name: "重试原书信息" }));
+
+  expect(await screen.findByText("重试后读取到的作者介绍")).toBeInTheDocument();
+  expect(source).toHaveBeenCalledTimes(2);
+  expect(api.getDisplayBook).toHaveBeenCalledTimes(1);
+});

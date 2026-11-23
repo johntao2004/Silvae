@@ -72,13 +72,13 @@ export function ReadingPostPage() {
   const failed = !validKind || query.isError || (!query.isPending && !post);
   const returnTo = failed ? "/annotations" : `/annotations/${postSections[kind]}?view=posts`;
   return <PageContainer>
-    <PageBackAction to={returnTo}>返回笔记</PageBackAction>
-    {!validKind ? <Alert severity="error">未找到随笔</Alert> : query.isPending ? <Skeleton active /> : query.isError || !post ? <Stack spacing={2} sx={{ alignItems: "flex-start" }}><PageHeader eyebrow="BLOG POST" title="无法读取随笔" /></Stack> : <>
-      <PageHeader eyebrow="BLOG POST" title={post.title} action={post.userId === user?.id && can("notes.edit") ? <Button variant="contained" onClick={() => setEditing(true)}>编辑</Button> : undefined} />
+    {(!validKind || query.isPending || query.isError || !post) && <PageBackAction to={returnTo}>返回阅读笔记</PageBackAction>}
+    {!validKind ? <Alert severity="error">未找到随笔</Alert> : query.isPending ? <Skeleton active /> : query.isError || !post ? <Stack spacing={2} sx={{ alignItems: "flex-start" }}><PageHeader title="无法读取随笔" /></Stack> : <>
+      <PageHeader back={<PageBackAction inline to={returnTo}>返回阅读笔记</PageBackAction>} title={post.title} action={post.userId === user?.id && can("notes.edit") ? <Button variant="contained" onClick={() => setEditing(true)}>编辑</Button> : undefined} />
       <Stack direction="row" sx={{ flexWrap: "wrap", alignItems: "center", gap: `${tokens.spacing[3]}px`, mb: `${tokens.spacing[6]}px` }}>
         <Chip label={postLabels[kind]} size="small" variant="outlined" />
         <Button component={Link} to={kind === "BOOK" ? `/library/books/${post.sourceId}` : `/articles/${post.sourceId}`}>{post.sourceTitle}</Button>
-        <Typography color="text.secondary" variant="body2">{post.authorName} · {date(post.updatedAt)} · {post.visibility === "PRIVATE" ? "仅自己" : "书库共享"}</Typography>
+        <Typography color="text.secondary" variant="body2">{post.authorName} · {date(post.updatedAt)} · {post.visibility === "PRIVATE" ? "仅自己可见" : "书库成员可见"}</Typography>
       </Stack>
       <Box component="article" aria-label="随笔正文" className={proseClass} sx={{ maxWidth: `${tokens.layout.readingMax}px`, minWidth: 0, mx: "auto" }} dangerouslySetInnerHTML={{ __html: html }} />
       {editing && <PostEditor key={`${kind}:${post.id}`} saved={post} initialKind={kind} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />}
@@ -111,7 +111,7 @@ export function PostEditor({ saved, initialKind, initialSourceId, sourceTitle, a
   const change = (patch: Partial<PostDraft>) => setDraft(current => ({ ...current, ...patch }));
   const save = async () => {
     if (busy) return;
-    if (!draft.sourceId || !draft.title.trim() || !draft.markdown.trim()) { setFullscreen(false); setError("请选择原文，填写标题和正文。"); return; }
+    if (!draft.sourceId || !draft.title.trim() || !draft.markdown.trim()) { setFullscreen(false); setError("请选择一本书或一篇文章，并填写随笔标题和正文。"); return; }
     setBusy(true); setError("");
     try {
       const post = persist ? await persist(draft) : saved ? await readingPosts.update(saved, draft) : await readingPosts.create(draft);
@@ -132,17 +132,17 @@ export function PostEditor({ saved, initialKind, initialSourceId, sourceTitle, a
       <Box hidden={fullscreen} sx={{ display: fullscreen ? "none" : "grid", gap: `${tokens.spacing[5]}px` }}>
       {saved || fixedSource ? <Typography color="text.secondary">来源：{postLabels[draft.kind]} · {saved?.sourceTitle || sourceTitle || selectedBook.data?.title || selectedArticle.data?.title || "正在加载"}</Typography> : <>
         {allowKindChange && <Stack spacing={1}><Typography component="label">来源</Typography><Select label="来源" aria-label="来源" value={draft.kind} disabled={busy} onChange={event => { change({ kind: event.target.value as PostKind, sourceId: "" }); setSearch(""); }}><MenuItem value="BOOK">书籍</MenuItem><MenuItem value="ARTICLE">文章</MenuItem></Select></Stack>}
-        <TextField fullWidth label="搜索原文" value={search} disabled={busy} onChange={event => { setSearch(event.target.value); change({ sourceId: "" }); }} />
+        <TextField fullWidth label="搜索书名或文章标题" value={search} disabled={busy} onChange={event => { setSearch(event.target.value); change({ sourceId: "" }); }} />
         <Stack spacing={1}><Typography component="label">关联{postLabels[draft.kind]}</Typography><Select label={`关联${postLabels[draft.kind]}`} aria-label={`关联${postLabels[draft.kind]}`} value={draft.sourceId} disabled={busy || sourceLoading || sourceFailed} onChange={event => change({ sourceId: event.target.value })}>
           <MenuItem value="" disabled>请选择</MenuItem>{sources.map(source => <MenuItem key={source.id} value={source.id}>{source.title}</MenuItem>)}
         </Select>
-          {sourceLoading && <Typography role="status" color="text.secondary">正在加载原文</Typography>}
-          {sourceFailed && <Alert severity="error">无法加载原文<Button onClick={() => void (draft.kind === "BOOK" ? sourceBooks.refetch() : sourceArticles.refetch())}>重试</Button></Alert>}
-          {!sourceLoading && !sourceFailed && sources.length === 0 && <Typography color="text.secondary">未找到原文</Typography>}
+          {sourceLoading && <Typography role="status" color="text.secondary">正在查找书籍和文章</Typography>}
+          {sourceFailed && <Alert severity="error">暂时无法搜索书籍或文章<Button onClick={() => void (draft.kind === "BOOK" ? sourceBooks.refetch() : sourceArticles.refetch())}>重试</Button></Alert>}
+          {!sourceLoading && !sourceFailed && sources.length === 0 && <Typography color="text.secondary">没有找到匹配的书籍或文章</Typography>}
         </Stack>
       </>}
       <TextField label="标题" fullWidth required disabled={busy} value={draft.title} slotProps={{ htmlInput: { maxLength: 200 } }} onChange={event => change({ title: event.target.value })} />
-      <Stack spacing={1}><Typography component="label">可见范围</Typography><Select label="可见范围" aria-label="可见范围" value={draft.visibility} disabled={busy} onChange={event => change({ visibility: event.target.value })}><MenuItem value="PRIVATE">仅自己</MenuItem><MenuItem value="LIBRARY">书库共享</MenuItem></Select></Stack>
+      <Stack spacing={1}><Typography component="label">可见范围</Typography><Select label="可见范围" aria-label="可见范围" value={draft.visibility} disabled={busy} onChange={event => change({ visibility: event.target.value })}><MenuItem value="PRIVATE">仅自己可见</MenuItem><MenuItem value="LIBRARY">书库成员可见</MenuItem></Select></Stack>
       </Box>
       {draft.kind === "BOOK" && can("notes.edit") && <Box><AiAssistantButton source="NOTE_DRAFT" label="AI 写作辅助" draft={draft.markdown} disabled={busy} onApply={text => change({ markdown: text })} /></Box>}
       <Stack spacing={1} sx={{ minHeight: 0, flex: 1 }}><Typography component="label">正文</Typography><MarkdownEditor label="随笔正文" mode="note" value={draft.markdown} onChange={markdown => change({ markdown })} disabled={busy} maxLength={500_000} placeholder="# 阅读感想" /></Stack>

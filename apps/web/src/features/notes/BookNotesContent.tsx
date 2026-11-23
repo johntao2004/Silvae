@@ -1,41 +1,23 @@
-import { BookCover } from "../components/BookCover";
 // 按书籍组织当前用户笔记并提供导出，列表与搜索通过私人批注接口。
 // Organizes the current user’s notes by book and supports exports through private annotation APIs.
+import { BookCover } from "../../components/BookCover";
 import { FormatQuoteRounded } from "@/ui/icons";
-import { Alert } from "@/ui/feedback";
-import { Box } from "@/ui/primitives";
+import { Alert, Chip, CircularProgress } from "@/ui/feedback";
+import { Box, CardActionArea, CardContent, Snackbar, Stack, Typography } from "@/ui/primitives";
 import { Button } from "@/ui/buttons";
 import { Card } from "@/ui/cards";
-import { CardActionArea } from "@/ui/primitives";
-import { CardContent } from "@/ui/primitives";
-import { Chip } from "@/ui/feedback";
-import { CircularProgress } from "@/ui/feedback";
-import { Snackbar } from "@/ui/primitives";
-import { Stack } from "@/ui/primitives";
-import { Typography } from "@/ui/primitives";
 import type { SxProps, Theme } from "@/ui/primitives";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useDeferredValue, useMemo, useState } from "react";
-import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../api/client";
-import { BookCatalogEmptyState } from "../components/BookCatalogEmptyState";
-import { annotationColorBackground, annotationColorHex } from "../domain/annotation-colors";
-import type { Annotation, AnnotationBookSummary, AnnotationStyle } from "../domain/types";
-import { tokens } from "../theme/tokens";
-import { EMPTY_READING_NOTES_TITLE } from "../ui/empty-state-copy";
-import { useAuth } from "../auth/AuthContext";
-import { AnnotationNoteMarkdown } from "../components/AnnotationNoteMarkdown";
-
-/** Preserve existing reader/export links while moving source categories to independent routes. */
-export function AnnotationsPage() {
-  const [params] = useSearchParams();
-  const next = new URLSearchParams(params);
-  const section = params.get("type") === "articles" || params.has("articleId") ? "articles" : "books";
-  const legacySelection = params.has("type") || params.has("bookId") || params.has("articleId") || params.has("q");
-  next.delete("type");
-  if (legacySelection) next.set("view", "annotations");
-  return <Navigate replace to={`/annotations${legacySelection ? `/${section}` : ""}${next.size ? `?${next}` : ""}`} />;
-}
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { api } from "../../api/client";
+import { BookCatalogEmptyState } from "../../components/BookCatalogEmptyState";
+import { annotationColorBackground, annotationColorHex } from "../../domain/annotation-colors";
+import type { Annotation, AnnotationBookSummary, AnnotationStyle } from "../../domain/types";
+import { tokens } from "../../theme/tokens";
+import { EMPTY_READING_NOTES_TITLE } from "../../ui/empty-state-copy";
+import { useAuth } from "../../auth/AuthContext";
+import { AnnotationNoteMarkdown } from "../../components/AnnotationNoteMarkdown";
 
 export function BookNotesContent() {
   const { user } = useAuth();
@@ -66,7 +48,7 @@ function AnnotationBooks({ userId, onOpen }: { userId: string; onOpen: (bookId: 
 
   return (
     <>
-      {query.isPending ? <Loading label="正在加载读书札记" /> : query.isError ? <Alert severity="error">无法读取读书札记</Alert> : books.length === 0 ? (
+      {query.isPending ? <Loading label="正在加载书籍笔记" /> : query.isError ? <Alert severity="error">无法读取书籍笔记</Alert> : books.length === 0 ? (
         <BookCatalogEmptyState title={EMPTY_READING_NOTES_TITLE} />
       ) : (
         <>
@@ -83,7 +65,7 @@ function AnnotationBooks({ userId, onOpen }: { userId: string; onOpen: (bookId: 
 function AnnotationBookCard({ book, onOpen }: { book: AnnotationBookSummary; onOpen: () => void }) {
   return (
     <Card variant="outlined" sx={{ overflow: "hidden", transition: "transform 150ms ease, box-shadow 150ms ease", "&:hover": { transform: "translateY(-2px)", boxShadow: tokens.shadow.cover } }}>
-      <CardActionArea onClick={onOpen} aria-label={`查看《${book.bookTitle}》的阅读札记`} sx={{ height: "100%", alignItems: "stretch" }}>
+      <CardActionArea onClick={onOpen} aria-label={`查看《${book.bookTitle}》的阅读笔记`} sx={{ height: "100%", alignItems: "stretch" }}>
         <Stack direction="row" sx={{ minHeight: 188 }}>
           <Box sx={{ width: { xs: tokens.spacing[24], sm: 126 }, flexShrink: 0, display: "flex", alignItems: "center", p: `${tokens.spacing[2]}px` }}>
             <BookCover src={book.coverUrl} alt={`${book.bookTitle}封面`} />
@@ -93,7 +75,7 @@ function AnnotationBookCard({ book, onOpen }: { book: AnnotationBookSummary; onO
             <Typography variant="body2" color="text.secondary" noWrap>{book.bookAuthor}</Typography>
             <Stack direction="row" useFlexGap sx={{ mt: 2, flexWrap: "wrap", gap: 0.75 }}>
               <Chip size="small" label={`${book.annotationCount} 条批注`} />
-              {book.noteCount > 0 && <Chip size="small" variant="outlined" label={`${book.noteCount} 条阅读札记`} />}
+              {book.noteCount > 0 && <Chip size="small" variant="outlined" label={`${book.noteCount} 条阅读笔记`} />}
             </Stack>
             <Typography variant="caption" color="text.disabled" sx={{ mt: "auto", pt: 2 }}>最近记录于 {formatDate(book.latestAt)}</Typography>
           </CardContent>
@@ -125,8 +107,8 @@ function BookAnnotations({ bookId, userId }: { bookId: string; userId: string })
     }
   };
 
-  if (bookQuery.isPending || annotationsQuery.isPending) return <Loading label="正在加载读书札记" />;
-  if (bookQuery.isError || !bookQuery.data || annotationsQuery.isError) return <Alert severity="error">无法读取这本书的阅读札记</Alert>;
+  if (bookQuery.isPending || annotationsQuery.isPending) return <Loading label="正在加载书籍笔记" />;
+  if (bookQuery.isError || !bookQuery.data || annotationsQuery.isError) return <Alert severity="error">无法读取这本书的阅读笔记</Alert>;
   const book = bookQuery.data;
 
   return (
@@ -176,7 +158,7 @@ function AnnotationEntry({ annotation, index }: { annotation: Annotation; index:
           </Typography>
         </Stack>
       )}
-      {annotation.note && <Box sx={{ mt: 2.5, ml: { xs: 0, sm: 5 }, p: 2, bgcolor: "background.default", borderRadius: 2 }}><Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>我的阅读札记</Typography><AnnotationNoteMarkdown markdown={annotation.note} sx={{ overflowWrap: "anywhere" }} /></Box>}
+      {annotation.note && <Box sx={{ mt: 2.5, ml: { xs: 0, sm: 5 }, p: 2, bgcolor: "background.default", borderRadius: 2 }}><Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>我的阅读笔记</Typography><AnnotationNoteMarkdown markdown={annotation.note} sx={{ overflowWrap: "anywhere" }} /></Box>}
       <Button component={Link} to={`/reader/${encodeURIComponent(annotation.bookId)}${annotation.locator ? `?locator=${encodeURIComponent(annotation.locator)}` : ""}`} sx={{ mt: `${tokens.spacing[4]}px` }}>返回原文</Button>
     </Box>
   );

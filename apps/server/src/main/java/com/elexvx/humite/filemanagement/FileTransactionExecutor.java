@@ -10,6 +10,7 @@ import com.elexvx.humite.ingestion.LibraryRoot;
 import com.elexvx.humite.ingestion.LibraryRootRepository;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -78,6 +79,9 @@ public class FileTransactionExecutor {
                     operation.sourcePath(), operation.targetPath(), operation.expectedFingerprint(), result, "SUCCEEDED", "{}");
             log.info("Completed file operation operationId={} type={}", operation.id(), operation.type());
         } catch (Exception exception) {
+            if (exception instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
             String code = exception instanceof OperationFailure failure ? failure.code : "FILE_OPERATION_FAILED";
             boolean rolledBack = code.endsWith("_ROLLED_BACK") || code.equals("SOURCE_TRASH_FAILED");
             if (rolledBack) operations.rolledBack(operation.id(), code, safeMessage(exception));
@@ -98,7 +102,7 @@ public class FileTransactionExecutor {
                                 if (status == STATUS_COMMITTED) return;
                                 try {
                                     audit.recordIndependent(operation.requestedBy(), operation.type().name(), "BOOK_FILE",
-                                            operation.bookFileId().toString(), operation.sourcePath(), operation.targetPath(),
+                                            bookFileIdString(operation.bookFileId()), operation.sourcePath(), operation.targetPath(),
                                             operation.expectedFingerprint(), null, rolledBack ? "ROLLED_BACK" : "FAILED",
                                             "{\"code\":\"" + code + "\"}");
                                 } catch (Exception auditFailure) {
@@ -170,7 +174,7 @@ public class FileTransactionExecutor {
                         }
                         try {
                             audit.recordIndependent(operation.requestedBy(), "TITLE_SYNC_ROLLBACK", "BOOK_FILE",
-                                    operation.bookFileId().toString(), operation.targetPath(), operation.sourcePath(),
+                                    bookFileIdString(operation.bookFileId()), operation.targetPath(), operation.sourcePath(),
                                     fingerprint, fingerprint, outcome, "{}");
                         } catch (Exception exception) {
                             log.error("Could not audit title rename rollback operationId={}", operation.id(), exception);
@@ -314,7 +318,7 @@ public class FileTransactionExecutor {
         try {
             copyAndForce(archived, temporary);
             inspector.assertReadable(temporary, file.format());
-            Files.move(temporary, current, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            moveReplacingWithAtomicFallback(temporary, current);
         } catch (Exception exception) {
             Files.deleteIfExists(temporary);
             throw exception;
@@ -330,7 +334,7 @@ public class FileTransactionExecutor {
             Files.deleteIfExists(rollback);
             copyAndForce(backup, rollback);
             inspector.assertReadable(rollback, file.format());
-            Files.move(rollback, current, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            moveReplacingWithAtomicFallback(rollback, current);
             var attributes = Files.readAttributes(current, BasicFileAttributes.class);
             books.updateFileLocation(file.id(), root.id(), file.relativePath(), normalized(file.relativePath()),
                     operation.expectedFingerprint(), attributes.size(),
@@ -371,14 +375,31 @@ public class FileTransactionExecutor {
 
     // 写租约需等待读租约释放；等待有截止时间，避免无限阻塞任务。
     // Write-lease acquisition waits for readers with a deadline so tasks cannot wait indefinitely.
-    private FileLeaseRepository.Lease waitForWriteLease(UUID fileId, UUID operationId) throws InterruptedException {
+    private FileLeaseRepository.Lease waitForWriteLease(UUID fileId, UUID operationId) {
         long deadline = System.nanoTime() + properties.fileLeaseTimeout().toNanos();
         while (System.nanoTime() < deadline) {
             var lease = leases.tryAcquireWrite(fileId, "operation:" + operationId, properties.fileLeaseTimeout().plusSeconds(30));
             if (lease.isPresent()) return lease.get();
-            Thread.sleep(200);
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new OperationFailure("OPERATION_INTERRUPTED", "等待文件写租约时操作被中断", interrupted);
+            }
         }
         throw new OperationFailure("ACTIVE_LEASE_TIMEOUT", "等待阅读器释放文件超时");
+    }
+
+    private void moveReplacingWithAtomicFallback(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException unsupported) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static String bookFileIdString(UUID bookFileId) {
+        return bookFileId == null ? null : bookFileId.toString();
     }
 
     private void verifyFingerprint(Path path, String expected) throws IOException {
